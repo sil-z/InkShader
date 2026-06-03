@@ -1,0 +1,458 @@
+import { getCanvasTheme } from "../rendering/canvas_theme.js";
+import {
+    shouldIncludeCurrentDrawingCurve,
+    snapshotIncludesCurve,
+    snapshotIncludesNodeMarker
+} from "../../app/editor_interaction_state.js";
+import {
+    appendCurveFillPath,
+    shouldBatchFillCurve,
+    usePreviewSkeletonForBatchFill,
+    drawCurveStroke,
+    isCurveStrokePreview
+} from "../rendering/curve_renderer.js";
+import { drawCurveNode } from "../rendering/node_renderer.js";
+
+export class CanvasRendererService {
+    constructor(canvas) {
+        this.canvas = canvas;
+    }
+
+    renderCanvas() {
+        const c = this.canvas;
+        if (!c.ctx) return;
+        const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
+        const { width: logicalW, height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
+        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (logicalW > 0 && logicalH > 0) {
+            c.ctx.clearRect(0, 0, logicalW, logicalH);
+        }
+        const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+        const ix = c.getInteractionSnapshot();
+
+        let seqTokens = c.curve_manager.sequenceTokens || [];
+        let activeIndices = c.curve_manager.activeSequenceIndices;
+        const p = getCanvasTheme();
+
+        for (let i = 0; i < seqTokens.length; i++) {
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            const childrenIds = c.curve_manager.treeItems.get(groupId)?.children || [];
+            childrenIds.forEach((id) => {
+                const item = c.curve_manager.treeItems.get(id);
+                if (item && item.type === "image" && item.visible) {
+                    c.ctx.save();
+                    c.ctx.translate(offsetX + seqOffsetX * c.scale, offsetY);
+                    c.ctx.scale(c.scale, c.scale);
+                    const m = item.transform;
+                    c.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+                    c.ctx.drawImage(item.image, 0, 0);
+                    c.ctx.restore();
+                }
+            });
+        }
+
+        for (let i = 0; i < seqTokens.length; i++) {
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
+            }
+
+            c.ctx.beginPath();
+            let hasFill = false;
+            for (const cd of curveDataList) {
+                if (!cd.effectiveVis) continue;
+                if (cd.curve?.startNode) {
+                    const refId = cd.refId ?? null;
+                    const strokePreview = isCurveStrokePreview(c, cd.curve.id, refId);
+                    if (!shouldBatchFillCurve(cd.curve, { strokePreview })) continue;
+                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                    appendCurveFillPath(c.ctx, cd.curve, viewport, {
+                        refId,
+                        strokePreview: usePreviewSkeletonForBatchFill(cd.curve, { strokePreview })
+                    });
+                    hasFill = true;
+                }
+            }
+            if (hasFill) { c.ctx.fillStyle = p.path_fill_color; c.ctx.fill("nonzero"); }
+        }
+
+        for (let i = 0; i < seqTokens.length; i++) {
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
+            }
+
+            for (const cd of curveDataList) {
+                if (!cd.effectiveVis) continue;
+                if (cd.curve?.startNode) {
+                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                    const refId = cd.refId ?? null;
+                    drawCurveStroke(c.ctx, cd.curve, viewport, p, {
+                        renderMode: "stroke",
+                        refId,
+                        strokePreview: isCurveStrokePreview(c, cd.curve.id, refId)
+                    });
+                }
+            }
+
+            if (c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
+                const seg = c.hovered_curve_segment;
+                for (const cd of curveDataList) {
+                    if (seg.curve === cd.curve && seg.refId === cd.refId) {
+                        const current = seg.startNode; const next = seg.nextNode;
+                        if (!current || !next) continue;
+                        const pt = (x, y) => {
+                            let mx = x, my = y;
+                            if (cd.matrix) { mx = x * cd.matrix.a + y * cd.matrix.c + cd.matrix.e; my = x * cd.matrix.b + y * cd.matrix.d + cd.matrix.f; }
+                            return { x: (mx + seqOffsetX) * c.scale + offsetX, y: my * c.scale + offsetY };
+                        };
+
+                        c.ctx.save(); c.ctx.beginPath();
+                        let p0 = pt(current.x, current.y); c.ctx.moveTo(p0.x, p0.y);
+                        let cp1 = pt(current.control1?.x ?? current.x, current.control1?.y ?? current.y);
+                        let cp2 = pt(next.control2?.x ?? next.x, next.control2?.y ?? next.y);
+                        let endP = pt(next.x, next.y);
+                        c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endP.x, endP.y);
+                        c.ctx.lineWidth = 3; c.ctx.strokeStyle = p.hovered_curve_stroke_color; c.ctx.stroke(); c.ctx.restore();
+                    }
+                }
+            }
+        }
+
+        if (c.previewData && c.last_on_curve_node_marker) {
+            const pd = c.previewData;
+            c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd.p2_x, pd.p2_y, pd.p3_x, pd.p3_y);
+            c.ctx.strokeStyle = p.preview_color; c.ctx.lineWidth = 0.5; c.ctx.stroke();
+            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker);
+            if (curve && curve.closed && pd._p2_x !== undefined) {
+                c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd._p2_x, pd._p2_y, pd._p3_x, pd._p3_y); c.ctx.stroke();
+            }
+        }
+
+        if (c.active_guidelines && c.active_guidelines.length > 0) {
+            c.ctx.save(); c.ctx.strokeStyle = p.guideline_color; c.ctx.lineWidth = 1; c.ctx.setLineDash([4, 4]); c.ctx.beginPath();
+            for (let g of c.active_guidelines) {
+                if (g.type === "v") { let sx = g.value * c.scale + offsetX; c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH); }
+                else if (g.type === "h") { let sy = g.value * c.scale + offsetY; c.ctx.moveTo(0, sy); c.ctx.lineTo(logicalW, sy); }
+            }
+            c.ctx.stroke(); c.ctx.restore();
+        }
+
+        if (c.getActiveTool() === "SELECT") {
+            let bounds = c.utils.getSelectionBounds();
+            if (bounds) {
+                let minSX = bounds.minX * c.scale + offsetX; let minSY = bounds.minY * c.scale + offsetY;
+                let maxSX = bounds.maxX * c.scale + offsetX; let maxSY = bounds.maxY * c.scale + offsetY;
+                let pad = 1.5; minSX -= pad; minSY -= pad; maxSX += pad; maxSY += pad;
+                let w = maxSX - minSX; let h = maxSY - minSY;
+                let midSX = minSX + w / 2; let midSY = minSY + h / 2;
+
+                c.ctx.save(); c.ctx.strokeStyle = p.select_box_stroke; c.ctx.lineWidth = 1; c.ctx.setLineDash([]); c.ctx.strokeRect(minSX, minSY, w, h);
+                const drawHandle = (x, y, isRot = false) => {
+                    c.ctx.fillStyle = p.select_handle_fill; c.ctx.strokeStyle = p.select_handle_stroke; c.ctx.lineWidth = 1; c.ctx.beginPath();
+                    if (isRot) { c.ctx.arc(x, y, 4, 0, Math.PI * 2); } else { c.ctx.rect(x - 3, y - 3, 6, 6); }
+                    c.ctx.fill(); c.ctx.stroke();
+                };
+                drawHandle(minSX, minSY); drawHandle(midSX, minSY); drawHandle(maxSX, minSY);
+                drawHandle(minSX, midSY); drawHandle(maxSX, midSY);
+                drawHandle(minSX, maxSY); drawHandle(midSX, maxSY); drawHandle(maxSX, maxSY);
+                c.ctx.beginPath(); c.ctx.moveTo(midSX, minSY); c.ctx.lineTo(midSX, minSY - 20); c.ctx.stroke(); drawHandle(midSX, minSY - 20, true);
+                c.ctx.restore();
+            }
+        }
+
+        if ((c.getActiveTool() === "SELECT" || c.getActiveTool() === "NODE") && c.is_box_selecting && c.box_select_start && c.box_select_end) {
+            c.ctx.save(); c.ctx.strokeStyle = p.marquee_stroke; c.ctx.fillStyle = p.marquee_fill; c.ctx.lineWidth = 1; c.ctx.setLineDash([4, 4]);
+            let x = Math.min(c.box_select_start.x, c.box_select_end.x); let y = Math.min(c.box_select_start.y, c.box_select_end.y);
+            let w = Math.abs(c.box_select_start.x - c.box_select_end.x); let h = Math.abs(c.box_select_start.y - c.box_select_end.y);
+            c.ctx.fillRect(x, y, w, h); c.ctx.strokeRect(x, y, w, h); c.ctx.restore();
+        }
+
+        if (c.getActiveTool() === "MEASURE" && c.measure_start && c.measure_end) {
+            let sx = c.measure_start.x * c.scale + offsetX; let sy = c.measure_start.y * c.scale + offsetY;
+            let ex = c.measure_end.x * c.scale + offsetX; let ey = c.measure_end.y * c.scale + offsetY;
+            c.ctx.save(); c.ctx.strokeStyle = p.measure_color; c.ctx.lineWidth = 1;
+            c.ctx.beginPath(); c.ctx.moveTo(sx, sy); c.ctx.lineTo(ex, ey); c.ctx.stroke();
+            c.ctx.fillStyle = p.measure_color; c.ctx.beginPath(); c.ctx.arc(sx, sy, 3, 0, Math.PI * 2); c.ctx.fill();
+            c.ctx.beginPath(); c.ctx.arc(ex, ey, 3, 0, Math.PI * 2); c.ctx.fill();
+            let dx = c.measure_end.x - c.measure_start.x; let dy = c.measure_end.y - c.measure_start.y;
+            let length = Math.hypot(dx, dy); let angleRad = Math.atan2(-dy, dx); let angleDeg = (angleRad * 180 / Math.PI).toFixed(1);
+            let text = `L: ${length.toFixed(1)}, A: ${angleDeg}°`; c.ctx.font = "12px sans-serif";
+            let textW = c.ctx.measureText(text).width; c.ctx.fillStyle = p.measure_text_bg; c.ctx.fillRect(ex + 6, ey - 20, textW + 8, 16);
+            c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, ex + 10, ey - 8); c.ctx.restore();
+        }
+
+        let showHandlesSet = new Set();
+        for (let i = 0; i < seqTokens.length; i++) {
+            if (!activeIndices.has(i)) continue;
+            let token = seqTokens[i]; let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
+            }
+            for (let cd of curveDataList) {
+                if (!cd.effectiveVis || cd.effectiveLock) continue;
+                let isCurveSelected = snapshotIncludesCurve(ix, cd.curve) || cd.curve === c.current_curve;
+                let current = cd.curve.startNode;
+                while (current) {
+                    if (snapshotIncludesNodeMarker(ix, current.main_node) || isCurveSelected) {
+                        showHandlesSet.add(current);
+                        if (current.lastOnCurve) showHandlesSet.add(current.lastOnCurve);
+                        if (current.nextOnCurve) showHandlesSet.add(current.nextOnCurve);
+                        if (cd.curve.closed) {
+                            if (current === cd.curve.startNode && cd.curve.endNode) showHandlesSet.add(cd.curve.endNode);
+                            if (current === cd.curve.endNode && cd.curve.startNode) showHandlesSet.add(cd.curve.startNode);
+                        }
+                    }
+                    current = current.nextOnCurve;
+                }
+            }
+        }
+
+        let unselectedNodeRenders = []; let selectedNodeRenders = [];
+
+        if (c.curve_manager.activeSequenceIndices.size > 0) {
+            c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
+            for (let i = 0; i < seqTokens.length; i++) {
+                if (!activeIndices.has(i)) continue;
+                let seqOffsetX = c.curve_manager.getSeqOffset(i); let sx = seqOffsetX * c.scale + offsetX;
+                c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH);
+                let token = seqTokens[i]; let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
+                let ex = (seqOffsetX + advance) * c.scale + offsetX;
+                c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
+            }
+            c.ctx.stroke(); c.ctx.restore();
+        }
+
+        this.syncSequenceLabelsDOM(seqTokens, activeIndices, offsetX);
+
+        for (let i = 0; i < seqTokens.length; i++) {
+            if (!activeIndices.has(i)) continue;
+            let seqOffsetX = c.curve_manager.getSeqOffset(i); let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
+            }
+
+            for (const cd of curveDataList) {
+                if (!cd.effectiveVis || cd.effectiveLock) continue;
+                if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE") continue;
+                if (c.getActiveTool() === "DRAW" && cd.curve !== c.current_curve) continue;
+
+                let start_node = cd.curve.startNode;
+                while (start_node !== null) {
+                    let isSelected = snapshotIncludesNodeMarker(ix, start_node.main_node);
+                    let showHandles = showHandlesSet.has(start_node);
+                    let hoverStates = { main: c.hovered_node_marker === start_node.main_node, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node };
+                    let nodeToDraw = start_node; let z = start_node.last_touched || 0;
+                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                    let drawFn = () => {
+                        c.ctx.save();
+                        drawCurveNode(c.ctx, nodeToDraw, viewport, p, { isSelected, hoverStates, showHandles });
+                        c.ctx.restore();
+                    };
+                    if (isSelected) { selectedNodeRenders.push({ fn: drawFn, z: z }); } else { unselectedNodeRenders.push({ fn: drawFn, z: z }); }
+                    start_node = start_node.nextOnCurve;
+                }
+            }
+        }
+        unselectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
+        selectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
+    }
+
+    syncSequenceLabelsDOM(seqTokens, activeIndices, offsetX) {
+        const c = this.canvas;
+        if (!c.main_canvas_large) return;
+
+        let container = c.querySelector("#sequence_labels_overlay");
+        if (!container) {
+            container = c.env.createDOMElement("div");
+            container.id = "sequence_labels_overlay";
+            container.style.position = "absolute";
+            container.style.top = "0";
+            container.style.left = "0";
+            container.style.width = "100%";
+            container.style.height = "0";
+            container.style.pointerEvents = "none";
+            container.style.zIndex = "10";
+            c.main_canvas_large.appendChild(container);
+        }
+
+        container.innerHTML = "";
+        if (activeIndices.size === 0) return;
+
+        const viewport = c.viewportConfig || {};
+        const ruler_h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
+
+        for (let i = 0; i < seqTokens.length; i++) {
+            if (!activeIndices.has(i)) continue;
+            let token = seqTokens[i];
+            let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let group = gid ? c.curve_manager.treeItems.get(gid) : null;
+            if (!group) continue;
+
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let sx = seqOffsetX * c.scale + offsetX;
+            const label = `${group.name}${group.charCode ? ` (${group.charCode})` : ""}`;
+
+            let el = c.env.createDOMElement("div");
+            el.className = "sequence-label";
+            el.textContent = label;
+            el.style.position = "absolute";
+            el.style.left = `${sx + 4}px`;
+            el.style.top = `${ruler_h + 4}px`;
+            container.appendChild(el);
+        }
+    }
+
+    update_previewData(mouseX, mouseY) {
+        const c = this.canvas;
+        if (c.last_on_curve_node_marker !== null) {
+            let lastNode = c.curve_manager.find_node_by_curve(c.last_on_curve_node_marker);
+            if (!lastNode) return;
+            let seqOffsetX = c.drawing_seq_offset !== undefined ? c.drawing_seq_offset : 0;
+            const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+            let p0_x = mouseX, p0_y = mouseY; let p1_x = p0_x, p1_y = p0_y;
+            let p3_x = (lastNode.x + seqOffsetX) * c.scale + offsetX; let p3_y = lastNode.y * c.scale + offsetY;
+            let p2_x = ((lastNode.control1?.x ?? lastNode.x) + seqOffsetX) * c.scale + offsetX; let p2_y = (lastNode.control1?.y ?? lastNode.y) * c.scale + offsetY;
+            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker);
+            let previewObj = { p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y };
+
+            if (curve && curve.startNode) {
+                previewObj._p3_x = (curve.startNode.x + seqOffsetX) * c.scale + offsetX; previewObj._p3_y = curve.startNode.y * c.scale + offsetY;
+                previewObj._p2_x = ((curve.startNode.control2?.x ?? curve.startNode.x) + seqOffsetX) * c.scale + offsetX; previewObj._p2_y = (curve.startNode.control2?.y ?? curve.startNode.y) * c.scale + offsetY;
+            }
+            c.previewData = previewObj;
+        } else {
+            c.previewData = null;
+        }
+    }
+
+    getStepAndPrecision(scale) {
+        const c = this.canvas;
+        const roughStep = 50 / scale;
+        const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+        let step = steps[0];
+        for (const s of steps) { if (s >= roughStep) { step = s; break; } }
+        let precision = 0; if (step < 1) { precision = Math.ceil(-Math.log10(step)); }
+        return { step, precision };
+    }
+
+    update_ruler() { this.update_ruler_horizontal(); this.update_ruler_vertical(); }
+
+    update_ruler_horizontal() {
+        const c = this.canvas;
+        const viewport = c.viewportConfig || {};
+        const w = Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0;
+        const h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
+        if (w <= 0 || h <= 0) return;
+        c.ruler_horizontal.replaceChildren();
+        const svg = c.env.createSVGElement("svg");
+        svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
+        svg.style.position = "absolute"; svg.style.top = "0"; svg.style.left = "0"; svg.style.display = "block";
+        const { step, precision } = this.getStepAndPrecision(c.scale);
+        const origin = c.offset.x;
+        const theme = getCanvasTheme();
+        const textColor = theme.ruler_text_color;
+        const lineColor = theme.ruler_line_color;
+        let start_i = Math.floor(-10 * origin / (c.scale * step)) - 10;
+        let end_i = Math.ceil(10 * (w - origin) / (c.scale * step)) + 10;
+
+        for (let i = start_i; i <= end_i; i++) {
+            let j = i / 10; const x = origin + j * c.scale * step;
+            if (x < -c.scale * step || x > w + c.scale * step) continue;
+            const line = c.env.createSVGElement("line");
+            line.setAttribute("x1", String(x)); line.setAttribute("y1", String(h)); line.setAttribute("x2", String(x));
+            if (i % 10 === 0) {
+                line.setAttribute("y2", "0");
+                const text = c.env.createSVGElement("text"); text.textContent = `${(j * step).toFixed(precision)}`;
+                text.setAttribute("x", String(x + 5)); text.setAttribute("y", String(h / 3)); text.setAttribute("font-size", "10px"); text.setAttribute("fill", textColor); text.setAttribute("text-anchor", "right"); text.setAttribute("dominant-baseline", "middle");
+                svg.appendChild(text);
+            } else if (i % 2 === 0) { line.setAttribute("y2", String(h / 2)); } else { line.setAttribute("y2", String(h / 4 * 3)); }
+            line.setAttribute("stroke", lineColor); line.setAttribute("stroke-width", "1"); svg.appendChild(line);
+        }
+        c.ruler_horizontal.appendChild(svg);
+    }
+
+    update_ruler_vertical() {
+        const c = this.canvas;
+        const viewport = c.viewportConfig || {};
+        const w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
+        const h = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
+        if (w <= 0 || h <= 0) return;
+        c.ruler_vertical.replaceChildren();
+        const svg = c.env.createSVGElement("svg");
+        svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
+        svg.style.position = "absolute"; svg.style.top = "0"; svg.style.left = "0"; svg.style.display = "block";
+        const { step, precision } = this.getStepAndPrecision(c.scale);
+        const bottomOrigin = c.offset.y + c.canvas_size_height * c.scale;
+        const theme = getCanvasTheme();
+        const textColor = theme.ruler_text_color;
+        const lineColor = theme.ruler_line_color;
+        let start_i = Math.floor(10 * (bottomOrigin - h) / (c.scale * step)) - 10;
+        let end_i = Math.ceil(10 * bottomOrigin / (c.scale * step)) + 10;
+
+        for (let i = start_i; i <= end_i; i++) {
+            let j = i / 10; const y = bottomOrigin - j * c.scale * step;
+            if (y < -c.scale * step || y > h + c.scale * step) continue;
+            const line = c.env.createSVGElement("line");
+            line.setAttribute("y1", String(y)); line.setAttribute("x1", String(w)); line.setAttribute("y2", String(y));
+            if (i % 10 === 0) {
+                line.setAttribute("x2", "0");
+                const cx = w / 3; const cy = y - 5;
+                const text = c.env.createSVGElement("text"); text.textContent = `${(j * step).toFixed(precision)}`;
+                text.setAttribute("x", String(cx)); text.setAttribute("y", String(cy)); text.setAttribute("font-size", "10px"); text.setAttribute("fill", textColor); text.setAttribute("text-anchor", "right"); text.setAttribute("dominant-baseline", "middle"); text.setAttribute("transform", `rotate(-90 ${cx} ${cy})`);
+                svg.appendChild(text);
+            } else if (i % 2 === 0) { line.setAttribute("x2", String(w / 2)); } else { line.setAttribute("x2", String(w / 4 * 3)); }
+            line.setAttribute("stroke", lineColor); line.setAttribute("stroke-width", "1"); svg.appendChild(line);
+        }
+        c.ruler_vertical.appendChild(svg);
+    }
+
+    update_canvas() {
+        const c = this.canvas;
+        const viewport = c.viewportConfig || {};
+        const left = (Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size) + c.offset.x;
+        const top = (Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size) + c.offset.y;
+        c.main_canvas.style.transform = `translate(${left}px, ${top}px)`;
+        c.main_canvas.style.width = `${c.canvas_size_width * c.scale}px`;
+        c.main_canvas.style.height = `${c.canvas_size_height * c.scale}px`;
+    }
+
+    change_canvas_size(dy, x, y, fixed, viewportCenter = false) {
+        const c = this.canvas;
+        if (viewportCenter) {
+            const viewport = c.viewportConfig || {};
+            const rect = {
+                width: Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0,
+                height: Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0
+            };
+            const ruler_w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
+            const ruler_h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
+            x = (rect.width / 2) - ruler_w - c.offset.x;
+            y = (rect.height / 2) - ruler_h - c.offset.y;
+        } else if (fixed) {
+            x = c.canvas_size_width / 2 * c.scale; y = c.canvas_size_height / 2 * c.scale;
+        }
+        let wheel_delta = dy < 0 ? 1.1 : 0.9;
+        let new_scale = Math.min(Math.max(c.scale * wheel_delta, c.scale_min), c.scale_max);
+        if (new_scale === c.scale) return;
+        const x_new = x / c.scale * new_scale; const y_new = y / c.scale * new_scale;
+        c.scale = new_scale;
+        c.offset = { x: (c.offset.x + x - x_new), y: (c.offset.y + y - y_new) };
+        c.editorStore?.syncViewFromCanvas?.();
+        c.history.saveCurrentViewState();
+    }
+}

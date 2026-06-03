@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Antumbra: Free Font Editor</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="./js/vendor/jszip.min.js"></script>
+    <script src="./js/vendor/paper-full.min.js"></script>
+    <script type="module">
+        import { I18nManager } from './js/services/i18n.js';
+        I18nManager.init();
+    </script>
+</head>
+<body>
+    <div class="top">
+        <div class="item brand_title">Antumbra</div>
+        <div class="item" data-i18n="menu.load">Load</div>
+        <div class="item" data-i18n="menu.import">Import</div>
+        <div class="item" data-i18n="menu.save">Save</div>
+        <div class="item" data-i18n="menu.export">Export As</div>
+        <div class="item" data-i18n="menu.prefs">Preferences</div>
+        <div class="item" data-i18n="menu.help">Help</div>
+    </div>
+
+    <div class="bottom" id="bottom">
+        <div class="bottom_tools">
+            <div class="tool_button" id="btn_tool_select" data-i18n-tip="tool.select" data-tip="Select and transform objects">
+                <img src="./assets/icons/select.svg" alt="Select">
+            </div>
+            <div class="tool_button" id="btn_tool_node" data-i18n-tip="tool.node" data-tip="Edit paths by nodes">
+                <img src="./assets/icons/node.svg" alt="Node">
+            </div>
+            <div class="tool_button" id="btn_tool_draw" data-i18n-tip="tool.draw" data-tip="Draw Bezier curves">
+                <img src="./assets/icons/pen.svg" alt="Pen">
+            </div>
+            <div class="tool_button" data-i18n-tip="tool.ellipse" data-tip="Create Ellipses">
+                <img src="./assets/icons/ellipse.svg" alt="Ellipse">
+            </div>
+            <div class="tool_button" id="btn_tool_measure" data-i18n-tip="tool.measure" data-tip="Measure objects">
+                <img src="./assets/icons/ruler.svg" alt="Ruler">
+            </div>
+
+            <div class="tool_separator"></div>
+            <div class="tool_button" id="btn_mode_corner" data-i18n-tip="mode.corner" data-tip="Make selected nodes corner">
+                <img src="./assets/icons/corner.svg" alt="Corner">
+            </div>
+            <div class="tool_button" id="btn_mode_smooth" data-i18n-tip="mode.smooth" data-tip="Make selected nodes smooth">
+                <img src="./assets/icons/smooth.svg" alt="Smooth">
+            </div>
+            <div class="tool_button" id="btn_mode_symmetric" data-i18n-tip="mode.symmetric" data-tip="Make selected nodes symmetric">
+                <img src="./assets/icons/symmetric.svg" alt="Symmetric">
+            </div>
+
+            <div class="tool_separator"></div>
+            <div class="tool_button" id="btn_action_union" data-i18n-tip="action.union" data-tip="Create union of selected paths">
+                <img src="./assets/icons/union.svg" alt="Union">
+            </div>
+            <div class="tool_button" id="btn_action_expand" data-i18n-tip="action.expand" data-tip="Expand a stroke into a filled path">
+                <img src="./assets/icons/expand.svg" alt="Expand">
+            </div>
+
+            <output id="mouse_pos">Mouse Pos 0.00 0.00</output>
+        </div>
+    </div>
+
+    <div class="middle">
+        <div class="right">
+            <script type="module" src="./js/ui/object_tree.js"></script>
+            <object-tree></object-tree>
+            
+            <script type="module" src="./js/ui/glyph_sequence_editor.js"></script>
+            <script type="module" src="./js/ui/property_panel.js"></script>
+            <property-panel class="placeholder property_panel" id="main_property_panel"></property-panel>
+        </div>
+
+        <div class="left">
+            <script type="module" src="./js/canvas/main_canvas.js"></script>
+            <main-canvas></main-canvas>
+        </div>
+    </div>
+
+    <script type="module" src="./js/ui/preferences_modal.js"></script>
+    <preferences-modal id="app_preferences_modal"></preferences-modal>
+
+    <script type="module" src="./js/ui/help_modal.js"></script>
+    <help-modal id="app_help_modal"></help-modal>
+
+    <script type="module" src="./js/ui/logger_panel.js"></script>
+    <logger-panel id="app_logger_panel"></logger-panel>
+
+    <script>
+        try {
+            const data = localStorage.getItem('Antumbra_preferences');
+            if (data) {
+                const settings = JSON.parse(data);
+                if (settings.theme) document.documentElement.setAttribute('data-theme', settings.theme);
+                if (settings.customColors) {
+                    Object.keys(settings.customColors).forEach(key => {
+                        document.documentElement.style.setProperty(key, settings.customColors[key]);
+                    });
+                }
+            }
+        } catch(e) {}
+    </script>
+    <script type="module" src="./js/app/bootstrap.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+

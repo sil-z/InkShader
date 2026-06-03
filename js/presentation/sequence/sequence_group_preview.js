@@ -1,0 +1,46 @@
+import { appendCurveFillPath, curveGeneratesFillArea } from "../../canvas/rendering/curve_renderer.js";
+
+/**
+ * 序列菜单缩略图（呈现层：允许 Canvas API，UI 组件只调用此模块）。
+ */
+export function drawSequenceGroupPreview(ctx, curveManager, groupId) {
+    if (!ctx || !curveManager) return;
+    const curveDataList = curveManager.getCurvesForGroup(groupId);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const cd of curveDataList) {
+        const bounds = cd.curve.getBounds(cd.matrix);
+        if (bounds) {
+            minX = Math.min(minX, bounds.minX);
+            minY = Math.min(minY, bounds.minY);
+            maxX = Math.max(maxX, bounds.maxX);
+            maxY = Math.max(maxY, bounds.maxY);
+        }
+    }
+    if (minX === Infinity) return;
+
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const size = Math.max(w, h, 1);
+    const scale = 100 / size;
+    const offsetX = 60 - (minX + w / 2) * scale;
+    const offsetY = 60 - (minY + h / 2) * scale;
+
+    ctx.fillStyle = "#111";
+    ctx.beginPath();
+
+    let hasFill = false;
+    for (const cd of curveDataList) {
+        const curve = cd.curve;
+        if (!curve?.startNode || !curveGeneratesFillArea(curve)) continue;
+        appendCurveFillPath(ctx, curve, { scale, offsetX, offsetY, seqOffsetX: 0, matrix: cd.matrix });
+        hasFill = true;
+    }
+
+    if (hasFill) {
+        ctx.fill("nonzero");
+    }
+}

@@ -1,0 +1,60 @@
+/**
+ * 单向数据流约定（非「散乱总线」）：
+ * 1. 写意图：CanvasDispatcher → REQUEST_* → CanvasController.dispatchAction → Command 改 runtime
+ * 2. 读状态：EditorStore → STATE_CHANGED → UI（唯一 UI 状态出口）
+ * 3. 领域副作用：CurveManager 发射 DOMAIN_EVENTS → domain_event_bridge → EventBus → onDomainEffect
+ * 4. 命令历史：EditorStore.commitCommand；撤回/重做 restoreFromHistoryMeta → snapshot patch → applyInteractionToRuntime
+ * 5. 交互态 SSOT：EditorStore（reduce → applyInteractionFromStore）；CM 仅为投影，禁止反向 absorb
+ */
+export const CANVAS_EVENTS = Object.freeze({
+    TREE_UPDATED: "tree-updated",
+    SEQUENCE_CHANGED: "sequence-changed",
+    SEQUENCE_ACTIVE_CHANGED: "sequence-active-changed",
+    GLOBAL_SELECTION_UPDATED: "global-selection-updated",
+    /** 仅 activeGroupId 变更（不写历史、不触发属性面板全量刷新） */
+    ACTIVE_GROUP_CHANGED: "active-group-changed",
+    FORCE_CANVAS_REDRAW: "force-canvas-redraw",
+    MODEL_UPDATED: "model-state-updated",
+    SYNC_TOOL_UI: "sync-tool-ui",
+    LANGUAGE_CHANGED: "language-changed",
+    THEME_PARAMS_UPDATED: "theme-params-updated",
+    REQUEST_SET_TOOL_MODE: "request-set-tool-mode",
+    REQUEST_SET_NODE_MODE: "request-set-node-mode",
+    REQUEST_EDITOR_ACTION: "request-editor-action",
+    REQUEST_COPY_SELECTED_OBJECTS: "request-copy-selected-objects",
+    REQUEST_PASTE_COPIED_OBJECTS: "request-paste-copied-objects",
+    REQUEST_DUPLICATE_SELECTED_OBJECTS: "request-duplicate-selected-objects",
+    REQUEST_SET_TREE_SELECTION: "request-set-tree-selection",
+    REQUEST_CHANGE_OBJECT_SELECTION: "request-change-object-selection",
+    REQUEST_CHANGE_NODE_SELECTION: "request-change-node-selection",
+    REQUEST_SET_ACTIVE_GROUP: "request-set-active-group",
+    REQUEST_TOGGLE_GROUP_COLLAPSED: "request-toggle-group-collapsed",
+    REQUEST_TOGGLE_SELECTED_OBJECTS_LOCK: "request-toggle-selected-objects-lock",
+    REQUEST_TOGGLE_SELECTED_OBJECTS_DISPLAY: "request-toggle-selected-objects-display",
+    REQUEST_DELETE_SELECTED_OBJECTS: "request-delete-selected-objects",
+    REQUEST_CHANGE_SELECTED_OBJECTS_GROUP: "request-change-selected-objects-group",
+    REQUEST_SET_SINGLE_OBJECT_PROPERTIES: "request-set-single-object-properties",
+    REQUEST_CHANGE_SELECTED_OBJECTS_BOUNDS: "request-change-selected-objects-bounds",
+    REQUEST_RENAME_TREE_ITEM: "request-rename-tree-item",
+    REQUEST_SET_GROUP_ADVANCE: "request-set-group-advance",
+    REQUEST_UPDATE_NODE_PROPERTY: "request-update-node-property",
+    REQUEST_SET_PEN_PROPERTIES: "request-set-pen-properties",
+    REQUEST_SET_GROUP_CHAR_CODE: "request-set-group-char-code",
+    REQUEST_SET_SEQUENCE_EDITOR_STATE: "request-set-sequence-editor-state",
+    REQUEST_DELETE_GROUP_AND_UPDATE_SEQUENCE: "request-delete-group-and-update-sequence",
+    REQUEST_SEQUENCE_HISTORY_COMMIT: "request-sequence-history-commit",
+    REQUEST_HISTORY_COMMIT: "request-history-commit",
+    REQUEST_EXPAND_STROKE: "request-expand-stroke",
+    REQUEST_BOOLEAN_UNION: "request-boolean-union",
+    REQUEST_UNLINK: "request-unlink",
+    REQUEST_IMPORT: "request-import",
+    REQUEST_SAVE: "request-save",
+    REQUEST_EXPORT: "request-export",
+    REQUEST_LOAD: "request-load",
+    REQUEST_UNDO: "request-undo",
+    REQUEST_REDO: "request-redo",
+    REQUEST_SAVE_VIEW_STATE: "request-save-view-state",
+    STATE_CHANGED: "canvas-state-changed"
+});
+
+export { EDITOR_ACTIONS as CANVAS_ACTIONS, createEditorAction as createCanvasAction } from "../domain/actions/editor_actions.js";

@@ -1,0 +1,359 @@
+import { StorageUtils } from "../../services/storage.js";
+import { updateThemeParams } from "../../services/theme.js";
+import { CANVAS_ACTIONS, CANVAS_EVENTS, createCanvasAction } from "../../app/canvas_events.js";
+import { REQUEST_ACTION_ROUTES, REQUEST_IO_ROUTES, TOOL_ACTION_ROUTES } from "../../app/canvas_request_routes.js";
+import { appEventBus } from "../../app/event_bus.js";
+import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
+import {
+    deriveObjectSelectionFromStoreState,
+    resolveMarkersFromStore
+} from "../../app/editor_interaction_state.js";
+
+export class CanvasController {
+    constructor(canvas) {
+        this.canvas = canvas;
+    }
+
+    dispatchAction(type, payload = {}, meta = {}) {
+        const action = createCanvasAction(type, payload, meta);
+        this.canvas.__dispatchingAction = action;
+        try {
+            if (this.canvas.editorStore && typeof this.canvas.editorStore.dispatchAction === "function") {
+                return this.canvas.editorStore.dispatchAction(action, (nextAction) => this.handleAction(nextAction));
+            }
+            return this.handleAction(action);
+        } finally {
+            this.canvas.__dispatchingAction = null;
+        }
+    }
+
+    onBus(eventName, listener, options = false) {
+        const cleanup = appEventBus.on(eventName, listener, options);
+        this.canvas.globalEventTrackers.push(cleanup);
+    }
+
+    handleAction(action) {
+        const c = this.canvas;
+        const payload = action?.payload || {};
+        switch (action?.type) {
+            case CANVAS_ACTIONS.SET_TOOL_MODE: return this.applyToolMode(payload.mode);
+            case CANVAS_ACTIONS.SET_NODE_MODE: return this.applyNodeMode(payload.mode);
+            case CANVAS_ACTIONS.COPY_SELECTED_OBJECTS: return c.commands.copySelectedObjects(payload.ids || null);
+            case CANVAS_ACTIONS.PASTE_COPIED_OBJECTS: return c.commands.pasteCopiedObjects(payload.targetId || null);
+            case CANVAS_ACTIONS.DUPLICATE_SELECTED_OBJECTS: return c.commands.duplicateSelectedObjects(payload.ids || null);
+            case CANVAS_ACTIONS.SET_TREE_SELECTION:
+                return c.commands.setTreeSelection(payload.ids || [], payload.activeGroupId);
+            case CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION:
+                return c.commands.changeObjectSelection(payload.strategy || "replace", payload);
+            case CANVAS_ACTIONS.CHANGE_NODE_SELECTION:
+                return c.commands.changeNodeSelection(payload.strategy || "replace", payload);
+            case CANVAS_ACTIONS.SET_ACTIVE_GROUP: return c.commands.setActiveGroup(payload.id);
+            case CANVAS_ACTIONS.TOGGLE_GROUP_COLLAPSED: return c.commands.toggleGroupCollapsed(payload.id);
+            case CANVAS_ACTIONS.TOGGLE_SELECTED_OBJECTS_LOCK: return c.commands.toggleSelectedObjectsLock(payload.ids || null, payload.locked);
+            case CANVAS_ACTIONS.TOGGLE_SELECTED_OBJECTS_DISPLAY: return c.commands.toggleSelectedObjectsDisplay(payload.ids || null, payload.visible);
+            case CANVAS_ACTIONS.DELETE_SELECTED_OBJECTS: return c.commands.deleteSelectedObjects(payload.ids);
+            case CANVAS_ACTIONS.CHANGE_SELECTED_OBJECTS_GROUP:
+                return c.commands.changeSelectedObjectsGroup(payload.ids || [], payload.targetId || null, payload.mode || "inside");
+            case CANVAS_ACTIONS.SET_SINGLE_OBJECT_PROPERTIES:
+                return c.commands.setSingleObjectProperties(payload.updates || [], payload.options || {});
+            case CANVAS_ACTIONS.CHANGE_SELECTED_OBJECTS_BOUNDS:
+                return c.commands.changeSelectedObjectsBounds(payload.prop, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.RENAME_TREE_ITEM: return c.commands.renameTreeItem(payload.id, payload.newName);
+            case CANVAS_ACTIONS.SET_GROUP_ADVANCE: return c.commands.setGroupAdvance(payload.id, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.UPDATE_NODE_PROPERTY:
+                return c.commands.updateSingleNodeProperty(payload.marker, payload.propId, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.SET_PEN_PROPERTIES: return c.commands.setPenProperties(payload.updates || {}, payload.options || {});
+            case CANVAS_ACTIONS.SET_GROUP_CHAR_CODE: return c.commands.setGroupCharCode(payload.id, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE:
+                return c.commands.setSequenceEditorState(payload.payload || {}, payload.options || {});
+            case CANVAS_ACTIONS.DELETE_GROUP_AND_UPDATE_SEQUENCE:
+                return c.commands.deleteGroupAndUpdateSequence(payload.groupId, payload.payload || {}, payload.options || {});
+            case CANVAS_ACTIONS.COMMIT_SEQUENCE_HISTORY:
+            case CANVAS_ACTIONS.COMMIT_HISTORY:
+                return c.editorStore?.commitCommand
+                    ? c.editorStore.commitCommand(action)
+                    : c.history.recordHistory({
+                          commandName: payload.commandName || "history-commit",
+                          payload: payload.payload || payload || {}
+                      });
+            case CANVAS_ACTIONS.EXPAND_STROKE: return c.commands.expandSelectedStroke();
+            case CANVAS_ACTIONS.BOOLEAN_UNION: return c.commands.booleanUnionSelectedCurves();
+            case CANVAS_ACTIONS.UNLINK: return c.commands.unlinkSelectedReferences(payload.ids || []);
+            case CANVAS_ACTIONS.IMPORT_IMAGE: c.io.triggerImportImage(); return true;
+            case CANVAS_ACTIONS.UNDO:
+                return c.editorStore.undo();
+            case CANVAS_ACTIONS.REDO:
+                return c.editorStore.redo();
+            default: return false;
+        }
+    }
+
+    /** 领域副作用单入口（有序、恢复中由 CurveManager 静默） */
+    onDomainEffect(effect) {
+        const c = this.canvas;
+        if (c.is_restoring) return;
+        c.is_dirty = true;
+        switch (effect) {
+            case "tree":
+                c.bumpEditorStoreTreeRevision();
+                c.history.saveCurrentViewState(true);
+                break;
+            case "model":
+                c.bumpEditorStoreModelRevision();
+                break;
+            case "selection":
+                c.history.saveCurrentViewState(true);
+                break;
+            case "activeGroup":
+                break;
+            default:
+                break;
+        }
+    }
+
+    applyToolMode(mode) {
+        const c = this.canvas;
+        if (!mode) return false;
+
+        const previousTool = c.__dispatchingAction?.meta?.previousTool ?? c.getActiveTool();
+        const unchanged = previousTool === mode;
+
+        if (!unchanged && previousTool === "DRAW" && mode !== "DRAW") {
+            c.commands.finishAddingPathCommand();
+        }
+
+        if (mode !== "DRAW") {
+            c.current_curve = null;
+            c.previewData = null;
+            c.new_curve_handle = null;
+            c.last_on_curve_node_marker = null;
+            c.drawing_seq_offset = undefined;
+            c.closing_path_on_mouseup = false;
+            c.current_state = "IDLE";
+        } else {
+            const gid = c.curve_manager.ensureActiveGroup();
+            if (gid) c.commands.syncActiveGroupForDraw(gid);
+        }
+
+        if (unchanged) {
+            c.is_dirty = true;
+            return true;
+        }
+        c.history.saveCurrentViewState(true);
+
+        if (previousTool === "NODE" && mode !== "NODE") {
+            const st = c.editorStore?.getState?.() || {};
+            const { curveIds, refIds } = deriveObjectSelectionFromStoreState(st, c.curve_manager);
+            if (curveIds.length > 0 || refIds.length > 0) {
+                this.dispatchAction(CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION, {
+                    strategy: "replace",
+                    curveIds,
+                    refIds
+                });
+            }
+        }
+
+        c.hovered_node_marker = null;
+        c.hovered_curve_segment = null;
+        c.is_box_selecting = false;
+        c.is_measuring = false;
+        c.measure_start = null;
+        c.measure_end = null;
+        if (c.current_state !== "IDLE" && mode !== "DRAW") {
+            c.current_state = "IDLE";
+        }
+
+        c.notifyPropertiesUpdate();
+        c.is_dirty = true;
+        return true;
+    }
+
+    applyNodeMode(mode) {
+        const c = this.canvas;
+        if (![0, 1, 2].includes(mode)) return false;
+        const markers = resolveMarkersFromStore(c);
+        if (markers.length === 0) return false;
+        return c.commands.changeSmoothModeOnSelectedNode(markers, mode);
+    }
+
+    registerModelSyncListeners() {
+        const c = this.canvas;
+        this.onBus(CANVAS_EVENTS.TREE_UPDATED, () => this.onDomainEffect("tree"));
+        this.onBus(CANVAS_EVENTS.SEQUENCE_CHANGED, (e) => {
+            this.dispatchAction(
+                CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                { payload: { text: e?.detail?.text }, options: { recordHistory: false } },
+                { source: CANVAS_EVENTS.SEQUENCE_CHANGED }
+            );
+        });
+        this.onBus(CANVAS_EVENTS.SEQUENCE_ACTIVE_CHANGED, (e) => {
+            this.dispatchAction(
+                CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                { payload: { activeIndices: e?.detail?.activeIndices }, options: { recordHistory: false } },
+                { source: CANVAS_EVENTS.SEQUENCE_ACTIVE_CHANGED }
+            );
+            c.history.saveCurrentViewState(true);
+        });
+        this.onBus(CANVAS_EVENTS.GLOBAL_SELECTION_UPDATED, () => this.onDomainEffect("selection"));
+        this.onBus(CANVAS_EVENTS.ACTIVE_GROUP_CHANGED, () => this.onDomainEffect("activeGroup"));
+        this.onBus(CANVAS_EVENTS.FORCE_CANVAS_REDRAW, () => { c.is_dirty = true; });
+        this.onBus(CANVAS_EVENTS.MODEL_UPDATED, () => this.onDomainEffect("model"));
+    }
+
+    registerToolListeners() {
+        for (const route of TOOL_ACTION_ROUTES) {
+            this.onBus(route.event, (e) => {
+                const detail = e?.detail || {};
+                const payload = route.mapPayload(detail);
+                this.dispatchAction(route.action, payload, { source: route.event });
+            });
+        }
+    }
+
+    registerRequestListeners() {
+        for (const route of REQUEST_ACTION_ROUTES) {
+            this.onBus(route.event, (e) => {
+                const detail = e?.detail || {};
+                const payload = route.mapPayload(detail);
+                const result = this.dispatchAction(route.action, payload, { source: route.event });
+                if (route.assignResult && e.detail) {
+                    e.detail.result = result;
+                }
+            });
+        }
+        for (const route of REQUEST_IO_ROUTES) {
+            this.onBus(route.event, (e) => route.handler(this.canvas, e?.detail));
+        }
+    }
+
+    registerCommandBridgeListeners() {
+        this.registerRequestListeners();
+    }
+
+    registerThemeListener() {
+        const c = this.canvas;
+        this.onBus(CANVAS_EVENTS.THEME_PARAMS_UPDATED, () => {
+            updateThemeParams();
+            c.is_dirty = true;
+        });
+    }
+
+    setupGuidelineToggle() {
+        const c = this.canvas;
+        const base = c.env.getLocationHref();
+        if(c.lock_guideline_icon) c.lock_guideline_icon.src = new URL(c.lock_guideline_icon.dataset.src, base).href;
+        if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.src = new URL(c.lock_guideline_icon_unlocked.dataset.src, base).href;
+        if(c.lock_guideline_icon) c.lock_guideline_icon.style.display = "none";
+        if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.style.display = "inline";
+
+        c.lock_guideline_button?.addEventListener("mousedown", () => {
+            c.guideline_lock = !c.guideline_lock;
+            if(c.guideline_lock) { c.lock_guideline_icon.style.display = "inline"; c.lock_guideline_icon_unlocked.style.display = "none"; }
+            else { c.lock_guideline_icon.style.display = "none"; c.lock_guideline_icon_unlocked.style.display = "inline"; }
+        });
+    }
+
+    async restoreState() {
+        const c = this.canvas;
+        try {
+            const viewState = await StorageUtils.loadViewState();
+            if (viewState) {
+                c.scale = viewState.scale || c.scale;
+                c.offset = { x: viewState.offset_x || 0, y: viewState.offset_y || 0 };
+                if (viewState.draw_tool_settings) {
+                    c.drawToolSettings = viewState.draw_tool_settings;
+                    c.editorStore?.commitInteraction?.(
+                        {
+                            type: "SET_DRAW_TOOL_SETTINGS",
+                            payload: { ...viewState.draw_tool_settings }
+                        },
+                        { emit: true }
+                    );
+                }
+                c.editorStore?.syncViewFromCanvas?.();
+
+                const rightContainer = c.env.queryDOM('.right');
+                const objectTree = c.env.queryDOM('object-tree');
+                const propertyPanel = c.env.queryDOM('.property_panel');
+
+                if (rightContainer && viewState.right_width) rightContainer.style.flex = `0 0 ${viewState.right_width}px`;
+                if (objectTree && propertyPanel && viewState.tree_flex && viewState.prop_flex) {
+                    objectTree.style.flex = `1 1 ${viewState.tree_flex}%`; propertyPanel.style.flex = `1 1 ${viewState.prop_flex}%`;
+                }
+                c.is_dirty = true;
+            }
+
+            const savedState = await StorageUtils.load();
+            if (savedState) {
+                let snapshotStr = "";
+                let data = null;
+
+                if (typeof savedState === 'string') {
+                    snapshotStr = savedState;
+                    data = JSON.parse(savedState);
+                    c.commandStack = [];
+                    c.redoCommandStack = [];
+                } else if (savedState.runtimeVersion === 2 && savedState.latestSnapshot) {
+                    snapshotStr = JSON.stringify(savedState.latestSnapshot);
+                    data = savedState.latestSnapshot;
+                    const sanitize = (entry) => (typeof c.history._sanitizeCommandEntry === 'function' ? c.history._sanitizeCommandEntry(entry) : entry);
+                    c.commandStack = Array.isArray(savedState.commandStack) ? savedState.commandStack.map(sanitize).filter(Boolean) : [];
+                    c.redoCommandStack = Array.isArray(savedState.redoCommandStack) ? savedState.redoCommandStack.map(sanitize).filter(Boolean) : [];
+                } else {
+                    snapshotStr = JSON.stringify(savedState);
+                    data = savedState;
+                    c.commandStack = [];
+                    c.redoCommandStack = [];
+                }
+
+                await c.commands.loadSnapshotCommand(snapshotStr);
+
+                let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
+                let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
+
+                if (!seqActiveIndices.length && seqText) {
+                    let tokens = c.curve_manager.parseSequence(seqText);
+                    seqActiveIndices = tokens.map((_, i) => i);
+                }
+
+                this.dispatchAction(
+                    CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                    { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
+                    { source: "restore-state" }
+                );
+                c.is_dirty = true;
+                c.currentStateObj = c.history.getHistoryState();
+                if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') c.history._reconcileRuntimeHistoryStacks();
+            }
+
+            if (viewState && viewState.selected_tree_ids?.length) {
+                const validIds = viewState.selected_tree_ids.filter((id) => c.curve_manager.treeItems.has(id));
+                this.dispatchAction(CANVAS_ACTIONS.SET_TREE_SELECTION, { ids: validIds });
+            }
+
+            if (viewState?.active_group_id) {
+                this.dispatchAction(CANVAS_ACTIONS.SET_ACTIVE_GROUP, { id: viewState.active_group_id });
+            }
+
+            if (viewState?.current_tool) {
+                this.dispatchAction(CANVAS_ACTIONS.SET_TOOL_MODE, { mode: viewState.current_tool });
+                CanvasDispatcher.syncToolUi(viewState.current_tool);
+            }
+
+            c.editorStore?.mergeViewFromCanvas?.();
+            c.editorStore?.bumpTreeRevision?.();
+        } catch (err) { console.error(" [Storage] 恢复状态失败:", err); }
+    }
+
+    async initialize() {
+        StorageUtils.requestPersistence();
+        this.registerModelSyncListeners();
+        this.registerToolListeners();
+        this.registerCommandBridgeListeners();
+        this.registerThemeListener();
+        this.setupGuidelineToggle();
+        await this.restoreState();
+        this.canvas.currentStateObj = this.canvas.history.getHistoryState();
+        if (typeof this.canvas.history._reconcileRuntimeHistoryStacks === 'function') this.canvas.history._reconcileRuntimeHistoryStacks();
+    }
+}
