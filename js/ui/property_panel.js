@@ -207,7 +207,7 @@ export class PropertyPanel extends HTMLElement {
             this.lastSignature = sig;
         }
 
-        this.patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings);
+        this.patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings, selectedIds);
     }
 
     /* 将原本巨长的 DOM 构建逻辑安全拆分 */
@@ -364,7 +364,7 @@ export class PropertyPanel extends HTMLElement {
             </div>`;
     }
 
-    patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings) {
+    patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings, selectedIds) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
         const patch = (id, val, disable = false) => {
             let el = this.container.querySelector('#' + id);
@@ -405,8 +405,9 @@ export class PropertyPanel extends HTMLElement {
             patch('path_closed', this.getCommonValue(selectedCurves, 'closed'));
             patch('path_smart_stroke', this.getCommonValue(selectedCurves, 'smart_stroke'));
             patch('path_show_skel', this.getCommonValue(selectedCurves, 'show_skeleton'));
-            if (selectedCurves.length === 1 && item) {
-                patch('c_name', item.name);
+            if (selectedCurves.length === 1 && (item || selectedIds.length > 0)) {
+                if (!item) item = EditorModel.getTreeItem(selectedIds[0]);
+                patch('c_name', item?.name ?? '');
                 const curve = selectedCurves[0];
                 const winding = curve.skeletonWinding ?? 'open';
                 const dirText = winding === 'cw' ? t('prop.dir_cw', 'Clockwise')

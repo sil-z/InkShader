@@ -447,27 +447,6 @@ div, span, label, p, button {
     border: none;
 }
 
-/* Firefox：始终 thin 避免布局偏移，通过 scrollbar-color 切换隐藏/显示 */
-@-moz-document url-prefix() {
-    .placeholder,
-    .right,
-    .glyph-sequence-static,
-    #property_container,
-    .sequence-add-menu,
-    .tree_panel {
-        scrollbar-width: thin;
-        scrollbar-color: transparent transparent;
-    }
-    .placeholder[data-scrollbar-visible],
-    .right[data-scrollbar-visible],
-    .glyph-sequence-static[data-scrollbar-visible],
-    #property_container[data-scrollbar-visible],
-    .sequence-add-menu[data-scrollbar-visible],
-    .tree_panel[data-scrollbar-visible] {
-        scrollbar-color: var(--ui-border-light) transparent;
-    }
-}
-
 .placeholder span, .property_panel label {
     white-space: nowrap;
 }
@@ -1544,19 +1523,6 @@ glyph-sequence-editor {
 .pref_content_area,
 .logger-output {
     scrollbar-gutter: stable;
-}
-@-moz-document url-prefix() {
-    .pref_modal_body,
-    .pref_content_area,
-    .logger-output {
-        scrollbar-width: thin;
-        scrollbar-color: transparent transparent;
-    }
-    .pref_modal_body[data-scrollbar-visible],
-    .pref_content_area[data-scrollbar-visible],
-    .logger-output[data-scrollbar-visible] {
-        scrollbar-color: var(--ui-border-light) transparent;
-    }
 }
 
 /* 新增: 输入框统一及美化样式 */

@@ -107,7 +107,7 @@ export class SnapshotSerializer {
 
         this._sequenceService.rebuildDefaultGlyphs();
         this._sequenceService.updateSequenceParsing();
-        this._treeStore.notifyTreeUpdate();
+        this._sequenceService.syncTreeWithSequence(null, null, null, () => this._treeStore.notifyTreeUpdate());
     }
 
     _reconstructGroup(gid, gData, parentId, charCode = null) {
