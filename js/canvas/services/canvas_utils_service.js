@@ -224,7 +224,11 @@ export class CanvasUtilsService {
                     }
                     if (!isHit) {
                         c.ctx.beginPath();
-                        emitCubicBezierSegments(c.ctx, curve.getSkeletonBezierSegments(), mapDevice);
+                        if (curveGeneratesFillArea(curve)) {
+                            appendCurveOutlinePath(c.ctx, curve, viewport, { pass: "all" });
+                        } else {
+                            emitCubicBezierSegments(c.ctx, curve.getSkeletonBezierSegments(), mapDevice);
+                        }
                         c.ctx.lineWidth = hitLineWidth;
                         if (c.ctx.isPointInStroke(dMouseX, dMouseY)) isHit = true;
                     }

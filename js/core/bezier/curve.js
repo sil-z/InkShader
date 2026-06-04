@@ -1,7 +1,7 @@
 // js/core/bezier/curve.js — 领域几何（无 Canvas / 无主题）
 import { generateMarker } from './utils.js';
 import { CurveNode } from './node.js';
-import { CurveManager } from './manager.js';
+import { CurveStore } from './curve_store.js';
 import { refreshCurveBooleanCache } from '../boolean_geometry_cache.js';
 
 export class Curve {
@@ -105,7 +105,7 @@ export class Curve {
     }
 
     _ownerManager() {
-        return CurveManager.resolveActive() ?? CurveManager.getInstance();
+        return CurveStore.resolveActive() ?? CurveStore.getInstance();
     }
 
     destroy() {

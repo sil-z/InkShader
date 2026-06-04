@@ -1,0 +1,380 @@
+// js/core/bezier/curve_store.js — 几何存储：曲线、节点、DOM Marker 映射
+import { Curve } from './curve.js';
+import { CurveNode } from './node.js';
+import { generateMarker } from './utils.js';
+
+/**
+ * CurveStore：管理曲线数组、domMap 全局节点索引、节点/曲线 CRUD。
+ * 职责边界：仅几何数据，不涉及树/序列/序列化。
+ */
+export class CurveStore {
+    static _instance = null;
+    static _activeResolver = null;
+
+    /** 曲线数组（原始引用） */
+    curves = [];
+    /** marker → CurveNode 全局索引 */
+    domMap = new Map();
+
+    // =========================================================================
+    // 单例 + 活跃实例解析
+    // =========================================================================
+
+    static setActiveResolver(resolver) {
+        CurveStore._activeResolver = typeof resolver === 'function' ? resolver : null;
+    }
+
+    static resolveActive() {
+        return CurveStore._activeResolver?.() ?? CurveStore._instance ?? null;
+    }
+
+    static getInstance() {
+        if (!CurveStore._instance) {
+            CurveStore._instance = new CurveStore();
+        }
+        return CurveStore._instance;
+    }
+
+    // =========================================================================
+    // 节点查找
+    // =========================================================================
+
+    find_curve_by_dom(main_node) {
+        const curve = this.domMap.get(main_node)?.curve ?? null;
+        if (!curve) return null;
+        return this.curves.includes(curve) ? curve : null;
+    }
+
+    find_node_by_curve(main_node) {
+        return this.domMap.get(main_node) ?? null;
+    }
+
+    find_node_by_dom(main_node) {
+        const store = CurveStore.resolveActive() ?? this;
+        return this.domMap.get(main_node) ?? store.domMap.get(main_node) ?? null;
+    }
+
+    // =========================================================================
+    // DOM Marker 注册/注销
+    // =========================================================================
+
+    unregisterCurveDomMarkers(curve) {
+        if (!curve) return;
+        let current = curve.startNode;
+        while (current) {
+            if (current.main_node) {
+                curve.domMap.delete(current.main_node);
+                this.domMap.delete(current.main_node);
+            }
+            if (current.control1?.main_node) {
+                curve.domMap.delete(current.control1.main_node);
+                this.domMap.delete(current.control1.main_node);
+            }
+            if (current.control2?.main_node) {
+                curve.domMap.delete(current.control2.main_node);
+                this.domMap.delete(current.control2.main_node);
+            }
+            current = current.nextOnCurve;
+        }
+    }
+
+    _registerNodeDomMarkers(curve, node) {
+        if (!curve || !node) return;
+        if (node.main_node) {
+            curve.domMap.set(node.main_node, node);
+            this.domMap.set(node.main_node, node);
+        }
+        if (node.control1?.main_node) {
+            curve.domMap.set(node.control1.main_node, node.control1);
+            this.domMap.set(node.control1.main_node, node.control1);
+        }
+        if (node.control2?.main_node) {
+            curve.domMap.set(node.control2.main_node, node.control2);
+            this.domMap.set(node.control2.main_node, node.control2);
+        }
+    }
+
+    // =========================================================================
+    // 节点操作
+    // =========================================================================
+
+    adjustControlNode(marker, x, y) {
+        let controlNode = this.find_node_by_curve(marker);
+        if (!controlNode) return false;
+
+        controlNode.x = x;
+        controlNode.y = y;
+
+        if (controlNode.nextOnCurve && typeof controlNode.nextOnCurve.set_both_control === 'function') {
+            let mainNode = controlNode.nextOnCurve;
+            mainNode.set_both_control(marker, mainNode.control_mode);
+        }
+
+        return true;
+    }
+
+    moveSingleNode(marker, x, y, control1 = null, control2 = null) {
+        let node = this.find_node_by_curve(marker);
+        if (!node || node.type === null) return false;
+
+        let dx = x - node.x;
+        let dy = y - node.y;
+        node.x = x;
+        node.y = y;
+
+        if (control1 && node.control1) {
+            node.control1.x = control1.x;
+            node.control1.y = control1.y;
+        } else if (node.control1) {
+            node.control1.x += dx;
+            node.control1.y += dy;
+        }
+
+        if (control2 && node.control2) {
+            node.control2.x = control2.x;
+            node.control2.y = control2.y;
+        } else if (node.control2) {
+            node.control2.x += dx;
+            node.control2.y += dy;
+        }
+
+        return true;
+    }
+
+    moveSelectedNodes(updates) {
+        if (!updates || updates.length === 0) return false;
+
+        let changed = false;
+        let affectedGroups = new Set();
+
+        for (const update of updates) {
+            let node = this.find_node_by_curve(update.marker);
+            if (!node || node.type === null) continue;
+
+            let dx = update.x - node.x;
+            let dy = update.y - node.y;
+            node.x = update.x;
+            node.y = update.y;
+
+            if (update.control1 && node.control1) {
+                node.control1.x = update.control1.x;
+                node.control1.y = update.control1.y;
+            } else if (node.control1) {
+                node.control1.x += dx;
+                node.control1.y += dy;
+            }
+
+            if (update.control2 && node.control2) {
+                node.control2.x = update.control2.x;
+                node.control2.y = update.control2.y;
+            } else if (node.control2) {
+                node.control2.x += dx;
+                node.control2.y += dy;
+            }
+
+            changed = true;
+            if (node.curve && node.curve.groupId) affectedGroups.add(node.curve.groupId);
+        }
+
+        return { changed, affectedGroups };
+    }
+
+    changeSmoothModeOnSingleNode(marker, mode, forceCreateHandles = false) {
+        let node = this.find_node_by_curve(marker);
+        if (!node || node.type === null) return false;
+        if (node.control_mode === mode && !forceCreateHandles) return false;
+
+        node.applyMode(mode, this);
+        if (forceCreateHandles) {
+            if (!node.control1) {
+                let c1M = generateMarker("circle");
+                let c1Node = new CurveNode(c1M, null, node.x, node.y, node, null, String(c1M.id));
+                c1Node.curve = node.curve;
+                node.control1 = c1Node;
+                this.domMap.set(c1M, c1Node);
+                if (node.curve) node.curve.domMap.set(c1M, c1Node);
+            }
+            if (!node.control2) {
+                let c2M = generateMarker("circle");
+                let c2Node = new CurveNode(c2M, null, node.x, node.y, node, null, String(c2M.id));
+                c2Node.curve = node.curve;
+                node.control2 = c2Node;
+                this.domMap.set(c2M, c2Node);
+                if (node.curve) node.curve.domMap.set(c2M, c2Node);
+            }
+        }
+        node.control_mode = mode;
+        return true;
+    }
+
+    deleteSingleNode(marker) {
+        let node = this.find_node_by_curve(marker);
+        if (!node || !node.curve) return false;
+
+        let curve = node.curve;
+        let prevNode = node.lastOnCurve;
+        let nextNode = node.nextOnCurve;
+
+        if (prevNode && prevNode.control_mode === 2) prevNode.control_mode = 1;
+        if (nextNode && nextNode.control_mode === 2) nextNode.control_mode = 1;
+
+        curve.remove_node_by_dom(marker);
+
+        this.domMap.delete(marker);
+        if (node.control1) this.domMap.delete(node.control1.main_node);
+        if (node.control2) this.domMap.delete(node.control2.main_node);
+
+        return { curve, isEmpty: !curve.startNode };
+    }
+
+    updateNodeProperty(marker, propId, numVal) {
+        let node = this.find_node_by_curve(marker);
+        if (!node) return false;
+
+        if (propId === 'prop_x') {
+            let dx = numVal - node.x; node.x = numVal;
+            if (node.control1) node.control1.x += dx;
+            if (node.control2) node.control2.x += dx;
+        }
+        else if (propId === 'prop_y') {
+            let dy = numVal - node.y; node.y = numVal;
+            if (node.control1) node.control1.y += dy;
+            if (node.control2) node.control2.y += dy;
+        }
+        else if (node.control1 && propId.startsWith('prop_in_')) {
+            if (propId === 'prop_in_x') node.control1.x = numVal;
+            if (propId === 'prop_in_y') node.control1.y = numVal;
+            if (propId === 'prop_in_a') {
+                const dist = Math.hypot(node.control1.x - node.x, node.control1.y - node.y);
+                node.control1.x = node.x + dist * Math.cos(numVal * Math.PI / 180);
+                node.control1.y = node.y + dist * Math.sin(numVal * Math.PI / 180);
+            }
+            if (propId.includes('in_')) node.set_both_control(node.control1.main_node, node.control_mode);
+        }
+        else if (node.control2 && propId.startsWith('prop_out_')) {
+            if (propId === 'prop_out_x') node.control2.x = numVal;
+            if (propId === 'prop_out_y') node.control2.y = numVal;
+            if (propId === 'prop_out_a') {
+                const dist = Math.hypot(node.control2.x - node.x, node.control2.y - node.y);
+                node.control2.x = node.x + dist * Math.cos(numVal * Math.PI / 180);
+                node.control2.y = node.y + dist * Math.sin(numVal * Math.PI / 180);
+            }
+            if (propId.includes('out_')) node.set_both_control(node.control2.main_node, node.control_mode);
+        }
+
+        let curve = this.find_curve_by_dom(marker);
+        return { curve };
+    }
+
+    // =========================================================================
+    // 曲线 CRUD
+    // =========================================================================
+
+    createCurve(id) {
+        return new Curve({ id });
+    }
+
+    add_node_by_curve(main_node, type, x, y, nextOnCurve, lastOnCurve, this_curve, node_id) {
+        let next_node = nextOnCurve !== null ? this_curve.find_node_by_dom(nextOnCurve) : null;
+        let last_node = lastOnCurve !== null ? this_curve.find_node_by_dom(lastOnCurve) : null;
+        const node = this_curve.add_node(main_node, type, x, y, next_node, last_node, node_id);
+        if (node) this.domMap.set(main_node, node);
+        return node;
+    }
+
+    commit_curve(curve, parentId) {
+        this.curves.push(curve);
+    }
+
+    remove_curve(id) {
+        const index = this.curves.findIndex(m => m.id === id);
+        if (index !== -1) {
+            this.curves.splice(index, 1);
+            return true;
+        }
+        return false;
+    }
+
+    rollbackLastPathNode(curve) {
+        if (!curve || !curve.endNode) return false;
+        let node = curve.endNode;
+        if (node.type === null) return false;
+
+        const prev = node.lastOnCurve;
+
+        if (node.control1?.main_node) {
+            curve.domMap.delete(node.control1.main_node);
+            this.domMap.delete(node.control1.main_node);
+        }
+        if (node.control2?.main_node) {
+            curve.domMap.delete(node.control2.main_node);
+            this.domMap.delete(node.control2.main_node);
+        }
+        if (node.main_node) {
+            curve.domMap.delete(node.main_node);
+            this.domMap.delete(node.main_node);
+        }
+
+        if (prev) {
+            prev.nextOnCurve = null;
+            curve.endNode = prev;
+        } else {
+            curve.startNode = null;
+            curve.endNode = null;
+        }
+
+        return true;
+    }
+
+    get_curves() {
+        return this.curves;
+    }
+
+    // =========================================================================
+    // 快照反序列化辅助（从 JSON 重建节点）
+    // =========================================================================
+
+    reconstructCurveFromSnapshotData(curveId, pData, groupId) {
+        const curve = new Curve({ id: curveId });
+        curve.closed = pData.closed;
+        curve.stroke_width = pData.stroke_width;
+        curve.smart_stroke = pData.smart_stroke !== undefined ? pData.smart_stroke : true;
+        curve.smart_stroke_clockwise = pData.smart_stroke_clockwise !== undefined ? pData.smart_stroke_clockwise : true;
+        curve.show_skeleton = pData.show_skeleton !== undefined ? pData.show_skeleton : true;
+        curve.visible = pData.visible !== undefined ? pData.visible : true;
+        curve.locked = pData.locked !== undefined ? pData.locked : false;
+        curve.groupId = groupId;
+
+        const sortedNodes = Object.values(pData.vertices || {}).sort((a, b) => a.order - b.order);
+        let lastCreatedNode = null;
+
+        for (const vData of sortedNodes) {
+            const nId = vData.node_id || `n_${Date.now().toString(36)}_${Math.floor(Math.random() * 10000)}`;
+            const marker = { id: `m_${nId}` };
+            const node = new CurveNode(marker, "vertex", vData.x, vData.y, null, lastCreatedNode, nId);
+            node.curve = curve;
+            node.control_mode = vData.control_mode;
+
+            if (vData.control_1 && vData.control_1.active) {
+                const m1 = { id: `c1_${nId}` };
+                node.control1 = new CurveNode(m1, null, vData.control_1.x, vData.control_1.y, node, null, m1.id);
+                node.control1.curve = curve;
+            }
+            if (vData.control_2 && vData.control_2.active) {
+                const m2 = { id: `c2_${nId}` };
+                node.control2 = new CurveNode(m2, null, vData.control_2.x, vData.control_2.y, node, null, m2.id);
+                node.control2.curve = curve;
+            }
+
+            if (!curve.startNode) curve.startNode = node;
+            if (lastCreatedNode) lastCreatedNode.nextOnCurve = node;
+
+            this._registerNodeDomMarkers(curve, node);
+            lastCreatedNode = node;
+            if (vData.end) curve.endNode = node;
+        }
+
+        this.curves.push(curve);
+        return curve;
+    }
+}

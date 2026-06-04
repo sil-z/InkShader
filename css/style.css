@@ -366,8 +366,9 @@ div, span, label, p, button {
     display: flex;
     flex-direction: column;
     min-height: 0; 
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: auto;
+    scrollbar-gutter: stable;
     box-sizing: border-box;
     background-color: var(--ui-bg-placeholder);
     transition: background-color 0.2s, border-color 0.2s;
@@ -381,43 +382,90 @@ div, span, label, p, button {
 .right::-webkit-scrollbar,
 .glyph-sequence-static::-webkit-scrollbar,
 #property_container::-webkit-scrollbar,
-.sequence-add-menu::-webkit-scrollbar {
+.sequence-add-menu::-webkit-scrollbar,
+.tree_panel::-webkit-scrollbar {
     width: 6px;
     height: 6px;
+}
+.placeholder::-webkit-scrollbar-button,
+.right::-webkit-scrollbar-button,
+.glyph-sequence-static::-webkit-scrollbar-button,
+#property_container::-webkit-scrollbar-button,
+.sequence-add-menu::-webkit-scrollbar-button,
+.tree_panel::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.placeholder::-webkit-scrollbar-corner,
+.right::-webkit-scrollbar-corner,
+.glyph-sequence-static::-webkit-scrollbar-corner,
+#property_container::-webkit-scrollbar-corner,
+.sequence-add-menu::-webkit-scrollbar-corner,
+.tree_panel::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 .placeholder::-webkit-scrollbar-thumb,
 .right::-webkit-scrollbar-thumb,
 .glyph-sequence-static::-webkit-scrollbar-thumb,
 #property_container::-webkit-scrollbar-thumb,
-.sequence-add-menu::-webkit-scrollbar-thumb {
+.sequence-add-menu::-webkit-scrollbar-thumb,
+.tree_panel::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
 }
 
 .placeholder:hover::-webkit-scrollbar-thumb,
 .right:hover::-webkit-scrollbar-thumb,
 .glyph-sequence-static:hover::-webkit-scrollbar-thumb,
 #property_container:hover::-webkit-scrollbar-thumb,
-.sequence-add-menu:hover::-webkit-scrollbar-thumb {
+.sequence-add-menu:hover::-webkit-scrollbar-thumb,
+.tree_panel:hover::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
 }
 
 .placeholder::-webkit-scrollbar-thumb:hover,
 .right::-webkit-scrollbar-thumb:hover,
 .glyph-sequence-static::-webkit-scrollbar-thumb:hover,
 #property_container::-webkit-scrollbar-thumb:hover,
-.sequence-add-menu::-webkit-scrollbar-thumb:hover {
+.sequence-add-menu::-webkit-scrollbar-thumb:hover,
+.tree_panel::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
 }
 
-.placeholder,
-.right,
-.glyph-sequence-static,
-#property_container,
-.sequence-add-menu {
-    scrollbar-width: auto;
-    scrollbar-color: auto;
+.placeholder::-webkit-scrollbar-track,
+.right::-webkit-scrollbar-track,
+.glyph-sequence-static::-webkit-scrollbar-track,
+#property_container::-webkit-scrollbar-track,
+.sequence-add-menu::-webkit-scrollbar-track,
+.tree_panel::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+
+/* Firefox：始终 thin 避免布局偏移，通过 scrollbar-color 切换隐藏/显示 */
+@-moz-document url-prefix() {
+    .placeholder,
+    .right,
+    .glyph-sequence-static,
+    #property_container,
+    .sequence-add-menu,
+    .tree_panel {
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+    }
+    .placeholder[data-scrollbar-visible],
+    .right[data-scrollbar-visible],
+    .glyph-sequence-static[data-scrollbar-visible],
+    #property_container[data-scrollbar-visible],
+    .sequence-add-menu[data-scrollbar-visible],
+    .tree_panel[data-scrollbar-visible] {
+        scrollbar-color: var(--ui-border-light) transparent;
+    }
 }
 
 .placeholder span, .property_panel label {
@@ -589,8 +637,9 @@ object-tree {
     font-size: 13px;
     flex: 1; 
     white-space: nowrap;
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: auto;
+    scrollbar-gutter: stable;
 }
 
 .property_panel {
@@ -1454,21 +1503,60 @@ glyph-sequence-editor {
     width: 6px;
     height: 6px;
 }
+.pref_modal_body::-webkit-scrollbar-button,
+.pref_content_area::-webkit-scrollbar-button,
+.logger-output::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.pref_modal_body::-webkit-scrollbar-corner,
+.pref_content_area::-webkit-scrollbar-corner,
+.logger-output::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.pref_modal_body::-webkit-scrollbar-track,
+.pref_content_area::-webkit-scrollbar-track,
+.logger-output::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
 .pref_modal_body::-webkit-scrollbar-thumb,
 .pref_content_area::-webkit-scrollbar-thumb,
 .logger-output::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
 }
 .pref_modal_body:hover::-webkit-scrollbar-thumb,
 .pref_content_area:hover::-webkit-scrollbar-thumb,
 .logger-output:hover::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
 }
 .pref_modal_body::-webkit-scrollbar-thumb:hover,
 .pref_content_area::-webkit-scrollbar-thumb:hover,
 .logger-output::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
+.pref_modal_body,
+.pref_content_area,
+.logger-output {
+    scrollbar-gutter: stable;
+}
+@-moz-document url-prefix() {
+    .pref_modal_body,
+    .pref_content_area,
+    .logger-output {
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+    }
+    .pref_modal_body[data-scrollbar-visible],
+    .pref_content_area[data-scrollbar-visible],
+    .logger-output[data-scrollbar-visible] {
+        scrollbar-color: var(--ui-border-light) transparent;
+    }
 }
 
 /* 新增: 输入框统一及美化样式 */

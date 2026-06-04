@@ -77,17 +77,16 @@ function ensureBooleanCache(curve) {
 }
 
 /**
- * 骨架参考线几何：智能描边 + 有宽度 → 扩张轮廓；否则 → 中心骨架线。
+ * 骨架参考线几何：智能描边 + 有宽度 → 布尔熔合外轮廓；否则 → 中心骨架线。
+ * 对八字形等自交路径，直接用布尔缓存（两侧偏移 + 原始填充的 union），
+ * 而非 pickOuterOffsetPaths（只能选一侧，在另一侧会陷入内部）。
  */
 function emitSkeletonReferencePath(ctx, curve, mapPoint) {
     if (!ctx || !curve?.startNode) return;
     if (curve.smart_stroke && curve.stroke_width > 0) {
-        const outline = curve.computeExpandedStrokeOutline(curve.stroke_width / 2);
-        if (outline) {
-            emitExpandedStrokeOutline(ctx, outline, mapPoint, {
-                outerContourOnly: !!outline.closed,
-                curve
-            });
+        ensureBooleanCache(curve);
+        if (hasUsableBooleanCache(curve)) {
+            emitBooleanSubpaths(ctx, curve.cached_boolean_geometry, mapPoint);
             return;
         }
     }

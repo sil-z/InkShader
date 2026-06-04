@@ -1,6 +1,6 @@
 // js/core/bezier/node.js — 领域节点几何（绘制见 canvas/rendering/node_renderer.js）
 import { generateMarker } from './utils.js';
-import { CurveManager } from './manager.js';
+import { CurveStore } from './curve_store.js';
 
 export class CurveNode {
     curve = null;
@@ -82,8 +82,8 @@ export class CurveNode {
             const onCurve = this.curve.find_node_by_dom(main_node);
             if (onCurve) return onCurve;
         }
-        const manager = CurveManager.resolveActive() ?? CurveManager.getInstance();
-        return manager.find_node_by_curve(main_node);
+        const store = CurveStore.resolveActive() ?? CurveStore.getInstance();
+        return store.find_node_by_curve(main_node);
     }
 
     set_both_control(one_control, control_mode) {
