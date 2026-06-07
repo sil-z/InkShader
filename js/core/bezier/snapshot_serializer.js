@@ -1,7 +1,6 @@
 // js/core/bezier/snapshot_serializer.js — 快照序列化/反序列化（JSON I/O）
 import { Curve } from './curve.js';
 import { CurveNode } from './node.js';
-
 /**
  * SnapshotSerializer：负责文件格式的导入/导出、快照对象的反序列化重建。
  * 依赖 CurveStore（节点重建）和 TreeStore（树结构重建）。
@@ -13,13 +12,11 @@ export class SnapshotSerializer {
     _treeStore = null;
     /** @type {import('./sequence_service.js').SequenceService} */
     _sequenceService = null;
-
     constructor(curveStore, treeStore, sequenceService) {
         this._curveStore = curveStore;
         this._treeStore = treeStore;
         this._sequenceService = sequenceService;
     }
-
     _reportMessage(level, message, messageReporter) {
         if (messageReporter) {
             messageReporter(level, message);
@@ -28,15 +25,12 @@ export class SnapshotSerializer {
         if (level === 'error') console.error(message);
         else console.warn(message);
     }
-
     // =========================================================================
     // 导入
     // =========================================================================
-
     async loadFromJSON(jsonStr, messageReporter) {
         if (!jsonStr) return;
         let data;
-
         try {
             data = JSON.parse(jsonStr);
         } catch (e) {
@@ -49,31 +43,24 @@ export class SnapshotSerializer {
                 return;
             }
         }
-
         await this.loadFromSnapshotObject(data, messageReporter);
     }
-
     async loadFromSnapshotObject(data, messageReporter) {
         if (!data) return;
-
         this._treeStore.initTree();
         this._curveStore.curves = [];
         this._curveStore.domMap.clear();
-
         if (data.editor_sequence) this._sequenceService.sequenceText = data.editor_sequence;
         if (data.editor_active_indices) {
             this._sequenceService.activeSequenceIndices = new Set(data.editor_active_indices);
         }
-
         this._sequenceService.defaultGlyphs.clear();
         if (data.editor_default_glyphs) {
             for (let [charCode, groupName] of Object.entries(data.editor_default_glyphs)) {
                 this._sequenceService.defaultGlyphs.set(charCode, groupName);
             }
         }
-
         let hasPartialErrors = false;
-
         if (data.components) {
             for (let compKey in data.components) {
                 try {
@@ -85,7 +72,6 @@ export class SnapshotSerializer {
                 }
             }
         }
-
         if (data.ch) {
             for (let charKey in data.ch) {
                 try {
@@ -98,40 +84,32 @@ export class SnapshotSerializer {
                 }
             }
         }
-
         if (hasPartialErrors) this._reportMessage('warn', "Notice: Some parts of the file were corrupted and have been skipped.", messageReporter);
-
         if (Array.isArray(data.editor_root_order)) {
             this._treeStore.applyTreeChildOrder(null, data.editor_root_order);
         }
-
         this._sequenceService.rebuildDefaultGlyphs();
         this._sequenceService.updateSequenceParsing();
         this._sequenceService.syncTreeWithSequence(null, null, null, () => this._treeStore.notifyTreeUpdate());
     }
-
     _reconstructGroup(gid, gData, parentId, charCode = null) {
         this._treeStore.treeItems.set(gid, {
             id: gid, type: 'group', name: gData.name || gid, charCode: charCode, parentId: parentId,
             children: [], isRef: false, advance: gData.advance !== undefined ? gData.advance : 1000,
             is_modified: true
         });
-
         if (!parentId) this._treeStore.rootChildren.push(gid);
-
         if (charCode !== null && !gData.isRef) {
             if (!this._sequenceService.defaultGlyphs.has(charCode)) {
                 this._sequenceService.defaultGlyphs.set(charCode, gid);
             }
         }
-
         if (gData.paths) {
             for (let pathName in gData.paths) {
                 try {
                     const pData = gData.paths[pathName];
                     const uniqueCurveId = this._treeStore.ensureUniqueName(pathName);
                     this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, pData, gid);
-
                     const itemId = uniqueCurveId;
                     this._treeStore.treeItems.set(itemId, {
                         id: itemId, type: 'curve', curveId: uniqueCurveId, name: uniqueCurveId, parentId: gid
@@ -140,7 +118,6 @@ export class SnapshotSerializer {
                 } catch (e) { /* skip corrupted path */ }
             }
         }
-
         if (gData.components) {
             for (let refName in gData.components) {
                 try {
@@ -155,30 +132,24 @@ export class SnapshotSerializer {
                 } catch (e) { /* skip corrupted ref */ }
             }
         }
-
         this._treeStore.applyTreeChildOrder(gid, gData.tree_child_order);
     }
-
     // =========================================================================
     // 增量替换（undo/redo 补丁）
     // =========================================================================
-
     replacePathFromSnapshotData(groupName, pathName, pData) {
         const group = this._treeStore.getGroupByName(groupName);
         if (!group || !pData) return false;
         const gid = group.id;
-
         for (const childId of [...(group.children || [])]) {
             const child = this._treeStore.treeItems.get(childId);
             if (child?.type === "curve" && child.name === pathName) {
                 this._treeStore.deleteSingleObject(childId);
             }
         }
-
         try {
             const uniqueCurveId = this._treeStore.ensureUniqueName(pathName);
             this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, pData, gid);
-
             const itemId = uniqueCurveId;
             this._treeStore.treeItems.set(itemId, {
                 id: itemId, type: "curve", curveId: uniqueCurveId, name: pathName, parentId: gid
@@ -190,22 +161,20 @@ export class SnapshotSerializer {
             return false;
         }
     }
-
     // =========================================================================
     // 导出
     // =========================================================================
-
     exportJSON(editorState) {
         let file = {
             "version": "1.0", "canvas_size_width": editorState.canvas_size_width, "canvas_size_height": editorState.canvas_size_height,
             "editor_guideline_h": editorState.guidelines_h || [], "editor_guideline_v": editorState.guidelines_v || [],
             "editor_guideline_lock": editorState.guideline_lock || false,
+            "editor_user_guidelines": (editorState.user_guidelines || []).map(g => ({ id: g.id, type: g.type, x: g.x, y: g.y, angle: g.angle || 0 })),
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
             "editor_fill_color": editorState.fill_color, "editor_stroke_color": editorState.stroke_color,
             "family_name": "Antumbra_Default_Font", "basic_spacing": 1000, "ch": {}, "components": {}
         };
-
         const serializeCurve = (curve) => {
             let pathData = {
                 "closed": curve.closed, "stroke_width": curve.stroke_width, "smart_stroke": curve.smart_stroke,
@@ -228,7 +197,6 @@ export class SnapshotSerializer {
             }
             return pathData;
         };
-
         const serializeGroup = (groupItem) => {
             let result = {
                 "original_id": groupItem.name, "name": groupItem.name, "char_code": groupItem.charCode,
@@ -237,11 +205,9 @@ export class SnapshotSerializer {
                     .map((cid) => this._treeStore.treeItems.get(cid)?.name || cid)
                     .filter(Boolean)
             };
-
             for (let childId of groupItem.children) {
                 let child = this._treeStore.treeItems.get(childId);
                 if (!child) continue;
-
                 if (child.type === 'curve') {
                     let curve = this._curveStore.curves.find(c => c.id === child.curveId);
                     if (curve) result.paths[child.name] = serializeCurve(curve);
@@ -260,11 +226,9 @@ export class SnapshotSerializer {
             }
             return result;
         };
-
         file.editor_root_order = this._treeStore.rootChildren
             .map((cid) => this._treeStore.treeItems.get(cid)?.name || cid)
             .filter(Boolean);
-
         for (let [id, item] of this._treeStore.treeItems.entries()) {
             if (item.type === 'group' && !item.isRef && item.parentId === null) {
                 let serializedData = serializeGroup(item);

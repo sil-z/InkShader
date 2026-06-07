@@ -9,13 +9,13 @@ export function listRootGroupsForSequenceMenu(treeItems) {
         if (
             item.type === "group" &&
             item.parentId === null &&
-            !item.isRef &&
-            (item.children.length > 0 || item.is_modified)
+            !item.isRef
         ) {
             groups.push({
                 id: item.id,
                 name: item.name,
                 charCode: item.charCode ?? null,
+                advance: item.advance ?? 1000,
                 locked: item.locked === true
             });
         }
