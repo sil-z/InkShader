@@ -24,12 +24,13 @@
         <output id="mouse_pos">Mouse Pos 0.00 0.00</output>
     </div>
     <div class="middle">
-        <div class="right">
+        <div class="right dock-container">
             <script type="module" src="./js/ui/object_tree.js"></script>
             <object-tree></object-tree>
-            
             <script type="module" src="./js/ui/property_panel.js"></script>
             <property-panel class="placeholder property_panel" id="main_property_panel"></property-panel>
+            <script type="module" src="./js/ui/logger_panel.js"></script>
+            <logger-panel id="app_logger_panel"></logger-panel>
         </div>
         <div class="canvas-wrap">
             <script type="module" src="./js/ui/glyph_sequence_bar.js"></script>
@@ -80,8 +81,6 @@
     <preferences-modal id="app_preferences_modal"></preferences-modal>
     <script type="module" src="./js/ui/help_modal.js"></script>
     <help-modal id="app_help_modal"></help-modal>
-    <script type="module" src="./js/ui/logger_panel.js"></script>
-    <logger-panel id="app_logger_panel"></logger-panel>
     <script>
         try {
             const data = localStorage.getItem('Antumbra_preferences');

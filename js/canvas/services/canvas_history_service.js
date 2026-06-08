@@ -316,6 +316,7 @@ export class CanvasHistoryService {
                 right_width: layoutState.rightWidth,
                 tree_flex: layoutState.treeFlex,
                 prop_flex: layoutState.propFlex,
+                dock_layout: layoutState.dockLayout,
                 active_group_id: interaction.activeGroupId,
                 active_sequence_indices: [...(storeState.activeSequenceIndices || [])],
                 current_tool: resolveActiveCanvasTool(c),

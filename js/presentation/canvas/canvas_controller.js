@@ -273,12 +273,9 @@ export class CanvasController {
                 c.editorStore?.syncViewFromCanvas?.();
 
                 const rightContainer = c.env.queryDOM('.right');
-                const objectTree = c.env.queryDOM('object-tree');
-                const propertyPanel = c.env.queryDOM('.property_panel');
-
                 if (rightContainer && viewState.right_width) rightContainer.style.flex = `0 0 ${viewState.right_width}px`;
-                if (objectTree && propertyPanel && viewState.tree_flex && viewState.prop_flex) {
-                    objectTree.style.flex = `1 1 ${viewState.tree_flex}%`; propertyPanel.style.flex = `1 1 ${viewState.prop_flex}%`;
+                if (viewState.dock_layout && window.__dock) {
+                    window.__dock.deserialize(viewState.dock_layout);
                 }
                 c.is_dirty = true;
             }

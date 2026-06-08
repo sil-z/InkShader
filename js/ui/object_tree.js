@@ -44,15 +44,35 @@ export class ObjectTree extends HTMLElement {
         this.globalEventTrackers.push(() => target.removeEventListener(type, listener, options));
     }
     connectedCallback() {
-        const temp = document.createElement("template");
-        temp.innerHTML = TEMPLATE_HTML;
-        this.appendChild(temp.content.cloneNode(true));
-        this.tree = this.querySelector("#object_tree");
-        this.treeContent = this.querySelector(".tree_content");
-        EditorModel.whenEditorStoreReady((st) => {
-            this.interaction.applyEventDetail({ afterState: st });
-            this.renderTree();
-        });
+        if (!this._domReady) {
+            this._domReady = true;
+            const temp = document.createElement("template");
+            temp.innerHTML = TEMPLATE_HTML;
+            this.appendChild(temp.content.cloneNode(true));
+            this.tree = this.querySelector("#object_tree");
+            this.treeContent = this.querySelector(".tree_content");
+            EditorModel.whenEditorStoreReady((st) => {
+                this.interaction.applyEventDetail({ afterState: st });
+                this.renderTree();
+            });
+            // draggable 项会先触发 dragstart 并置 dragPreventClick，click 无法选中；用 pointerdown 在拖拽前选中
+            this.tree.addEventListener("pointerdown", (e) => {
+                if (e.button !== 0) return;
+                if (e.target.closest(".tree_action_btn") || e.target.closest(".tree_toggle")) return;
+                if (e.target.classList.contains("tree_checkbox")) return;
+                const itemDiv = e.target.closest(".tree_item");
+                if (!itemDiv) return;
+                this.applyTreeItemSelection(e, itemDiv);
+            });
+            this.tree.addEventListener("click", (e) => {
+                if (e.button === 0) this.handleLeftClick(e);
+            });
+            this.tree.addEventListener("contextmenu", e => {
+                e.preventDefault();
+                this.handleRightClick(e);
+            });
+            this.initDragAndDrop();
+        }
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => {
             this.interaction.applyEventDetail(e?.detail);
             const actionType = e?.detail?.action?.type;
@@ -86,23 +106,6 @@ export class ObjectTree extends HTMLElement {
                 this._patchTreeSelectionOnly();
             }
         });
-        // draggable 项会先触发 dragstart 并置 dragPreventClick，click 无法选中；用 pointerdown 在拖拽前选中
-        this.tree.addEventListener("pointerdown", (e) => {
-            if (e.button !== 0) return;
-            if (e.target.closest(".tree_action_btn") || e.target.closest(".tree_toggle")) return;
-            if (e.target.classList.contains("tree_checkbox")) return;
-            const itemDiv = e.target.closest(".tree_item");
-            if (!itemDiv) return;
-            this.applyTreeItemSelection(e, itemDiv);
-        });
-        this.tree.addEventListener("click", (e) => {
-            if (e.button === 0) this.handleLeftClick(e);
-        });
-        this.tree.addEventListener("contextmenu", e => {
-            e.preventDefault();
-            this.handleRightClick(e);
-        });
-        this.initDragAndDrop();
         this.addGlobalListener(window, CANVAS_EVENTS.REQUEST_EDITOR_ACTION, (e) => {
             const { action, contextId } = e.detail;
             this.executeTreeAction(action, contextId);
@@ -111,7 +114,6 @@ export class ObjectTree extends HTMLElement {
     disconnectedCallback() {
         this.globalEventTrackers.forEach((cleanup) => cleanup());
         this.globalEventTrackers = [];
-        this._treeElById.clear();
         this._lastTreeRowKey = "";
     }
     executeTreeAction(action, contextId = null) {

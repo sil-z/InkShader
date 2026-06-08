@@ -97,6 +97,7 @@ export class EnvironmentAdapter {
             objectTree: this.queryDOM("object-tree"),
             propertyPanel: this.queryDOM(".property_panel")
         });
-        return { rightWidth, treeFlex, propFlex };
+        const dockLayout = window.__dock?.serialize?.() || null;
+        return { rightWidth, treeFlex, propFlex, dockLayout };
     }
 }

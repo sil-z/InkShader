@@ -1,41 +1,40 @@
-// js/logger_panel.js
-
 const TEMPLATE_HTML = `
-    <div class="logger-panel collapsed" id="logger_main">
-        <div class="logger-header" id="logger_header">
-            <span class="logger-ball-icon">🐚</span> <span class="logger-title" data-i18n="log.title">Log Console</span>
-            <span class="logger-close-icon">✕</span>
+    <div class="logger-scroll">
+        <div class="prop_panel_title_wrapper">
+            <div class="panel_title">Terminal</div>
         </div>
-        <div class="logger-body">
-            <div class="logger-output" id="logger_output"></div>
-            <input type="text" class="logger-input" id="logger_input" data-i18n-placeholder="log.placeholder">
-        </div>
+        <div class="logger-output" id="logger_output"></div>
+    </div>
+    <div class="input-wrapper">
+        <input type="text" class="logger-input" id="logger_input" data-i18n-placeholder="log.placeholder">
     </div>
 `;
 
 export class LoggerPanel extends HTMLElement {
     connectedCallback() {
-        this.innerHTML = TEMPLATE_HTML;
-        this.panel = this.querySelector('#logger_main');
-        this.header = this.querySelector('#logger_header');
-        this.output = this.querySelector('#logger_output');
-        this.input = this.querySelector('#logger_input');
+        if (!this._domReady) {
+            this._domReady = true;
+            this.innerHTML = TEMPLATE_HTML;
+            this.output = this.querySelector('#logger_output');
+            this.input = this.querySelector('#logger_input');
+            this.scrollEl = this.querySelector('.logger-scroll');
 
-        this.header.addEventListener('click', () => {
-            this.panel.classList.toggle('collapsed');
-            if (!this.panel.classList.contains('collapsed')) {
-                setTimeout(() => this.output.scrollTop = this.output.scrollHeight, 100);
-            }
-        });
+            this.input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && this.input.value.trim()) {
+                    this.log(`> ${this.input.value}`, 'user');
+                    this.input.value = '';
+                }
+            });
 
-        this.input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && this.input.value.trim()) {
-                this.log(`> ${this.input.value}`, 'user');
-                this.input.value = '';
-            }
-        });
+            this.scrollEl.addEventListener('mouseenter', () => {
+                this.scrollEl.classList.add('show-scrollbar');
+            });
+            this.scrollEl.addEventListener('mouseleave', () => {
+                this.scrollEl.classList.remove('show-scrollbar');
+            });
 
-        this.hijackConsole();
+            this.hijackConsole();
+        }
     }
 
     log(message, type = 'info') {

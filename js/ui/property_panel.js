@@ -11,13 +11,6 @@ const TEMPLATE_HTML = `
     </div>
     
     <div id="property_container" class="prop_panel_container"></div>
-    
-    <div id="sequence_container" class="prop_panel_seq_wrapper">
-        <div class="property_group_title prop_panel_seq_title" data-i18n="seq.title">Sequence</div>
-        <div class="prop_panel_seq_inner">
-            <glyph-sequence-editor></glyph-sequence-editor>
-        </div>
-    </div>
 `;
 
 export class PropertyPanel extends HTMLElement {
@@ -41,67 +34,66 @@ export class PropertyPanel extends HTMLElement {
     }
 
     connectedCallback() {
-        const temp = document.createElement("template");
-        temp.innerHTML = TEMPLATE_HTML;
-        this.appendChild(temp.content.cloneNode(true));
-        
-        this.container = this.querySelector('#property_container');
+        if (!this._domReady) {
+            this._domReady = true;
+            const temp = document.createElement("template");
+            temp.innerHTML = TEMPLATE_HTML;
+            this.appendChild(temp.content.cloneNode(true));
 
-        this.container.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                e.preventDefault();
-                e.target.blur();
-            }
-        });
+            this.container = this.querySelector('#property_container');
 
-        const realtimeIds = [
-            'ref_tx', 'ref_ty', 
-            'sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h',
-            'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_out_x', 'prop_out_y', 'prop_in_a', 'prop_out_a',
-            'tool_stroke', 'path_stroke'
-        ];
+            this.container.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+                    e.preventDefault();
+                    e.target.blur();
+                }
+            });
 
-        this.container.addEventListener('input', (e) => {
-            if (realtimeIds.includes(e.target.id)) {
+            const realtimeIds = [
+                'ref_tx', 'ref_ty',
+                'sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h',
+                'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_out_x', 'prop_out_y', 'prop_in_a', 'prop_out_a',
+                'tool_stroke', 'path_stroke'
+            ];
+
+            this.container.addEventListener('input', (e) => {
+                if (realtimeIds.includes(e.target.id)) {
+                    this.handlePropertyChange(e);
+                }
+            });
+
+            this.container.addEventListener('keyup', (e) => {
+                if (e.target && (e.target.id === 'sel_prop_w' || e.target.id === 'sel_prop_h')) {
+                    this.handlePropertyChange({ type: 'input', target: e.target });
+                }
+            });
+
+            this.container.addEventListener('change', (e) => {
                 this.handlePropertyChange(e);
-            }
-        });
+            });
 
-        // 某些平台/输入法下 number input 的 input 触发频率不稳定，
-        // 这里补一层 keyup，保证 W/H 文本变化时画布也能实时预览。
-        this.container.addEventListener('keyup', (e) => {
-            if (e.target && (e.target.id === 'sel_prop_w' || e.target.id === 'sel_prop_h')) {
-                this.handlePropertyChange({ type: 'input', target: e.target });
-            }
-        });
+            this.container.addEventListener('click', (e) => {
+                const reverseBtn = e.target.closest('#path_reverse_dir_toggle');
+                if (reverseBtn) {
+                    this.handlePathReverseDirection();
+                    return;
+                }
+                const windingBtn = e.target.closest('#path_smart_winding_toggle');
+                if (windingBtn) {
+                    this.handleSmartStrokeWindingToggle();
+                }
+            });
 
-        this.container.addEventListener('change', (e) => {
-            this.handlePropertyChange(e);
-        });
-
-        this.container.addEventListener('click', (e) => {
-            const reverseBtn = e.target.closest('#path_reverse_dir_toggle');
-            if (reverseBtn) {
-                this.handlePathReverseDirection();
-                return;
-            }
-            const windingBtn = e.target.closest('#path_smart_winding_toggle');
-            if (windingBtn) {
-                this.handleSmartStrokeWindingToggle();
-            }
-        });
-
+            EditorModel.whenEditorStoreReady((st) => {
+                this.interaction.applyEventDetail({ afterState: st });
+                this._drawToolSettings = st.drawToolSettings ?? null;
+                if (typeof st.currentTool === "string") this.currentTool = st.currentTool;
+                this.render();
+            });
+        }
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this.handleStoreStateChanged(e));
-
         this.addGlobalListener(window, CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
-            this.lastSignature = ""; 
-            this.render();           
-        });
-
-        EditorModel.whenEditorStoreReady((st) => {
-            this.interaction.applyEventDetail({ afterState: st });
-            this._drawToolSettings = st.drawToolSettings ?? null;
-            if (typeof st.currentTool === "string") this.currentTool = st.currentTool;
+            this.lastSignature = "";
             this.render();
         });
     }
@@ -239,7 +231,6 @@ export class PropertyPanel extends HTMLElement {
             holder.innerHTML = html;
             while (holder.firstChild) frag.appendChild(holder.firstChild);
         });
-        frag.appendChild(dividerProto.cloneNode(false));
         this.container.replaceChildren(frag);
     }
 

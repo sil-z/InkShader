@@ -202,12 +202,9 @@ export class CanvasRendererService {
                     c.ctx.stroke();
                     c.ctx.setLineDash([]);
                     c.ctx.fillStyle = fillColor;
-                    c.ctx.strokeStyle = strokeColor;
-                    c.ctx.lineWidth = 1;
                     c.ctx.beginPath();
-                    c.ctx.arc(screenX, screenY, 3, 0, Math.PI * 2);
+                    c.ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
                     c.ctx.fill();
-                    c.ctx.stroke();
                     c.ctx.restore();
                 }
             }

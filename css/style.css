@@ -145,8 +145,12 @@ main-canvas {
     height: 100%;
 }
 .prop_panel_title_wrapper {
-    padding: 6px 6px 0 6px;
+    padding: 5px 6px 9px 6px;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--ui-bg-placeholder);
 }
 .prop_panel_container {
     padding: 8px 6px 0 6px;
@@ -476,16 +480,199 @@ glyph-sequence-bar {
     overflow: hidden;
     border-radius: 0 0 8px 0;
 }
-.right {
+.right.dock-container {
     width: 20%;
     min-width: 200px;
     max-width: 80%;
-    overflow: hidden; 
-    padding: 8px; 
+    overflow: hidden;
+    padding: 6px;
     display: flex;
     flex-direction: column;
-    gap: 8px; 
+    gap: 0;
     box-sizing: border-box;
+}
+.dock-split {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+.dock-split-v {
+    flex-direction: column;
+}
+.dock-split-h {
+    flex-direction: row;
+}
+.dock-leaf {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px dashed var(--ui-border-light);
+    border-radius: 8px;
+    background: var(--ui-bg-placeholder);
+    transition: border-color 0.15s;
+}
+.dock-leaf:hover {
+    border-color: var(--ui-text-muted);
+}
+.dock-tabs {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px dashed var(--ui-border-light);
+    border-radius: 8px;
+    background: var(--ui-bg-placeholder);
+    transition: border-color 0.15s;
+}
+.dock-tabs:hover {
+    border-color: var(--ui-text-muted);
+}
+.dock-content > object-tree,
+.dock-content > .placeholder,
+.dock-content > logger-panel,
+.dock-content .placeholder {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+}
+.dock-tab-bar {
+    display: flex;
+    gap: 0;
+    padding: 4px 6px 3px 6px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--ui-bg-placeholder);
+    border-radius: 8px 8px 0 0;
+}
+.dock-tab {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px 5px 10px;
+    cursor: pointer;
+    color: var(--ui-text-muted);
+    background: transparent;
+    user-select: none;
+    letter-spacing: 0.2px;
+    border-radius: 4px 4px 0 0;
+    transition: color 0.12s;
+}
+.dock-tab.active {
+    color: var(--ui-text-main);
+    background: transparent;
+    border-bottom: 3px solid #60a5fa;
+    margin-bottom: -3px;
+}
+.dock-tab:hover:not(.active) {
+    color: var(--ui-text-main);
+    background: var(--ui-hover-bg);
+}
+.dock-tabs .dock-leaf .title_panel,
+.dock-tabs .dock-leaf .prop_panel_title_wrapper {
+    display: none;
+}
+.dock-tabs > .dock-leaf:not(.dock-hidden) {
+    flex: 1;
+    min-height: 0;
+}
+.dock-tabs > .dock-leaf {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+.dock-hidden {
+    display: none !important;
+}
+.dock-drag-strip {
+    height: 4px;
+    flex-shrink: 0;
+    cursor: grab;
+}
+.dock-drag-strip:active { cursor: grabbing; }
+.dock-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+.dock-resizer {
+    flex: 0 0 6px;
+    background: transparent;
+    position: relative;
+    z-index: 10;
+    cursor: ns-resize;
+    margin: -1px 0;
+}
+.dock-split-h > .dock-resizer {
+    cursor: ew-resize;
+    margin: 0 -1px;
+}
+.dock-resizer::after {
+    content: "";
+    position: absolute;
+    border-radius: 2px;
+    opacity: 0;
+    background: var(--ui-border-light);
+}
+.dock-split-v > .dock-resizer::after {
+    top: 50%;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+.dock-split-h > .dock-resizer::after {
+    left: 50%;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+    transform: translateX(-50%);
+}
+.dock-preview {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    background: #60a5fa;
+    border-radius: 2px;
+    box-shadow: 0 0 10px rgba(96, 165, 250, 0.6);
+}
+.dock-preview.visible {
+    opacity: 1;
+}
+.dock-tab-bar.drag-over {
+    background: rgba(96, 165, 250, 0.15) !important;
+    border-radius: 6px;
+}
+.dock-drag-ghost {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    background: var(--ui-bg-panel, #fff);
+    border: 1px solid var(--ui-border-light, #cbd5e1);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ui-text, #1e293b);
+    opacity: 0.85;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    user-select: none;
+}
+.dock-tab-dragging {
+    opacity: 0.35;
+    transition: opacity 0.15s ease;
 }
 .placeholder {
     border: 1px dashed var(--ui-border-light);
@@ -500,20 +687,34 @@ glyph-sequence-bar {
     background-color: var(--ui-bg-placeholder);
     transition: background-color 0.2s, border-color 0.2s;
 }
+logger-panel {
+    border: 1px dashed var(--ui-border-light);
+    border-radius: 8px;
+    box-sizing: border-box;
+    background-color: var(--ui-bg-placeholder);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
 .placeholder:focus, .tree_panel:focus, #object_tree:focus, .tree_item:focus {
     outline: none;
 }
 .placeholder::-webkit-scrollbar,
 .right::-webkit-scrollbar,
 #property_container::-webkit-scrollbar,
-.tree_panel::-webkit-scrollbar {
+.tree_panel::-webkit-scrollbar,
+.logger-scroll::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 .placeholder::-webkit-scrollbar-button,
 .right::-webkit-scrollbar-button,
 #property_container::-webkit-scrollbar-button,
-.tree_panel::-webkit-scrollbar-button {
+.tree_panel::-webkit-scrollbar-button,
+.logger-scroll::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
@@ -521,13 +722,15 @@ glyph-sequence-bar {
 .placeholder::-webkit-scrollbar-corner,
 .right::-webkit-scrollbar-corner,
 #property_container::-webkit-scrollbar-corner,
-.tree_panel::-webkit-scrollbar-corner {
+.tree_panel::-webkit-scrollbar-corner,
+.logger-scroll::-webkit-scrollbar-corner {
     background: transparent;
 }
 .placeholder::-webkit-scrollbar-thumb,
 .right::-webkit-scrollbar-thumb,
 #property_container::-webkit-scrollbar-thumb,
-.tree_panel::-webkit-scrollbar-thumb {
+.tree_panel::-webkit-scrollbar-thumb,
+.logger-scroll::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 10px;
     transition: background 0.35s ease 0.5s;
@@ -535,21 +738,25 @@ glyph-sequence-bar {
 .placeholder:hover::-webkit-scrollbar-thumb,
 .right:hover::-webkit-scrollbar-thumb,
 #property_container:hover::-webkit-scrollbar-thumb,
-.tree_panel:hover::-webkit-scrollbar-thumb {
+.tree_panel:hover::-webkit-scrollbar-thumb,
+.logger-scroll:hover::-webkit-scrollbar-thumb,
+.logger-scroll.show-scrollbar::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
 .placeholder::-webkit-scrollbar-thumb:hover,
 .right::-webkit-scrollbar-thumb:hover,
 #property_container::-webkit-scrollbar-thumb:hover,
-.tree_panel::-webkit-scrollbar-thumb:hover {
+.tree_panel::-webkit-scrollbar-thumb:hover,
+.logger-scroll::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
 .placeholder::-webkit-scrollbar-track,
 .right::-webkit-scrollbar-track,
 #property_container::-webkit-scrollbar-track,
-.tree_panel::-webkit-scrollbar-track {
+.tree_panel::-webkit-scrollbar-track,
+.logger-scroll::-webkit-scrollbar-track {
     background: transparent;
     border: none;
 }
@@ -597,7 +804,11 @@ glyph-sequence-bar {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding-bottom: 3px;
+    padding: 5px 0 9px 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--ui-bg-placeholder);
 }
 .panel_title {
     font-size: 13px;
@@ -720,11 +931,11 @@ glyph-sequence-bar {
 object-tree {
     display: flex;
     flex-direction: column;
-    flex: 1 1 50%; 
-    min-height: 50px;
+    flex: 1;
+    min-height: 0;
 }
 .tree_panel {
-    padding: 6px 0 4px 6px;
+    padding: 0 0 4px 6px;
     font-size: 13px;
     flex: 1; 
     white-space: nowrap;
@@ -735,9 +946,9 @@ object-tree {
 .property_panel {
     display: flex;
     flex-direction: column;
-    padding: 0; 
-    flex: 1 1 50%; 
-    min-height: 50px;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
 }
 .property_panel label {
     font-size: 13px;
@@ -1080,14 +1291,11 @@ object-tree {
 /* =========================================
    Resizers
    ========================================= */
-.vertical-resizer { flex: 0 0 8px; background-color: transparent; cursor: ns-resize; margin: -8px 0; position: relative; z-index: 10; }
 .horizontal-resizer { flex: 0 0 8px; background-color: transparent; cursor: ew-resize; margin: 0 -6px; position: relative; z-index: 10; }
-/* 彻底移除了拖动条的 background 属性，实现浅色/深色模式下均完全隐藏，仅保留鼠标光标提示 */
-.vertical-resizer::after, .horizontal-resizer::after {
+/* 给 resizer 加一条细线，细线不要太长以免难看，小尺寸合适 */
+.horizontal-resizer::after {
     content: ""; position: absolute; border-radius: 2px; opacity: 0;
 }
-.vertical-resizer::after { top: 50%; left: 10%; right: 10%; height: 2px; transform: translateY(-50%); transition: opacity 0.2s ease, height 0.2s; }
-.vertical-resizer:hover::after, .vertical-resizer.is-resizing::after { opacity: 0.6; height: 4px; }
 .horizontal-resizer::after { left: 50%; top: 10%; bottom: 10%; width: 2px; transform: translateX(-50%); transition: opacity 0.2s ease, width 0.2s; }
 .horizontal-resizer:hover::after, .horizontal-resizer.is-resizing::after { opacity: 0.6; width: 4px; }
 .sequence-add-menu {
@@ -1411,77 +1619,22 @@ object-tree {
    Logger Panel (Floating Console)
    ========================================= */
 /* --- Logger 悬浮球新样式 --- */
-.logger-panel {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
-    z-index: 9000;
-    background: var(--ui-bg-panel);
-    border: 1px solid var(--ui-border);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-/* 折叠态：圆形悬浮球 */
-.logger-panel.collapsed {
-    width: 44px;
-    height: 44px;
-    border-radius: 22px;
-    cursor: pointer;
-    justify-content: center;
-    align-items: center;
-}
-/* 展开态：面板 */
-.logger-panel:not(.collapsed) {
-    width: 340px;
-    height: 280px;
-    border-radius: 12px;
-}
-.logger-header {
-    height: 40px;
-    background: var(--ui-bg-base);
-    padding: 0 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-.logger-panel.collapsed .logger-header {
-    padding: 0;
-    background: transparent;
-    border: none;
-    width: 100%;
-    height: 100%;
-    justify-content: center;
-}
-.logger-panel.collapsed .logger-title,
-.logger-panel.collapsed .logger-close-icon {
-    display: none;
-}
-.logger-panel.collapsed .logger-ball-icon {
-    display: block;
-}
-.logger-ball-icon {
-    display: none;
-    font-size: 18px;
-}
-#logger_toggle_icon {
-    font-size: 10px;
-    color: var(--ui-text-muted);
-}
-.logger-body {
+.logger-scroll {
     flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     background: var(--ui-bg-placeholder);
+}
+.input-wrapper {
+    flex-shrink: 0;
+    display: flex;
+    padding: 0 6px 8px 6px;
 }
 .logger-output {
     flex: 1;
-    overflow-y: auto;
     padding: 8px;
     font-family: ui-monospace, monospace;
     font-size: 12px;
@@ -1506,9 +1659,11 @@ object-tree {
 .log-system .log-msg { color: var(--ui-accent); font-weight: bold; }
 .log-user .log-msg { color: #10b981; font-weight: bold; }
 .logger-input {
+    flex: 1;
     border: none;
     border-top: 1px solid var(--ui-border);
     padding: 8px 12px;
+    flex-shrink: 0;
     font-family: inherit;
     font-size: 13px;
     background: var(--ui-bg-panel);
@@ -1520,51 +1675,44 @@ object-tree {
 }
 /* --- 统一滚动条样式 --- */
 .pref_modal_body::-webkit-scrollbar,
-.pref_content_area::-webkit-scrollbar,
-.logger-output::-webkit-scrollbar {
+.pref_content_area::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 .pref_modal_body::-webkit-scrollbar-button,
-.pref_content_area::-webkit-scrollbar-button,
-.logger-output::-webkit-scrollbar-button {
+.pref_content_area::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
 }
 .pref_modal_body::-webkit-scrollbar-corner,
-.pref_content_area::-webkit-scrollbar-corner,
-.logger-output::-webkit-scrollbar-corner {
+.pref_content_area::-webkit-scrollbar-corner {
     background: transparent;
 }
 .pref_modal_body::-webkit-scrollbar-track,
-.pref_content_area::-webkit-scrollbar-track,
-.logger-output::-webkit-scrollbar-track {
+.pref_content_area::-webkit-scrollbar-track {
     background: transparent;
     border: none;
 }
 .pref_modal_body::-webkit-scrollbar-thumb,
-.pref_content_area::-webkit-scrollbar-thumb,
-.logger-output::-webkit-scrollbar-thumb {
+.pref_content_area::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 10px;
     transition: background 0.35s ease 0.5s;
 }
 .pref_modal_body:hover::-webkit-scrollbar-thumb,
-.pref_content_area:hover::-webkit-scrollbar-thumb,
-.logger-output:hover::-webkit-scrollbar-thumb {
+.pref_content_area:hover::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
 .pref_modal_body::-webkit-scrollbar-thumb:hover,
-.pref_content_area::-webkit-scrollbar-thumb:hover,
-.logger-output::-webkit-scrollbar-thumb:hover {
+.pref_content_area::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
 .pref_modal_body,
 .pref_content_area,
-.logger-output {
+.logger-scroll {
     scrollbar-gutter: stable;
 }
 /* 新增: 输入框统一及美化样式 */
