@@ -21,7 +21,8 @@ const SCALAR_KEYS = Object.freeze([
     "commandStackSize",
     "redoStackSize",
     "isRestoring",
-    "_nodeSelectionRefId"
+    "_nodeSelectionRefId",
+    "draggingNodeId"
 ]);
 
 const DRAW_TOOL_KEYS = Object.freeze([

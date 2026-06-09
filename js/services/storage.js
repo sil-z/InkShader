@@ -1,7 +1,7 @@
 // js/services/storage.js
 
 export class StorageUtils {
-    static DB_NAME = "AntumbraEditorDB";
+    static DB_NAME = "InkShaderEditorDB";
     static STORE_NAME = "AppState";
     static SAVE_KEY = "last_edit_state";
     static VIEW_SAVE_KEY = "last_view_state";

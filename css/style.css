@@ -60,6 +60,7 @@
     --cvs-marquee-stroke: #0ea5e9;
     --cvs-marquee-fill: rgba(14, 165, 233, 0.08);
     --cvs-divider-line: rgba(0, 0, 0, 0.15);
+    --cvs-grid-dot: #bcc8d8;
 }
 /* 暗色模式 (Dark Mode) 也同步优化 */
 [data-theme="dark"] {
@@ -111,6 +112,7 @@
     --cvs-marquee-stroke: #38bdf8;
     --cvs-marquee-fill: rgba(13, 153, 255, 0.15);
     --cvs-divider-line: rgba(255, 255, 255, 0.2);
+    --cvs-grid-dot: #52525b;
 }
 /* =========================================
    提取的基础 UI 样式类
@@ -674,6 +676,88 @@ glyph-sequence-bar {
     opacity: 0.35;
     transition: opacity 0.15s ease;
 }
+
+.dock-float-window {
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    background: var(--ui-bg-panel, #fff);
+    border: 1px solid var(--ui-border-light, #cbd5e1);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    overflow: hidden;
+    min-width: 120px;
+    min-height: 60px;
+}
+.dock-float-window .dock-tab-bar {
+    cursor: move;
+    flex-shrink: 0;
+    border-radius: 8px 8px 0 0;
+}
+.dock-float-window .dock-tab-bar .dock-tab {
+    cursor: pointer;
+}
+.dock-float-window .dock-tab-bar .dock-tab.active {
+    cursor: grab;
+}
+.dock-float-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+}
+.dock-float-body > object-tree,
+.dock-float-body > .placeholder,
+.dock-float-body > logger-panel,
+.dock-float-body .placeholder {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+}
+
+.dock-float-resize {
+    position: absolute;
+    z-index: 1;
+}
+.dock-float-resize.handle-n {
+    top: -3px; left: 0; right: 0; height: 6px;
+    cursor: ns-resize;
+}
+.dock-float-resize.handle-s {
+    bottom: -3px; left: 0; right: 0; height: 6px;
+    cursor: ns-resize;
+}
+.dock-float-resize.handle-e {
+    right: -3px; top: 0; bottom: 0; width: 6px;
+    cursor: ew-resize;
+}
+.dock-float-resize.handle-w {
+    left: -3px; top: 0; bottom: 0; width: 6px;
+    cursor: ew-resize;
+}
+.dock-float-resize.handle-ne {
+    top: -3px; right: -3px; width: 10px; height: 10px;
+    cursor: ne-resize;
+}
+.dock-float-resize.handle-nw {
+    top: -3px; left: -3px; width: 10px; height: 10px;
+    cursor: nw-resize;
+}
+.dock-float-resize.handle-se {
+    bottom: -3px; right: -3px; width: 10px; height: 10px;
+    cursor: se-resize;
+}
+.dock-float-resize.handle-sw {
+    bottom: -3px; left: -3px; width: 10px; height: 10px;
+    cursor: sw-resize;
+}
+
+.dock-float-window .title_panel,
+.dock-float-window .prop_panel_title_wrapper {
+    display: none;
+}
 .placeholder {
     border: 1px dashed var(--ui-border-light);
     border-radius: 8px;
@@ -949,6 +1033,7 @@ object-tree {
     padding: 0;
     flex: 1;
     min-height: 0;
+    position: relative;
 }
 .property_panel label {
     font-size: 13px;
@@ -1008,7 +1093,7 @@ object-tree {
     width: 100%;
     height: 100%;
     background-color: var(--cvs-canvas-base);
-    background-image: radial-gradient(var(--ui-border) 1px, transparent 1px);
+    background-image: radial-gradient(var(--cvs-grid-dot) 1px, transparent 1px);
     background-size: 20px 20px; 
 }
 .main_canvas {
@@ -1170,6 +1255,168 @@ object-tree {
 .user-guide-edit-dialog .btn-ok:hover {
     background: var(--ui-accent-hover);
 }
+node-property-popup {
+    position: fixed;
+    z-index: 2000;
+    background: var(--ui-bg-panel);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    min-width: 220px;
+    user-select: none;
+    display: none;
+    cursor: move;
+}
+node-property-popup.visible {
+    display: block;
+}
+.npp-drag-handle {
+    cursor: grab;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    letter-spacing: 0.2px;
+    padding: 4px 6px 4px 6px;
+    border-radius: 6px 6px 0 0;
+    background: var(--ui-bg-placeholder);
+    user-select: none;
+}
+.npp-drag-handle:active {
+    cursor: grabbing;
+}
+.npp-drop-target {
+    position: relative;
+}
+.npp-drop-target::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 6px;
+    right: 6px;
+    height: 2px;
+    background: var(--ui-accent);
+    border-radius: 1px;
+    z-index: 10;
+    pointer-events: none;
+}
+.npp-drag-ghost {
+    background: var(--ui-bg-panel);
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-main);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    white-space: nowrap;
+}
+.npp-docked-fields .npp-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.npp-docked-fields .npp-row:last-child {
+    margin-bottom: 0;
+}
+.npp-docked-fields .npp-axis {
+    font-size: 10px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+    width: 18px;
+    text-align: right;
+}
+.npp-docked-fields .npp-row input {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    text-align: center;
+    cursor: text;
+    user-select: auto;
+}
+.npp-docked-fields .npp-row input:focus {
+    border-color: var(--ui-accent);
+}
+.npp-docked-fields .npp-row input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: transparent;
+    background: var(--ui-hover-bg);
+    color: var(--ui-text-muted);
+}
+.npp-extract-handle {
+    cursor: grab;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    letter-spacing: 0.2px;
+    padding: 4px 6px 4px 6px;
+    border-radius: 6px 6px 0 0;
+    background: var(--ui-bg-placeholder);
+    user-select: none;
+}
+.npp-extract-handle:active {
+    cursor: grabbing;
+}
+.npp-fields {
+    padding: 8px 10px;
+}
+.npp-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.npp-row:last-child {
+    margin-bottom: 0;
+}
+.npp-row > label {
+    width: 42px;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+}
+.npp-axis {
+    font-size: 10px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+    width: 18px;
+    text-align: right;
+}
+.npp-row input {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    text-align: center;
+    cursor: text;
+    user-select: auto;
+}
+.npp-row input:focus {
+    border-color: var(--ui-accent);
+}
+.npp-row input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: transparent;
+    background: var(--ui-hover-bg);
+    color: var(--ui-text-muted);
+}
 .tree_item {
     display: flex;
     align-items: center;
@@ -1205,7 +1452,7 @@ object-tree {
     background-color: var(--ui-accent-bg-hover);
     box-shadow: inset 0 0 0 2px var(--ui-accent); 
 }
-.tree_item.collapsed > .tree_left .tree_toggle svg {
+.tree_item.collapsed > .tree_left .tree_toggle img {
     transform: rotate(-90deg);
 }
 .tree_left { 
@@ -1217,6 +1464,7 @@ object-tree {
 .tree_indent { width: 0px; flex-shrink: 0; }
 .tree_toggle {
     width: 14px; height: 14px;
+    margin-left: 6px;
     padding: 0; border: none;
     background: transparent;
     cursor: pointer;
@@ -1228,8 +1476,8 @@ object-tree {
 }
 .tree_toggle:hover { background-color: var(--ui-active-bg); color: var(--ui-text-strong); }
 .tree_toggle:empty { cursor: default; background-color: transparent; }
-.tree_toggle svg { width: 12px; height: 12px; fill: currentColor; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-.tree_checkbox { margin: 5px 2px; position: relative; top: 1px; pointer-events: auto; accent-color: var(--ui-accent); }
+.tree_toggle img { width: 12px; height: 12px; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+.tree_checkbox { margin: 5px 2px; position: relative; top: 1px; pointer-events: auto; accent-color: var(--ui-accent); cursor: pointer; }
 .tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; }
 .tree_label_group { font-weight: 600; }
 .group-reference .tree_label_group { font-style: italic; color: var(--ui-text-muted); }
@@ -1837,4 +2085,5 @@ object-tree {
 /* 修改: 确保日志终端文本可复制 */
 .logger-output, .logger-input, .log-entry {
     user-select: text;
+    cursor: text;
 }

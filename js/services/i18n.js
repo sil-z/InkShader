@@ -76,7 +76,7 @@ export const translations = {
 };
 
 export class I18nManager {
-    static lang = localStorage.getItem('Antumbra_lang') || 'en';
+    static lang = localStorage.getItem('InkShader_lang') || 'en';
     static observer = null;
 
     static t(key) {
@@ -87,7 +87,7 @@ export class I18nManager {
     static setLang(lang) {
         if (!translations[lang]) return;
         this.lang = lang;
-        localStorage.setItem('Antumbra_lang', lang);
+        localStorage.setItem('InkShader_lang', lang);
         this.translateDOM();
         appEventBus.emit(CANVAS_EVENTS.LANGUAGE_CHANGED, { lang });
     }

@@ -173,14 +173,15 @@ export class CanvasRendererService {
                 allGuides.push(c._draggingUserGuide);
             }
             if (allGuides.length > 0) {
+                const lockActive = !!c.guideline_lock;
                 for (const g of allGuides) {
                     const screenX = g.x * c.scale + offsetX;
                     const screenY = g.y * c.scale + offsetY;
                     const a = (g.angle || 0) * rad;
                     const cosA = Math.cos(a), sinA = Math.sin(a);
                     const extend = 20000;
-                    const isHovered = c._hoveredUserGuideId === g.id;
-                    const isDragging = c._draggingUserGuide && c._draggingUserGuide.id === g.id;
+                    const isHovered = !lockActive && c._hoveredUserGuideId === g.id;
+                    const isDragging = !lockActive && c._draggingUserGuide && c._draggingUserGuide.id === g.id;
                     let strokeColor, fillColor;
                     if (isDragging) {
                         strokeColor = "rgba(250, 204, 21, 0.7)";
@@ -286,6 +287,7 @@ export class CanvasRendererService {
         let unselectedNodeRenders = []; let selectedNodeRenders = [];
         if (c.curve_manager.activeSequenceIndices.size > 0) {
             c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
+            let hoveredScreenX = null;
             for (let i = 0; i < seqTokens.length; i++) {
                 if (!activeIndices.has(i)) continue;
                 let seqOffsetX = c.curve_manager.getSeqOffset(i); let sx = seqOffsetX * c.scale + offsetX;
@@ -293,9 +295,19 @@ export class CanvasRendererService {
                 let token = seqTokens[i]; let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
                 let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
                 let ex = (seqOffsetX + advance) * c.scale + offsetX;
-                c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
+                let rightId = gid + "-r";
+                let isHov = !c.guideline_lock && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.groupId === gid));
+                if (isHov) {
+                    hoveredScreenX = ex;
+                } else {
+                    c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
+                }
             }
             c.ctx.stroke(); c.ctx.restore();
+            if (hoveredScreenX !== null) {
+                c.ctx.save(); c.ctx.strokeStyle = "rgba(250, 204, 21, 0.8)"; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
+                c.ctx.beginPath(); c.ctx.moveTo(hoveredScreenX, 0); c.ctx.lineTo(hoveredScreenX, logicalH); c.ctx.stroke(); c.ctx.restore();
+            }
         }
         for (let i = 0; i < seqTokens.length; i++) {
             if (!activeIndices.has(i)) continue;
@@ -430,7 +442,7 @@ export class CanvasRendererService {
         const viewport = c.viewportConfig || {};
         const left = (Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size) + c.offset.x;
         const top = (Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size) + c.offset.y;
-        let w = c.canvas_size_width;
+        let w;
         const tokens = c.curve_manager?.sequenceTokens || [];
         if (tokens.length > 0) {
             const lastIdx = tokens.length - 1;
@@ -439,7 +451,9 @@ export class CanvasRendererService {
             const lastGid = lastToken.isChar ? c.curve_manager.getDefaultGroupForChar(lastToken.value) : lastToken.value;
             const lastGroup = c.curve_manager.treeItems.get(lastGid);
             const lastAdv = (lastGroup && lastGroup.advance !== undefined) ? lastGroup.advance : 1000;
-            w = Math.max(w, lastOff + lastAdv);
+            w = lastOff + lastAdv;
+        } else {
+            w = c.canvas_size_width;
         }
         c.main_canvas.style.transform = `translate(${left}px, ${top}px)`;
         c.main_canvas.style.width = `${w * c.scale}px`;

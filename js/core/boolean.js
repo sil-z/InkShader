@@ -8,15 +8,15 @@ export class BooleanEngine {
         this.paperScope = getPaperScope();
     }
 
-    executeUnion(AntumbraCurves, targetGroupId) {
-        if (!this.paperScope || !AntumbraCurves || AntumbraCurves.length < 2) {
+    executeUnion(InkShaderCurves, targetGroupId) {
+        if (!this.paperScope || !InkShaderCurves || InkShaderCurves.length < 2) {
             console.warn("[Boolean] Requires at least 2 selected paths.");
             return false;
         }
 
         let allSolidPieces = [];
 
-        for (let curve of AntumbraCurves) {
+        for (let curve of InkShaderCurves) {
             if (typeof curve.updateBooleanCache === 'function') {
                 curve.updateBooleanCache();
             }
@@ -66,17 +66,17 @@ export class BooleanEngine {
             }
         }
 
-        let newAntumbraCurves = this._paperToAntumbraCurves(resultPath, targetGroupId);
+        let newInkShaderCurves = this._paperToInkShaderCurves(resultPath, targetGroupId);
 
         if (resultPath) resultPath.remove();
-        for (let curve of AntumbraCurves) {
+        for (let curve of InkShaderCurves) {
             this.cm.remove_curve(curve.id);
         }
 
-        return newAntumbraCurves;
+        return newInkShaderCurves;
     }
 
-    _paperToAntumbraCurves(paperItem, targetGroupId) {
+    _paperToInkShaderCurves(paperItem, targetGroupId) {
         let generatedCurves = [];
         let pathsToProcess = [];
 
@@ -92,16 +92,16 @@ export class BooleanEngine {
 
         for (let pPath of pathsToProcess) {
             if (pPath instanceof this.paperScope.CompoundPath) {
-                generatedCurves.push(...this._paperToAntumbraCurves(pPath, targetGroupId));
+                generatedCurves.push(...this._paperToInkShaderCurves(pPath, targetGroupId));
                 continue;
             }
 
             if (!pPath.segments || pPath.segments.length < 2) continue;
 
-            let AntumbraCurve = this.cm.create_temp_curve("a"); 
-            AntumbraCurve.closed = pPath.closed;
-            AntumbraCurve.stroke_width = 0; 
-            AntumbraCurve.fill_color = "rgba(0,0,0,1)";
+            let InkShaderCurve = this.cm.create_temp_curve("a"); 
+            InkShaderCurve.closed = pPath.closed;
+            InkShaderCurve.stroke_width = 0; 
+            InkShaderCurve.fill_color = "rgba(0,0,0,1)";
 
             let lastCreatedNode = null;
 
@@ -122,7 +122,7 @@ export class BooleanEngine {
                 let marker = { id: `m_v_${uniqueHex}`, type: "vertex" };
                 
                 let node = new CurveNode(marker, "vertex", pt.x, pt.y, null, lastCreatedNode, `n_${uniqueHex}`);
-                node.curve = AntumbraCurve;
+                node.curve = InkShaderCurve;
                 node.control_mode = controlMode;
 
                 this.cm.domMap.set(marker, node);
@@ -132,7 +132,7 @@ export class BooleanEngine {
                     let c1y = pt.y + seg.handleOut.y;
                     let c1M = { id: `m_c1_${uniqueHex}`, type: "circle" };
                     node.control1 = new CurveNode(c1M, null, c1x, c1y, node, null, c1M.id);
-                    node.control1.curve = AntumbraCurve;
+                    node.control1.curve = InkShaderCurve;
                     this.cm.domMap.set(c1M, node.control1);
                 }
 
@@ -141,22 +141,22 @@ export class BooleanEngine {
                     let c2y = pt.y + seg.handleIn.y;
                     let c2M = { id: `m_c2_${uniqueHex}`, type: "circle" };
                     node.control2 = new CurveNode(c2M, null, c2x, c2y, node, null, c2M.id);
-                    node.control2.curve = AntumbraCurve;
+                    node.control2.curve = InkShaderCurve;
                     this.cm.domMap.set(c2M, node.control2);
                 }
 
-                if (!AntumbraCurve.startNode) AntumbraCurve.startNode = node;
+                if (!InkShaderCurve.startNode) InkShaderCurve.startNode = node;
                 if (lastCreatedNode) lastCreatedNode.nextOnCurve = node;
 
                 lastCreatedNode = node;
                 
                 if (i === pPath.segments.length - 1) {
-                    AntumbraCurve.endNode = node;
+                    InkShaderCurve.endNode = node;
                 }
             }
 
-            this.cm.commit_curve(AntumbraCurve, targetGroupId);
-            generatedCurves.push(AntumbraCurve);
+            this.cm.commit_curve(InkShaderCurve, targetGroupId);
+            generatedCurves.push(InkShaderCurve);
         }
 
         return generatedCurves;

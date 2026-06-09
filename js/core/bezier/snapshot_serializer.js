@@ -173,7 +173,7 @@ export class SnapshotSerializer {
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
             "editor_fill_color": editorState.fill_color, "editor_stroke_color": editorState.stroke_color,
-            "family_name": "Antumbra_Default_Font", "basic_spacing": 1000, "ch": {}, "components": {}
+            "family_name": "InkShader_Default_Font", "basic_spacing": 1000, "ch": {}, "components": {}
         };
         const serializeCurve = (curve) => {
             let pathData = {

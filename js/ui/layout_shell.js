@@ -3,6 +3,7 @@ import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { readRightPanelLayout } from "../app/layout_metrics_service.js";
 import { DockLayout } from "./dock_layout.js";
+import "./node_property_popup.js";
 
 export function initializeLayoutShell() {
     const dockContainer = document.querySelector(".dock-container");
@@ -14,6 +15,10 @@ export function initializeLayoutShell() {
     const dock = new DockLayout(dockContainer);
     dock.initialize(["objects", "properties", "terminal"]);
     window.__dock = dock;
+
+    if (!document.querySelector('node-property-popup')) {
+        document.body.appendChild(document.createElement('node-property-popup'));
+    }
 
     const middleContainer = document.querySelector(".middle");
     const canvasWrap = document.querySelector(".canvas-wrap");

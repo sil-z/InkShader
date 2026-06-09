@@ -4,6 +4,7 @@ import { appEventBus } from "../app/event_bus.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
+import { NODE_PROPS_DOCKED, NODE_PROPS_UNDOCKED } from "./node_property_popup.js";
 
 const TEMPLATE_HTML = `
     <div class="prop_panel_title_wrapper">
@@ -21,11 +22,14 @@ export class PropertyPanel extends HTMLElement {
         this.globalEventTrackers = [];
         this.lastSignature = "";
         this._drawToolSettings = null;
+        this._nodePropsDocked = false;
     }
 
     addGlobalListener(target, type, listener, options = false) {
-        if (target === window) {
-            const cleanup = appEventBus.on(type, listener, options);
+        if (target === window || target === appEventBus) {
+            const cleanup = target === appEventBus
+                ? target.on(type, listener, options)
+                : appEventBus.on(type, listener, options);
             this.globalEventTrackers.push(cleanup);
             return;
         }
@@ -93,6 +97,12 @@ export class PropertyPanel extends HTMLElement {
         }
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this.handleStoreStateChanged(e));
         this.addGlobalListener(window, CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+            this.lastSignature = "";
+            this.render();
+        });
+        this.addGlobalListener(appEventBus, NODE_PROPS_DOCKED, (e) => {
+            this._nodePropsDocked = true;
+            this._nodePropsAnchorId = e?.detail?.anchorId || null;
             this.lastSignature = "";
             this.render();
         });
@@ -192,7 +202,7 @@ export class PropertyPanel extends HTMLElement {
             }
         }
 
-        let sig = `${isToolSettings}_${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}`;
+        let sig = `${isToolSettings}_${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}`;
 
         if (this.lastSignature !== sig) {
             this.buildDOM(isToolSettings, hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount);
@@ -232,40 +242,95 @@ export class PropertyPanel extends HTMLElement {
             while (holder.firstChild) frag.appendChild(holder.firstChild);
         });
         this.container.replaceChildren(frag);
+        if (nodeCount > 0) this._initExtractDrag();
+    }
+
+    _initExtractDrag() {
+        const handle = this.container.querySelector('#npp_extract_handle');
+        if (!handle) return;
+        handle.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const popup = document.querySelector('node-property-popup');
+            if (!popup) return;
+
+            const anchorId = popup._anchorNodeId;
+            this._nodePropsDocked = false;
+            this._nodePropsAnchorId = null;
+            this.lastSignature = '';
+            this.render();
+
+            popup._docked = false;
+            popup._anchorNodeId = anchorId;
+            popup.classList.add('visible');
+
+            popup.style.left = e.clientX + 'px';
+            popup.style.top = e.clientY + 'px';
+
+            const sx = e.clientX, sy = e.clientY;
+            const sl = e.clientX, st = e.clientY;
+
+            const onMove = (ev) => {
+                const vw = window.innerWidth, vh = window.innerHeight;
+                const pw = popup.offsetWidth, ph = popup.offsetHeight;
+                let nl = sl + ev.clientX - sx;
+                let nt = st + ev.clientY - sy;
+                nl = Math.max(0, Math.min(nl, vw - pw));
+                nt = Math.max(0, Math.min(nt, vh - ph));
+                popup.style.left = nl + 'px';
+                popup.style.top = nt + 'px';
+
+                const r = this.getBoundingClientRect();
+                const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+                this.classList.toggle('npp-drop-target', over);
+            };
+
+            const onUp = (ev) => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                this.classList.remove('npp-drop-target');
+
+                const r = this.getBoundingClientRect();
+                const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+                if (over) {
+                    popup.classList.remove('visible');
+                    popup._docked = true;
+                    this._nodePropsDocked = true;
+                    this._nodePropsAnchorId = anchorId;
+                    this.lastSignature = '';
+                    this.render();
+                } else {
+                    popup._savePosition();
+                }
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
     }
 
     _buildNodeProps(nodeCount, t) {
-        if (nodeCount === 1) {
+        if (nodeCount === 1 && this._nodePropsDocked) {
             return `
-                <div class="property_group">
-                    <div class="property_group_title">${t('prop.node_pos', 'Node Position')}</div>
-                    <div class="property_single_row">
-                        <label>${t('prop.pos', 'Pos')}</label>
-                        <div class="prop_inputs"><input type="number" step="0.1" id="prop_x" placeholder="X"><input type="number" step="0.1" id="prop_y" placeholder="Y"></div>
-                    </div>
-                </div>
-                <div class="property_group">
-                    <div class="property_group_title">${t('prop.handles', 'Handles & Angles')}</div>
-                    <div class="property_single_row">
-                        <label>${t('prop.in', 'In')}</label>
-                        <div class="prop_inputs"><input type="number" step="0.1" id="prop_in_x" placeholder="X"><input type="number" step="0.1" id="prop_in_y" placeholder="Y"></div>
-                    </div>
-                    <div class="property_single_row">
-                        <label>${t('prop.out', 'Out')}</label>
-                        <div class="prop_inputs"><input type="number" step="0.1" id="prop_out_x" placeholder="X"><input type="number" step="0.1" id="prop_out_y" placeholder="Y"></div>
-                    </div>
-                    <div class="property_single_row">
-                        <label>${t('prop.angle', 'Angle')}</label>
-                        <div class="prop_inputs"><input type="number" step="1" id="prop_in_a" placeholder="In°"><input type="number" step="1" id="prop_out_a" placeholder="Out°"></div>
+                <div class="property_group npp-docked-group">
+                    <div class="property_group_title npp-extract-handle" id="npp_extract_handle">${t('prop.node_props', 'Node Properties')}</div>
+                    <div class="npp-docked-fields">
+                        <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div>
+                        <div class="npp-row"><label>In</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div>
+                        <div class="npp-row"><label>Out</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div>
+                        <div class="npp-row"><label>Angle</label><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div>
                     </div>
                 </div>`;
-        } else {
+        } else if (nodeCount > 1) {
             return `
                 <div class="property_group">
                     <div class="property_group_title">${t('prop.node_props', 'Node Properties')}</div>
                     <div class="prop_node_count">${nodeCount} ${t('prop.nodes_selected', 'nodes selected')}</div>
                 </div>`;
         }
+        return '';
     }
 
     _buildBoundsProps(t) {

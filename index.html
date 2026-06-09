@@ -2,11 +2,15 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Antumbra: Free Font Editor</title>
+    <title>InkShader: Free Font Editor</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="modulepreload" href="./js/app/event_bus.js">
     <script src="./js/vendor/jszip.min.js"></script>
     <script src="./js/vendor/paper-full.min.js"></script>
+    <script src="./cursor.js"></script>
+    <script type="module">
+        NibShadeCursor.init({ preset: 'default', syncOuter: false });
+    </script>
     <script type="module">
         import { I18nManager } from './js/services/i18n.js';
         I18nManager.init();
@@ -14,7 +18,7 @@
 </head>
 <body>
     <div class="top">
-        <div class="item brand_title">Antumbra</div>
+        <div class="item brand_title">InkShader</div>
         <div class="item" data-i18n="menu.load">Load</div>
         <div class="item" data-i18n="menu.import">Import</div>
         <div class="item" data-i18n="menu.save">Save</div>
@@ -83,7 +87,7 @@
     <help-modal id="app_help_modal"></help-modal>
     <script>
         try {
-            const data = localStorage.getItem('Antumbra_preferences');
+            const data = localStorage.getItem('InkShader_preferences');
             if (data) {
                 const settings = JSON.parse(data);
                 if (settings.theme) document.documentElement.setAttribute('data-theme', settings.theme);

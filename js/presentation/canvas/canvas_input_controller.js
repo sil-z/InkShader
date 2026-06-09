@@ -44,6 +44,7 @@ export class CanvasInputController {
             }
         });
         c.canvasObj.addEventListener("mousedown", (e) => {
+            if (c.current_state === 'DRAGGING_DIVIDER') return;
             const tool = resolveActiveCanvasTool(c);
             const activeEl = document.activeElement;
             const isTextInputActive = !!(
@@ -70,11 +71,12 @@ export class CanvasInputController {
             let isMiddlePan = (e.button === 1);
             if (isMiddlePan || isCtrlLeftPan) {
                 e.preventDefault(); c.current_state = 'PANNING';
+                c.canvasObj.style.cursor = 'move';
                 c.drag_start = { x: e.clientX, y: e.clientY }; c.offset_start = { x: c.offset.x, y: c.offset.y };
                 c.previewData = null; c.is_dirty = true; return;
             }
             if(e.button === 0) {
-                if (c.current_state === 'DRAGGING_USER_GUIDE') return;
+                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
                 if (c.canvasObj.setPointerCapture && Number.isFinite(e.pointerId)) {
                     try {
                         c.canvasObj.setPointerCapture(e.pointerId);
@@ -85,6 +87,8 @@ export class CanvasInputController {
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
                 if (guideHit) { e.preventDefault(); return; }
+                const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
+                if (divHit) { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
@@ -182,10 +186,11 @@ export class CanvasInputController {
                     let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                     const ix = c.getInteractionSnapshot();
                     const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
-                    c.canvasObj.style.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
+                    c.canvasObj.style.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'crosshair';
                 }
             } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE') {
-                c.canvasObj.style.cursor = 'default';
+                const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
+                c.canvasObj.style.cursor = divHit ? "ew-resize" : "crosshair";
             }
             if (c.current_state === 'IDLE') {
                 c.renderer.update_previewData(mouseX, mouseY); if (c.last_on_curve_node_marker !== null) c.is_dirty = true;
@@ -196,6 +201,10 @@ export class CanvasInputController {
             if (c._rulerIndicatorV) c._rulerIndicatorV.style.display = "none";
             if (!c._draggingUserGuide) {
                 c._hoveredUserGuideId = null;
+                c.is_dirty = true;
+            }
+            if (!c._draggingDivider) {
+                c._hoveredDividerId = null;
                 c.is_dirty = true;
             }
         });
@@ -210,7 +219,7 @@ export class CanvasInputController {
                 type: type,
                 x: worldX,
                 y: worldY,
-                angle: 0,
+                angle: type === "v" ? 90 : 0,
                 _isNew: true,
                 _clientX: clientX,
                 _clientY: clientY
@@ -223,7 +232,7 @@ export class CanvasInputController {
                 if (c.guideline_lock) return;
                 e.preventDefault();
                 e.stopPropagation();
-                startUserGuideDrag("v", e.clientX, e.clientY);
+                startUserGuideDrag("h", e.clientX, e.clientY);
             });
         }
         if (c.ruler_vertical) {
@@ -232,27 +241,52 @@ export class CanvasInputController {
                 if (c.guideline_lock) return;
                 e.preventDefault();
                 e.stopPropagation();
-                startUserGuideDrag("h", e.clientX, e.clientY);
+                startUserGuideDrag("v", e.clientX, e.clientY);
             });
         }
         c.addGlobalListener('window', "mousemove", (e) => {
             if (c.current_state !== 'DRAGGING_USER_GUIDE' || !c._draggingUserGuide) return;
+            const guide = c._draggingUserGuide;
+            if (!guide._dragStarted) {
+                if (Math.abs(e.clientX - guide._clientX) <= 4 && Math.abs(e.clientY - guide._clientY) <= 4) return;
+                guide._dragStarted = true;
+            }
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
-            c._draggingUserGuide.x = (pointer.x - offsetX) / c.scale;
-            c._draggingUserGuide.y = (pointer.y - offsetY) / c.scale;
+            guide.x = (pointer.x - offsetX) / c.scale;
+            guide.y = (pointer.y - offsetY) / c.scale;
+            c.is_dirty = true;
+        });
+        c.addGlobalListener('window', "mousemove", (e) => {
+            if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
+            const div = c._draggingDivider;
+            if (!div._dragStarted) {
+                if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
+                div._dragStarted = true;
+            }
+            const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            const dx = pointer.x - div.startScreenX;
+            const newAdvance = Math.max(0, div.startAdvance + dx / c.scale);
+            const group = c.curve_manager.treeItems.get(div.groupId);
+            if (group) {
+                group.advance = newAdvance;
+                group.is_modified = true;
+                c.curve_manager.calculateSequenceOffsets();
+            }
             c.is_dirty = true;
         });
         c.addGlobalListener('window', "mouseup", (e) => {
             if (c.current_state !== 'DRAGGING_USER_GUIDE' || !c._draggingUserGuide) return;
             const guide = c._draggingUserGuide;
             const wasNew = guide._isNew;
+            const origX = guide._origX;
+            const origY = guide._origY;
+            const dragStarted = !!guide._dragStarted;
             c._draggingUserGuide = null;
             c.current_state = 'IDLE';
-            const dx = e.clientX - guide._clientX;
-            const dy = e.clientY - guide._clientY;
-            if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) {
-                if (!wasNew) c.is_dirty = true;
+            if (!dragStarted) {
+                if (!wasNew && origX != null) { guide.x = origX; guide.y = origY; }
+                c.is_dirty = true;
                 return;
             }
             const pa = c.painting_area?.getBoundingClientRect();
@@ -271,15 +305,45 @@ export class CanvasInputController {
             }
             c.is_dirty = true;
         });
+        c.addGlobalListener('window', "mouseup", (e) => {
+            if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
+            const div = c._draggingDivider;
+            c._draggingDivider = null;
+            c.current_state = 'IDLE';
+            const group = c.curve_manager.treeItems.get(div.groupId);
+            if (!div._dragStarted) {
+                if (group) {
+                    group.advance = div.startAdvance;
+                    group.is_modified = true;
+                    c.curve_manager.calculateSequenceOffsets();
+                }
+                c.is_dirty = true;
+                return;
+            }
+            if (group) {
+                const currentAdv = group.advance;
+                group.advance = div.startAdvance;
+                CanvasDispatcher.requestSetGroupAdvance(div.groupId, currentAdv, { recordHistory: true });
+            } else {
+                c.is_dirty = true;
+            }
+        });
         c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
-            if (c.current_state === 'DRAGGING_USER_GUIDE') return;
+            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+            if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             const newId = hit ? hit.guide.id : null;
             if (c._hoveredUserGuideId !== newId) {
                 c._hoveredUserGuideId = newId;
-                c.canvasObj.style.cursor = hit ? (hit.hitType === "dot" ? "move" : "pointer") : "";
+                c.canvasObj.style.cursor = hit ? (hit.hitType === "dot" ? "move" : "pointer") : "crosshair";
+                c.is_dirty = true;
+            }
+            const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+            const divId = divHit ? divHit.groupId + "-r" : null;
+            if (c._hoveredDividerId !== divId) {
+                c._hoveredDividerId = divId;
                 c.is_dirty = true;
             }
         });
@@ -287,28 +351,62 @@ export class CanvasInputController {
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
-            if (!hit) return;
-            if (c.guideline_lock) return;
-            e.preventDefault();
-            e.stopPropagation();
-            c._showUserGuideEditDialog(hit.guide, e.clientX, e.clientY);
+            if (hit) {
+                if (c.guideline_lock) return;
+                e.preventDefault();
+                e.stopPropagation();
+                c._showUserGuideEditDialog(hit.guide, e.clientX, e.clientY);
+                return;
+            }
+            const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+            if (divHit) {
+                if (c.guideline_lock) return;
+                const group = c.curve_manager.treeItems.get(divHit.groupId);
+                if (group && group.locked) return;
+                e.preventDefault();
+                e.stopPropagation();
+                c._showDividerEditDialog(divHit.groupId, e.clientX, e.clientY);
+            }
         });
         c.addGlobalListener(c.canvasObj, "mousedown", (e) => {
             if (e.button !== 0) return;
-            if (c.current_state === 'DRAGGING_USER_GUIDE') return;
+            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
-            if (!hit) return;
-            if (c.guideline_lock) return;
-            e.preventDefault();
-            e.stopPropagation();
-            c.current_state = 'DRAGGING_USER_GUIDE';
-            const guide = hit.guide;
-            c._draggingUserGuide = guide;
-            guide._isNew = false;
-            guide._clientX = e.clientX;
-            guide._clientY = e.clientY;
+            if (hit) {
+                if (c.guideline_lock) return;
+                e.preventDefault();
+                e.stopPropagation();
+                c.current_state = 'DRAGGING_USER_GUIDE';
+                const guide = hit.guide;
+                c._draggingUserGuide = guide;
+                guide._isNew = false;
+                guide._dragStarted = false;
+                guide._origX = guide.x;
+                guide._origY = guide.y;
+                guide._clientX = e.clientX;
+                guide._clientY = e.clientY;
+                return;
+            }
+            const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+            if (divHit) {
+                if (c.guideline_lock) return;
+                const group = c.curve_manager.treeItems.get(divHit.groupId);
+                if (group && group.locked) return;
+                e.preventDefault();
+                e.stopPropagation();
+                c.current_state = 'DRAGGING_DIVIDER';
+                c._draggingDivider = {
+                    groupId: divHit.groupId,
+                    startScreenX: divHit.screenX,
+                    startAdvance: group ? group.advance : 1000,
+                    _clientX: e.clientX,
+                    _clientY: e.clientY,
+                    _dragStarted: false
+                };
+                return;
+            }
         });
         c._showUserGuideEditDialog = (guide, clientX, clientY) => {
             const old = document.querySelector(".user-guide-edit-overlay");
@@ -342,6 +440,38 @@ export class CanvasInputController {
             overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
             inputs.forEach(inp => inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") apply(); if (ev.key === "Escape") overlay.remove(); }));
         };
+        c._showDividerEditDialog = (groupId, clientX, clientY) => {
+            const group = c.curve_manager.treeItems.get(groupId);
+            const currentAdv = group && group.advance !== undefined ? group.advance : 1000;
+            const old = document.querySelector(".user-guide-edit-overlay");
+            if (old) old.remove();
+            const overlay = document.createElement("div");
+            overlay.className = "user-guide-edit-overlay";
+            const dlg = document.createElement("div");
+            dlg.className = "user-guide-edit-dialog";
+            dlg.style.left = `${clientX}px`;
+            dlg.style.top = `${clientY}px`;
+            dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${currentAdv.toFixed(1)}" data-field="x"></div>
+                <div class="btn-row"><button class="btn-cancel">Cancel</button><button class="btn-ok">OK</button></div>`;
+            overlay.appendChild(dlg);
+            document.body.appendChild(overlay);
+            const rect = dlg.getBoundingClientRect();
+            if (rect.right > window.innerWidth) dlg.style.left = `${clientX - rect.width}px`;
+            if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
+            const input = dlg.querySelector("input");
+            input.focus(); input.select();
+            const apply = () => {
+                const val = parseFloat(dlg.querySelector('[data-field="x"]').value);
+                if (Number.isFinite(val) && val >= 0) {
+                    CanvasDispatcher.requestSetGroupAdvance(groupId, val, { recordHistory: true });
+                }
+                overlay.remove();
+            };
+            dlg.querySelector(".btn-ok").addEventListener("click", apply);
+            dlg.querySelector(".btn-cancel").addEventListener("click", () => overlay.remove());
+            overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
+            input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") apply(); if (ev.key === "Escape") overlay.remove(); });
+        };
         c.handleMouseUp = (e) => {
             const tool = resolveActiveCanvasTool(c);
             if (c._pointerCaptureId != null && c.canvasObj.releasePointerCapture) {
@@ -352,6 +482,27 @@ export class CanvasInputController {
                 c.current_state = 'IDLE';
                 c.editorStore?.syncViewFromCanvas?.();
                 c.history.saveCurrentViewState();
+                return;
+            }
+            if (c.current_state === 'DRAGGING_DIVIDER') {
+                const div = c._draggingDivider;
+                c._draggingDivider = null;
+                c.current_state = 'IDLE';
+                if (div) {
+                    const group = c.curve_manager.treeItems.get(div.groupId);
+                    if (div._dragStarted) {
+                        if (group) {
+                            const currentAdv = group.advance;
+                            group.advance = div.startAdvance;
+                            CanvasDispatcher.requestSetGroupAdvance(div.groupId, currentAdv, { recordHistory: true });
+                        }
+                    } else if (group) {
+                        group.advance = div.startAdvance;
+                        group.is_modified = true;
+                        c.curve_manager.calculateSequenceOffsets();
+                    }
+                }
+                c.is_dirty = true;
                 return;
             }
             if (e.button === 0) {

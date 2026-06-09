@@ -501,6 +501,7 @@ export class CanvasCommands {
         }
         if (!changed) return false;
 
+        this.curve_manager.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;

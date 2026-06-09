@@ -199,7 +199,7 @@ export class ObjectTree extends HTMLElement {
             return;
         }
         const toggle = e.target.closest(".tree_toggle");
-        if (toggle && toggle.querySelector("svg")) {
+        if (toggle && toggle.querySelector("img")) {
             const itemDiv = toggle.closest(".tree_item");
             if (!itemDiv || itemDiv.dataset.type !== "group" || itemDiv.dataset.isref === "true") return;
             CanvasDispatcher.requestToggleGroupCollapsed(itemDiv.dataset.id);
@@ -354,14 +354,14 @@ export class ObjectTree extends HTMLElement {
         el._treeParts = { indent, toggle, checkbox, label, actions, lockBtn, visBtn, lockImg, visImg };
         return el;
     }
-    _ensureGroupToggleSvg(toggle) {
-        if (toggle.querySelector("svg")) return;
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("viewBox", "0 0 24 24");
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", "M7 10l5 5 5-5z");
-        svg.appendChild(path);
-        toggle.appendChild(svg);
+    _ensureGroupToggleSvg(toggle, collapsed) {
+        let img = toggle.querySelector("img");
+        if (!img) {
+            img = document.createElement("img");
+            toggle.appendChild(img);
+        }
+        const src = collapsed ? "./assets/icons/tree-expand.svg" : "./assets/icons/tree-collapse.svg";
+        if (img.getAttribute("src") !== src) img.src = src;
     }
     _treeRowKey(rows) {
         return rows.map((r) => r.id).join("\0");
@@ -404,9 +404,10 @@ export class ObjectTree extends HTMLElement {
         if (parts.indent.style.width !== indentWidth) parts.indent.style.width = indentWidth;
         const showToggle = item.type === "group" && !item.isRef;
         if (showToggle) {
-            this._ensureGroupToggleSvg(parts.toggle);
-        } else if (parts.toggle.firstChild) {
-            parts.toggle.replaceChildren();
+            this._ensureGroupToggleSvg(parts.toggle, item.collapsed);
+            parts.toggle.style.removeProperty("display");
+        } else {
+            parts.toggle.style.display = "none";
         }
         if (parts.checkbox.checked !== isSelected) parts.checkbox.checked = isSelected;
         const labelClass = item.type === "group" ? "tree_label_group" : "tree_label";

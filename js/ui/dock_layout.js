@@ -18,6 +18,11 @@ export class DockLayout {
         this._previewEl.className = "dock-preview";
         document.body.appendChild(this._previewEl);
         this._resizing = null;
+        this._floatedPanels = new Map();
+        this._floatGroups = new Map();
+        this._panelToGroup = new Map();
+        this._floatGroupCounter = 0;
+        this._floatZCounter = 1000;
     }
 
     initialize(panelIds) {
@@ -144,6 +149,405 @@ export class DockLayout {
         });
     }
 
+    _floatPanel(panelId, pos) {
+        if (this._floatedPanels.has(panelId)) return;
+        const comp = this._componentRefs?.[panelId];
+        if (!comp) return;
+        const def = PANEL_DEFS[panelId];
+        if (!def) return;
+        if (this._dragInfo) {
+            this._cleanupDragPreview();
+            this._dragInfo = null;
+        }
+
+        const origLeaf = this.container.querySelector(`.dock-leaf[data-panel-id="${panelId}"]`);
+        let left = 100, top = 100, width = 360, height = 240;
+        if (pos) {
+            left = pos.left - 180;
+            top = pos.top - 30;
+        } else if (origLeaf) {
+            const r = origLeaf.getBoundingClientRect();
+            left = r.left; top = r.top; width = r.width; height = r.height;
+        }
+
+        this._removeLeaf(panelId);
+
+        const groupId = "float-" + (++this._floatGroupCounter);
+        const floatEl = document.createElement("div");
+        floatEl.className = "dock-float-window";
+        floatEl.style.left = left + "px";
+        floatEl.style.top = top + "px";
+        floatEl.style.width = width + "px";
+        floatEl.style.height = height + "px";
+        floatEl.dataset.panelId = panelId;
+        floatEl.dataset.floatGroup = groupId;
+
+        const tabBar = document.createElement("div");
+        tabBar.className = "dock-tab-bar";
+
+        const initialTab = document.createElement("span");
+        initialTab.className = "dock-tab active";
+        initialTab.textContent = def.label;
+        initialTab.dataset.panelId = panelId;
+        initialTab.addEventListener("click", () => this._activateFloatTab(groupId, 0));
+        tabBar.appendChild(initialTab);
+        floatEl.appendChild(tabBar);
+
+        const body = document.createElement("div");
+        body.className = "dock-float-body";
+        floatEl.appendChild(body);
+
+        body.appendChild(comp);
+
+        const minW = 120, minH = 60;
+        const resizeEdges = ["n","s","e","w","ne","nw","se","sw"];
+        resizeEdges.forEach(edge => {
+            const h = document.createElement("div");
+            h.className = "dock-float-resize handle-" + edge;
+            h.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._bringToFront(floatEl);
+                const sx = e.clientX, sy = e.clientY;
+                const sr = floatEl.getBoundingClientRect();
+                const onMove = (ev) => {
+                    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+                    let l = sr.left, t = sr.top, w = sr.width, h = sr.height;
+                    if (edge.includes("e")) w = sr.width + dx;
+                    if (edge.includes("w")) { w = sr.width - dx; l = sr.left + dx; }
+                    if (edge.includes("s")) h = sr.height + dy;
+                    if (edge.includes("n")) { h = sr.height - dy; t = sr.top + dy; }
+                    if (w < minW) { if (edge.includes("w")) l = sr.left + sr.width - minW; w = minW; }
+                    if (h < minH) { if (edge.includes("n")) t = sr.top + sr.height - minH; h = minH; }
+                    if (t < 0) { h = Math.max(minH, h + t); t = 0; }
+                    if (l < -(w - 40)) { l = -(w - 40); w = Math.max(minW, w); }
+                    floatEl.style.left = l + "px";
+                    floatEl.style.top = t + "px";
+                    floatEl.style.width = w + "px";
+                    floatEl.style.height = h + "px";
+                };
+                const onUp = () => {
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                };
+                document.addEventListener("mousemove", onMove);
+                document.addEventListener("mouseup", onUp);
+            });
+            floatEl.appendChild(h);
+        });
+
+        tabBar.addEventListener("mousedown", (e) => {
+            const tab = e.target.closest(".dock-tab");
+            if (tab) {
+                const pid = tab.dataset.panelId;
+                const activePid = floatEl.dataset.panelId;
+                if (pid !== activePid) {
+                    const gid = floatEl.dataset.floatGroup;
+                    const tabBarEl = floatEl.querySelector(".dock-tab-bar");
+                    const tabs = tabBarEl ? Array.from(tabBarEl.querySelectorAll(".dock-tab")) : [];
+                    const idx = tabs.indexOf(tab);
+                    if (idx >= 0) this._activateFloatTab(gid, idx);
+                }
+                this._startFloatLabelDrag(e, floatEl, false);
+                return;
+            }
+            e.preventDefault();
+            this._bringToFront(floatEl);
+            const sx = e.clientX, sy = e.clientY;
+            const sl = parseFloat(floatEl.style.left), st = parseFloat(floatEl.style.top);
+            const onMove = (ev) => {
+                let nl = sl + ev.clientX - sx;
+                let nt = st + ev.clientY - sy;
+                const vw = window.innerWidth, vh = window.innerHeight;
+                const fw = parseFloat(floatEl.style.width) || floatEl.offsetWidth;
+                const fh = floatEl.offsetHeight;
+                nl = Math.max(0, Math.min(nl, vw - fw));
+                nt = Math.max(0, Math.min(nt, vh - fh));
+                floatEl.style.left = nl + "px";
+                floatEl.style.top = nt + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+
+        floatEl.addEventListener("mousedown", () => this._bringToFront(floatEl));
+
+        document.body.appendChild(floatEl);
+
+        this._floatGroups.set(groupId, { floatEl, panelIds: [panelId] });
+        this._panelToGroup.set(panelId, groupId);
+        this._floatedPanels.set(panelId, { floatEl, comp });
+        this._bringToFront(floatEl);
+        this._rebuild();
+    }
+
+    _startFloatLabelDrag(e, floatEl, bypassThreshold = false) {
+        e.preventDefault();
+        this._bringToFront(floatEl);
+        const panelId = floatEl.dataset.panelId;
+        const sx = e.clientX, sy = e.clientY;
+        const sl = parseFloat(floatEl.style.left) || 0;
+        const st = parseFloat(floatEl.style.top) || 0;
+
+        const onMove = (ev2) => {
+            let nl = sl + ev2.clientX - sx;
+            let nt = st + ev2.clientY - sy;
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const fw = parseFloat(floatEl.style.width) || floatEl.offsetWidth;
+            const fh = floatEl.offsetHeight;
+            nl = Math.max(0, Math.min(nl, vw - fw));
+            nt = Math.max(0, Math.min(nt, vh - fh));
+            floatEl.style.left = nl + "px";
+            floatEl.style.top = nt + "px";
+
+            this._dragInfo = { panelId };
+            const target = this._findDropTarget(ev2.clientX, ev2.clientY) ||
+                           this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl);
+            this._dragInfo = null;
+            this._updateDragPreview(target, ev2.clientX, ev2.clientY);
+        };
+
+        const onUp = (ev2) => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            this._cleanupDragPreview();
+
+            this._dragInfo = { panelId };
+            const target = this._findDropTarget(ev2.clientX, ev2.clientY) ||
+                           this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl);
+            this._dragInfo = null;
+
+            if (target) {
+                if (target.zone === "float-merge" && target.groupId) {
+                    this._addPanelToFloat(target.groupId, panelId);
+                } else {
+                    this._removePanelFromFloat(panelId);
+                    if (target.zone === "merge" && target.panelId) {
+                        this._mergeIntoTabs(panelId, target.panelId);
+                    } else if (target.zone === "insert" && target.panelId) {
+                        this._insertAtPanel(panelId, target.panelId, target.edge);
+                    }
+                }
+            }
+        };
+
+        if (bypassThreshold) {
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+            onMove(e);
+        } else {
+            function onCancel() {
+                document.removeEventListener("mousemove", onThreshold);
+                document.removeEventListener("mouseup", onCancel);
+            }
+
+            const onThreshold = (ev) => {
+                if (Math.abs(ev.clientX - sx) < 5 && Math.abs(ev.clientY - sy) < 5) return;
+                document.removeEventListener("mousemove", onThreshold);
+                document.removeEventListener("mouseup", onCancel);
+
+                document.addEventListener("mousemove", onMove);
+                document.addEventListener("mouseup", onUp);
+                onMove(ev);
+            };
+
+            document.addEventListener("mousemove", onThreshold);
+            document.addEventListener("mouseup", onCancel);
+        }
+    }
+
+    _unfloatPanel(panelId) {
+        const groupId = this._panelToGroup.get(panelId);
+        if (!groupId) {
+            // Panel is in dock tree, just rebuild
+            this._rebuild();
+            return;
+        }
+        const group = this._floatGroups.get(groupId);
+        if (!group) return;
+        group.panelIds = group.panelIds.filter(pid => pid !== panelId);
+        this._panelToGroup.delete(panelId);
+        this._floatedPanels.delete(panelId);
+        if (group.panelIds.length === 0) {
+            group.floatEl.remove();
+            this._floatGroups.delete(groupId);
+        } else {
+            this._updateFloatTabBar(groupId);
+            if ((group._activeIndex || 0) >= group.panelIds.length) {
+                this._activateFloatTab(groupId, group.panelIds.length - 1);
+            }
+        }
+        if (!this.root) {
+            this.root = createNode("leaf", { id: panelId });
+        } else if (this.root.type === "leaf" || this.root.type === "tabs") {
+            this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, createNode("leaf", { id: panelId })] });
+        } else if (this.root.type === "split") {
+            this.root.children.push(createNode("leaf", { id: panelId }));
+            this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
+        }
+        this._rebuild();
+    }
+
+    _removePanelFromFloat(panelId) {
+        const groupId = this._panelToGroup.get(panelId);
+        if (!groupId) return;
+        const group = this._floatGroups.get(groupId);
+        if (!group) return;
+        group.panelIds = group.panelIds.filter(pid => pid !== panelId);
+        this._panelToGroup.delete(panelId);
+        this._floatedPanels.delete(panelId);
+        if (group.panelIds.length === 0) {
+            group.floatEl.remove();
+            this._floatGroups.delete(groupId);
+        } else {
+            this._updateFloatTabBar(groupId);
+            if ((group._activeIndex || 0) >= group.panelIds.length) {
+                this._activateFloatTab(groupId, group.panelIds.length - 1);
+            }
+        }
+    }
+
+    _unfloatGroup(groupId) {
+        const group = this._floatGroups.get(groupId);
+        if (!group) return;
+        this._floatGroups.delete(groupId);
+        group.floatEl.remove();
+
+        const panelIds = [...group.panelIds];
+        for (const pid of panelIds) {
+            this._panelToGroup.delete(pid);
+            this._floatedPanels.delete(pid);
+        }
+
+        const addNode = (node) => {
+            if (!this.root) {
+                this.root = node;
+            } else if (this.root.type === "leaf" || this.root.type === "tabs") {
+                this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, node] });
+            } else if (this.root.type === "split") {
+                this.root.children.push(node);
+                this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
+            }
+        };
+
+        if (panelIds.length === 1) {
+            addNode(createNode("leaf", { id: panelIds[0] }));
+        } else {
+            addNode(createNode("tabs", { activeIndex: 0, children: panelIds.map(id => createNode("leaf", { id })) }));
+        }
+        this._rebuild();
+    }
+
+    _addPanelToFloat(targetGroupId, panelId) {
+        if (this._panelToGroup.get(panelId) === targetGroupId) return;
+
+        const comp = this._componentRefs?.[panelId];
+        if (!comp) return;
+
+        const oldGroupId = this._panelToGroup.get(panelId);
+        if (oldGroupId) {
+            const oldGroup = this._floatGroups.get(oldGroupId);
+            if (oldGroup) {
+                oldGroup.panelIds = oldGroup.panelIds.filter(pid => pid !== panelId);
+                this._floatedPanels.delete(panelId);
+                this._panelToGroup.delete(panelId);
+                if (oldGroup.panelIds.length === 0) {
+                    oldGroup.floatEl.remove();
+                    this._floatGroups.delete(oldGroupId);
+                } else {
+                    this._updateFloatTabBar(oldGroupId);
+                }
+            }
+        } else {
+            this._removeLeaf(panelId);
+            this._floatedPanels.delete(panelId);
+        }
+
+        const targetGroup = this._floatGroups.get(targetGroupId);
+        if (!targetGroup) return;
+
+        targetGroup.panelIds.push(panelId);
+        this._panelToGroup.set(panelId, targetGroupId);
+        this._floatedPanels.set(panelId, { floatEl: targetGroup.floatEl, comp });
+
+        this._updateFloatTabBar(targetGroupId);
+        this._activateFloatTab(targetGroupId, targetGroup.panelIds.length - 1);
+        if (!oldGroupId) this._rebuild();
+    }
+
+    _updateFloatTabBar(groupId) {
+        const group = this._floatGroups.get(groupId);
+        if (!group) return;
+        const floatEl = group.floatEl;
+        const tabBar = floatEl.querySelector(".dock-tab-bar");
+        if (!tabBar) return;
+
+        tabBar.querySelectorAll(".dock-tab").forEach(t => t.remove());
+
+        group.panelIds.forEach((pid, i) => {
+            const tab = document.createElement("span");
+            tab.className = "dock-tab";
+            tab.textContent = PANEL_DEFS[pid]?.label || pid;
+            tab.dataset.panelId = pid;
+            tab.addEventListener("click", () => this._activateFloatTab(groupId, i));
+            tabBar.appendChild(tab);
+        });
+
+        const activeIdx = group._activeIndex || 0;
+        tabBar.querySelectorAll(".dock-tab").forEach((t, i) => t.classList.toggle("active", i === activeIdx));
+    }
+
+    _activateFloatTab(groupId, idx) {
+        const group = this._floatGroups.get(groupId);
+        if (!group) return;
+        group._activeIndex = idx;
+        const floatEl = group.floatEl;
+
+        const tabBar = floatEl.querySelector(".dock-tab-bar");
+        if (tabBar) {
+            tabBar.querySelectorAll(".dock-tab").forEach((t, i) => t.classList.toggle("active", i === idx));
+        }
+
+        const pid = group.panelIds[idx];
+        floatEl.dataset.panelId = pid;
+
+        const body = floatEl.querySelector(".dock-float-body");
+        if (body) {
+            const comp = this._componentRefs?.[pid];
+            if (comp && !body.contains(comp)) {
+                body.textContent = "";
+                body.appendChild(comp);
+            }
+        }
+    }
+
+    _findFloatDropTarget(cx, cy, currentFloatEl) {
+        const floatWindows = document.querySelectorAll(".dock-float-window");
+        for (const fw of floatWindows) {
+            if (currentFloatEl && fw === currentFloatEl) continue;
+            if (fw.classList.contains("dock-float-window")) {
+                const tabBar = fw.querySelector(".dock-tab-bar");
+                if (!tabBar) continue;
+                const r = tabBar.getBoundingClientRect();
+                if (r.width === 0 || r.height === 0) continue;
+                if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+                    const gid = fw.dataset.floatGroup;
+                    if (gid) return { groupId: gid, zone: "float-merge" };
+                }
+            }
+        }
+        return null;
+    }
+
+    _bringToFront(floatEl) {
+        this._floatZCounter++;
+        floatEl.style.zIndex = this._floatZCounter;
+    }
+
     _onPanelDragStart = (e) => {
         if (e.button !== 0) return;
         document.removeEventListener('mousemove', this._onPanelDragThreshold);
@@ -168,19 +572,26 @@ export class DockLayout {
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
         document.removeEventListener('mousemove', this._onPanelDragThreshold);
         document.removeEventListener('mouseup', this._onPanelDragCancel);
-        const ghost = document.createElement("div");
-        ghost.className = "dock-drag-ghost";
-        ghost.textContent = PANEL_DEFS[info.panelId]?.label || info.panelId;
-        ghost.style.left = e.clientX + "px";
-        ghost.style.top = e.clientY + "px";
-        document.body.appendChild(ghost);
-        info.ghostEl = ghost;
-        const origTab = this.container.querySelector(`.dock-tab[data-panel-id="${info.panelId}"]`);
-        if (origTab) origTab.classList.add("dock-tab-dragging");
-        info.origTab = origTab;
-        document.addEventListener('mousemove', this._onDragMove);
-        document.addEventListener('mouseup', this._onDragUp);
-        this._onDragMove(e);
+
+        const panelId = info.panelId;
+        const startX = info.startMouseX;
+        const startY = info.startMouseY;
+        const handleRect = info.handle?.getBoundingClientRect();
+        this._dragInfo = null;
+
+        this._floatPanel(panelId, { left: e.clientX, top: e.clientY });
+
+        const floatGroup = Array.from(this._floatGroups.values()).find(g => g.panelIds.includes(panelId));
+        if (floatGroup) {
+            const floatEl = floatGroup.floatEl;
+            if (handleRect) {
+                const offsetX = startX - handleRect.left;
+                const offsetY = startY - handleRect.top;
+                floatEl.style.left = (e.clientX - offsetX) + "px";
+                floatEl.style.top = (e.clientY - offsetY) + "px";
+            }
+            this._startFloatLabelDrag(e, floatEl, true);
+        }
     };
 
     _onPanelDragCancel = () => {
@@ -346,7 +757,7 @@ export class DockLayout {
 
     _cleanupDragPreview() {
         this._previewEl.classList.remove("visible");
-        this.container.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
+        document.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
         if (this._dragInfo?.origTab) {
             this._dragInfo.origTab.classList.remove("dock-tab-dragging");
             this._dragInfo.origTab = null;
@@ -358,10 +769,19 @@ export class DockLayout {
     }
 
     _updateDragPreview(target, cx, cy) {
-        this.container.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
+        document.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
         this._previewEl.classList.remove("visible");
 
         if (!target) return;
+
+        if (target.zone === "float-merge" && target.groupId) {
+            const fw = document.querySelector(`.dock-float-window[data-float-group="${target.groupId}"]`);
+            if (fw) {
+                const tabBar = fw.querySelector(".dock-tab-bar");
+                if (tabBar) tabBar.classList.add("drag-over");
+            }
+            return;
+        }
 
         if (target.zone === "merge" && target.panelId) {
             const tabBar = this.container.querySelector(`.dock-tabs [data-panel-id="${target.panelId}"]`)?.closest(".dock-tabs")?.querySelector(".dock-tab-bar");
@@ -410,15 +830,6 @@ export class DockLayout {
             }
         }
     }
-
-    _onDragMove = (e) => {
-        if (this._dragInfo?.ghostEl) {
-            this._dragInfo.ghostEl.style.left = e.clientX + "px";
-            this._dragInfo.ghostEl.style.top = e.clientY + "px";
-        }
-        const target = this._findDropTarget(e.clientX, e.clientY);
-        this._updateDragPreview(target, e.clientX, e.clientY);
-    };
 
     _findDropTarget(cx, cy) {
         const draggedId = this._dragInfo?.panelId;
@@ -549,25 +960,6 @@ export class DockLayout {
         const leaf = node.querySelector?.(".dock-leaf");
         return leaf?.dataset?.panelId || null;
     }
-
-    _onDragUp = (e) => {
-        document.removeEventListener("mousemove", this._onDragMove);
-        document.removeEventListener("mouseup", this._onDragUp);
-        this._cleanupDragPreview();
-        const info = this._dragInfo;
-        this._dragInfo = null;
-        if (!info) return;
-        const draggedId = info.panelId;
-        this._dragInfo = { panelId: draggedId };
-        const target = this._findDropTarget(e.clientX, e.clientY);
-        this._dragInfo = null;
-        if (!target || !draggedId) return;
-        if (target.zone === "merge" && target.panelId) {
-            this._mergeIntoTabs(draggedId, target.panelId);
-        } else if (target.zone === "insert" && target.panelId) {
-            this._insertAtPanel(draggedId, target.panelId, target.edge);
-        }
-    };
 
     _insertAtPanel(draggedId, targetId, zone) {
         const findTarget = (n, parent) => {

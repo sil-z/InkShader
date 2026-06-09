@@ -59,14 +59,13 @@ export class DrawTool extends BaseTool {
     handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker) {
         const c = this.canvas;
         if (c.current_curve && hitMarker === c.current_curve.startNode.main_node) {
-            c.current_state = 'PAINTING_HANDLE';
-            c.painting_handle_start = { x: mouseX, y: mouseY };
-            c.closing_path_on_mouseup = true;
-            c.renderer.update_previewData(mouseX, mouseY);
-            c.is_dirty = true;
-            return true; // handled
+            c.current_curve.closed = true;
+            c.commands.finishAddingPathCommand();
+            c.current_state = "IDLE";
+            c.previewData = null;
+            return true;
         }
-        return false; // not handled, let NodeTool take over
+        return false;
     }
 
     // =========================================================================
@@ -127,13 +126,8 @@ export class DrawTool extends BaseTool {
         c.clearInteractiveStrokePreview?.();
         if (paintCurveId) c.flushSmartStrokeBooleanCache?.([paintCurveId]);
 
-        if (c.closing_path_on_mouseup && c.current_curve) {
-            c.current_curve.closed = true;
-            c.commands.finishAddingPathCommand();
-        } else {
-            c.notifyPropertiesUpdate();
-            c.is_dirty = true;
-        }
+        c.notifyPropertiesUpdate();
+        c.is_dirty = true;
     }
 
     // =========================================================================

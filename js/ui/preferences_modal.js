@@ -39,7 +39,7 @@ const TEMPLATE_HTML = `
                     <div class="pref_section" id="sec_font">
                         <div class="pref_row">
                             <span class="pref_label" data-i18n="font.family">Family Name</span>
-                            <input type="text" id="font_family" value="Antumbra Default Font" class="pref_input">
+                            <input type="text" id="font_family" value="InkShader Default Font" class="pref_input">
                         </div>
                         <div class="pref_row">
                             <span class="pref_label" data-i18n="font.style">Style Name</span>
@@ -300,7 +300,7 @@ export class PreferencesModal extends HTMLElement {
             customColors: this.customColors,
             fontSettings: this.fontSettings 
         };
-        localStorage.setItem('Antumbra_preferences', JSON.stringify(settings));
+        localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
     }
 
     loadSettings() {
@@ -310,7 +310,7 @@ export class PreferencesModal extends HTMLElement {
                 langSel.value = window.I18n.lang;
                 langSel.dispatchEvent(new Event('change'));
             }
-            const data = localStorage.getItem('Antumbra_preferences');
+            const data = localStorage.getItem('InkShader_preferences');
             if (data) {
                 const settings = JSON.parse(data);
                 if (settings.theme) {

@@ -308,4 +308,43 @@ export class CanvasUtilsService {
         if (bestLine) return { guide: bestLine, hitType: "line" };
         return null;
     }
+    hitTestDividerLines(mouseX, mouseY) {
+        const c = this.canvas;
+        const seqTokens = c.curve_manager.sequenceTokens || [];
+        const activeIndices = c.curve_manager.activeSequenceIndices;
+        if (activeIndices.size === 0) return null;
+        const { x: offsetX, y: offsetY } = this.getLogicalOffset();
+        const HIT_THRESHOLD = 6;
+        const { height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
+        const topY = 0;
+        const bottomY = logicalH;
+        let best = null, bestDist = Infinity;
+        for (let i = 0; i < seqTokens.length; i++) {
+            if (!activeIndices.has(i)) continue;
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let group = c.curve_manager.treeItems.get(gid);
+            let advance = (group && group.advance !== undefined) ? group.advance : 1000;
+            let sx = seqOffsetX * c.scale + offsetX;
+            let ex = (seqOffsetX + advance) * c.scale + offsetX;
+            let withinY = mouseY >= topY - HIT_THRESHOLD && mouseY <= bottomY + HIT_THRESHOLD;
+            if (!withinY) continue;
+            let dl = Math.abs(mouseX - sx);
+            let dr = Math.abs(mouseX - ex);
+            if (dl < HIT_THRESHOLD && dl < bestDist) {
+                if (i > 0) {
+                    let prevToken = seqTokens[i - 1];
+                    let prevGid = prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value;
+                    bestDist = dl;
+                    best = { groupId: prevGid, isRight: true, screenX: sx };
+                }
+            }
+            if (dr < HIT_THRESHOLD && dr < bestDist) {
+                bestDist = dr;
+                best = { groupId: gid, isRight: true, screenX: ex };
+            }
+        }
+        return best;
+    }
 }

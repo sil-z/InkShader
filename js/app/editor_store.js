@@ -376,13 +376,35 @@ export class EditorStore {
     }
 
     bumpModelRevision() {
-        const cm = this._getCanvas()?.curve_manager;
+        const canvas = this._getCanvas();
+        const cm = canvas?.curve_manager;
         const modelPatch = cm ? pickModelRevisionFields(cm, this.state) : {};
+
+        let draggingNodeId = null;
+        if (canvas?.dragging_node_marker && cm) {
+            draggingNodeId = canvas.dragging_node_marker.id || null;
+            if (draggingNodeId && !modelPatch.nodesByMarkerId?.[draggingNodeId]) {
+                const node = cm.find_node_by_curve?.(canvas.dragging_node_marker);
+                if (node) {
+                    modelPatch.nodesByMarkerId = {
+                        ...(modelPatch.nodesByMarkerId || {}),
+                        [draggingNodeId]: {
+                            x: node.x,
+                            y: node.y,
+                            control1: node.control1 ? { x: node.control1.x, y: node.control1.y } : null,
+                            control2: node.control2 ? { x: node.control2.x, y: node.control2.y } : null
+                        }
+                    };
+                }
+            }
+        }
+
         const beforeState = this._snapshotState(this.state);
         const next = {
             ...this.state,
             modelRevision: (this.state.modelRevision || 0) + 1,
             treeRevision: (this.state.treeRevision || 0) + 1,
+            draggingNodeId,
             ...modelPatch
         };
         if (this._stateEquals(beforeState, next)) return;

@@ -72,6 +72,8 @@ class MainCanvasBase extends HTMLElement {
         this._draggingUserGuide = null;
         this._hoveredUserGuideId = null;
         this._nextUserGuideId = 1;
+        this._draggingDivider = null;
+        this._hoveredDividerId = null;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
         /** 高频编辑期间仅这些曲线 id 走智能描边预览（骨架 + 浏览器 lineWidth） */
         this._interactiveStrokePreviewIds = new Set();

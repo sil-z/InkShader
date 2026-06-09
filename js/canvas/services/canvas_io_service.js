@@ -85,7 +85,7 @@ export class CanvasIOService {
         const a = c.env.createDOMElement("a");
         a.href = url;
         const dateStr = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-        a.download = `Antumbra_project_${dateStr}.json`;
+        a.download = `InkShader_project_${dateStr}.json`;
         const bodyDOM = c.env.queryDOM("body");
         if (bodyDOM) {
             bodyDOM.appendChild(a);
@@ -103,9 +103,9 @@ export class CanvasIOService {
             alert("JSZip library is not loaded. Cannot export UFO.");
             return;
         }
-        let fontSettings = { family: "Antumbra Font", style: "Regular", upm: 1000, ascender: 800, descender: -200, version: "1.0" };
+        let fontSettings = { family: "InkShader Font", style: "Regular", upm: 1000, ascender: 800, descender: -200, version: "1.0" };
         try {
-            const prefs = JSON.parse(c.env.getLocalStorage("Antumbra_preferences") || "{}");
+            const prefs = JSON.parse(c.env.getLocalStorage("InkShader_preferences") || "{}");
             if (prefs.fontSettings) fontSettings = { ...fontSettings, ...prefs.fontSettings };
         } catch (e) {}
         let [vMaj, vMin] = fontSettings.version.split(".");
@@ -130,7 +130,7 @@ export class CanvasIOService {
         ufoFolder.file("metainfo.plist", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict><key>creator</key><string>org.Antumbra.editor</string><key>formatVersion</key><integer>3</integer></dict>
+<dict><key>creator</key><string>org.InkShader.editor</string><key>formatVersion</key><integer>3</integer></dict>
 </plist>`);
         ufoFolder.file("layercontents.plist", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -233,7 +233,7 @@ export class CanvasIOService {
             const a = c.env.createDOMElement("a");
             a.href = url;
             const dateStr = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-            a.download = `Antumbra_export_${dateStr}.ufo.zip`;
+            a.download = `InkShader_export_${dateStr}.ufo.zip`;
             const bodyDOM = c.env.queryDOM("body");
             if (bodyDOM) {
                 bodyDOM.appendChild(a);
