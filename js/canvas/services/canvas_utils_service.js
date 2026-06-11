@@ -54,7 +54,7 @@ export class CanvasUtilsService {
     hitTestNode(mouseX, mouseY) {
         const c = this.canvas;
         const tool = resolveActiveCanvasTool(c);
-        if (tool === "SELECT" || tool === "MEASURE") return null;
+        if (tool === "SELECT" || tool === "MEASURE" || tool === "ELLIPSE") return null;
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
         const threshold = 6;
         let hits = [];

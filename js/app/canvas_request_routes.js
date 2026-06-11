@@ -67,8 +67,56 @@ export const REQUEST_IO_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_LOAD, handler: (c) => c.io.triggerLoad() },
     { event: CANVAS_EVENTS.REQUEST_EXPORT, handler: (c) => c.io.exportToUFO() },
     {
+        event: CANVAS_EVENTS.REQUEST_NEW_PROJECT,
+        handler: async (c) => {
+            if (c.projectManager) {
+                await c.projectManager.createNewProject();
+                c.is_dirty = true;
+            }
+        }
+    },
+    {
+        event: CANVAS_EVENTS.REQUEST_LOAD_FROM_CACHE,
+        handler: async (c, detail) => {
+            if (c.projectManager && detail?.projectName) {
+                try {
+                    await c.projectManager.loadFromCache(detail.projectName);
+                } catch (e) {
+                    console.error("[IO] Load from cache failed:", e);
+                    alert("Failed to load project: " + e.message);
+                }
+            }
+        }
+    },
+    {
+        event: CANVAS_EVENTS.REQUEST_SAVE_TO_CACHE,
+        handler: async (c, detail) => {
+            if (c.projectManager) {
+                const name = detail?.projectName || c.projectManager.getActiveProjectName();
+                if (name) await c.projectManager.saveToCache(name);
+            }
+        }
+    },
+    {
         event: CANVAS_EVENTS.REQUEST_SAVE_VIEW_STATE,
         handler: (c, detail) => c.history?.saveCurrentViewState?.(detail?.immediate !== false)
+    },
+    {
+        event: CANVAS_EVENTS.REQUEST_FINISH_DRAWING_PATH,
+        handler: (c) => {
+            if (c.current_curve?.startNode) {
+                if (c.drawToolSettings?.closed) c.current_curve.closed = true;
+                c.commands.finishAddingPathCommand();
+            } else if (c.current_curve) {
+                c.commands.finishAddingPath();
+            }
+            c.current_state = "IDLE";
+            c.closing_path_on_mouseup = false;
+            c.new_curve_handle = null;
+            c.previewData = null;
+            c.dragging_node_marker = null;
+            c.is_dirty = true;
+        }
     }
 ];
 

@@ -5,3 +5,4 @@ export { SelectTool } from './select_tool.js';
 export { DrawTool } from './draw_tool.js';
 export { NodeTool } from './node_tool.js';
 export { MeasureTool } from './measure_tool.js';
+export { EllipseTool } from './ellipse_tool.js';

@@ -970,7 +970,7 @@ logger-panel {
     padding: 0;
     position: relative;
     width: 36px;
-    height: 20px;
+    height: 22px;
     border: 1px solid var(--ui-border-light);
     border-radius: 999px;
     background: var(--ui-border);
@@ -1033,6 +1033,8 @@ object-tree {
     padding: 0;
     flex: 1;
     min-height: 0;
+    min-width: 240px;
+    overflow-x: auto;
     position: relative;
 }
 .property_panel label {
@@ -1255,7 +1257,26 @@ object-tree {
 .user-guide-edit-dialog .btn-ok:hover {
     background: var(--ui-accent-hover);
 }
-node-property-popup {
+.ruler-edit-dialog {
+    min-width: 180px;
+}
+.ruler-edit-dialog .field-row label {
+    width: 46px;
+}
+.ruler-edit-dialog .btn-delete {
+    background: transparent;
+    border: 1px solid var(--ui-danger, #e74c3c);
+    color: var(--ui-danger, #e74c3c);
+}
+.ruler-edit-dialog .btn-delete:hover,
+.ruler-edit-dialog .btn-delete:focus,
+.ruler-edit-dialog .btn-delete:focus-visible {
+    background: var(--ui-danger, #e74c3c);
+    color: #fff;
+}
+node-property-popup,
+path-property-popup,
+bounding-box-popup {
     position: fixed;
     z-index: 2000;
     background: var(--ui-bg-panel);
@@ -1267,7 +1288,9 @@ node-property-popup {
     display: none;
     cursor: move;
 }
-node-property-popup.visible {
+node-property-popup.visible,
+path-property-popup.visible,
+bounding-box-popup.visible {
     display: block;
 }
 .npp-drag-handle {
@@ -1284,10 +1307,175 @@ node-property-popup.visible {
 .npp-drag-handle:active {
     cursor: grabbing;
 }
-.npp-drop-target {
+pen-tool-popup,
+ellipse-tool-popup,
+font-popup {
+    position: fixed;
+    z-index: 2000;
+    background: var(--ui-bg-overlay);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+    min-width: 180px;
+    display: none;
+}
+pen-tool-popup.visible,
+ellipse-tool-popup.visible,
+font-popup.visible {
+    display: block;
+}
+.pen-tool-popup-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    padding: 8px 12px 4px;
+    letter-spacing: 0.5px;
+}
+.pen-tool-popup-body {
+    padding: 4px 8px 8px;
+}
+.pen-tool-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 4px;
+}
+.pen-tool-row label {
+    font-size: 13px;
+    color: var(--ui-text-main);
+    flex-shrink: 0;
+}
+.pen-tool-row input[type="number"] {
+    width: 72px;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    text-align: center;
+}
+.pen-tool-row input[type="number"]:focus {
+    border-color: var(--ui-accent);
+}
+.pen-tool-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--ui-accent);
+}
+.pen-tool-separator {
+    height: 1px;
+    background: var(--ui-border);
+    margin: 6px 0;
+}
+.pen-tool-finish-btn {
+    width: 100%;
+    padding: 5px 0;
+    border: none;
+    border-radius: 4px;
+    background: var(--ui-accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+}
+.pen-tool-finish-btn:hover {
+    background: var(--ui-accent-hover);
+}
+
+.ppp-divider {
+    height: 1px;
+    background: var(--ui-border);
+    margin: 8px 0;
+}
+
+.ppp-fields {
+    padding: 8px 10px;
+}
+.ppp-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    min-height: 22px;
+}
+.ppp-row:last-child {
+    margin-bottom: 0;
+}
+.ppp-row > label {
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+    width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ppp-row input[type="number"] {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    text-align: center;
+}
+.ppp-row input[type="number"]:focus {
+    border-color: var(--ui-accent);
+}
+.ppp-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--ui-accent);
+}
+.ppp-row input[type="text"] {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    box-sizing: border-box;
+    outline: none;
+}
+.ppp-row input[type="text"]:focus {
+    border-color: var(--ui-accent);
+}
+.ppp-row .prop_direction_controls {
+    flex: 1;
+    justify-content: flex-start;
+}
+.ppp-divider {
+    height: 1px;
+    background: var(--ui-border);
+    margin: 8px 0;
+}
+
+.npp-drop-target,
+.bbox-drop-target,
+.ppp-drop-target {
     position: relative;
 }
-.npp-drop-target::after {
+.npp-drop-target::after,
+.bbox-drop-target::after,
+.ppp-drop-target::after {
     content: '';
     position: absolute;
     top: 0;
@@ -1310,11 +1498,54 @@ node-property-popup.visible {
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     white-space: nowrap;
 }
+
+/* ── Sub-component sections (docked in property panel) ── */
+.npp-section {
+    position: relative;
+    border-bottom: 1px solid var(--ui-border);
+}
+.npp-section:last-child {
+    border-bottom: none;
+}
+.npp-section-handle {
+    padding: 6px 8px;
+    cursor: grab;
+    user-select: none;
+    background: var(--ui-bg-placeholder);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    letter-spacing: 0.2px;
+    transition: background 0.12s;
+}
+.npp-section-handle:hover {
+    background: var(--ui-hover-bg);
+}
+.npp-section-handle:active {
+    cursor: grabbing;
+}
+/* blue insertion preview line during reorder drag */
+.npp-section-preview {
+    height: 2px;
+    background: var(--ui-accent);
+    border-radius: 1px;
+    margin: 0 8px;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+/* dragged section becomes semi-transparent */
+.npp-section.is-dragging {
+    opacity: 0.35;
+}
+.npp-docked-fields {
+    padding: 8px 10px;
+}
 .npp-docked-fields .npp-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     margin-bottom: 4px;
+    min-height: 22px;
 }
 .npp-docked-fields .npp-row:last-child {
     margin-bottom: 0;
@@ -1352,6 +1583,66 @@ node-property-popup.visible {
     background: var(--ui-hover-bg);
     color: var(--ui-text-muted);
 }
+.npp-docked-fields .ppp-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    min-height: 22px;
+}
+.npp-docked-fields .ppp-row:last-child {
+    margin-bottom: 0;
+}
+.npp-docked-fields .ppp-row > label {
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+    width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.npp-docked-fields .ppp-row input[type="number"] {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    text-align: center;
+}
+.npp-docked-fields .ppp-row input[type="number"]:focus {
+    border-color: var(--ui-accent);
+}
+.npp-docked-fields .ppp-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--ui-accent);
+}
+.npp-docked-fields .ppp-row input[type="text"] {
+    flex: 1;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    box-sizing: border-box;
+    outline: none;
+}
+.npp-docked-fields .ppp-row input[type="text"]:focus {
+    border-color: var(--ui-accent);
+}
+.npp-docked-fields .ppp-row .prop_direction_controls {
+    flex: 1;
+}
 .npp-extract-handle {
     cursor: grab;
     font-size: 11px;
@@ -1372,17 +1663,21 @@ node-property-popup.visible {
 .npp-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     margin-bottom: 4px;
+    min-height: 22px;
 }
 .npp-row:last-child {
     margin-bottom: 0;
 }
 .npp-row > label {
-    width: 42px;
+    width: 90px;
     font-size: 11px;
     color: var(--ui-text-muted);
     flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .npp-axis {
     font-size: 10px;
@@ -1735,29 +2030,88 @@ node-property-popup.visible {
     font-family: ui-monospace, monospace;
     margin-top: 1px;
 }
+dropdown-menu {
+    display: none;
+}
 .save-dropdown {
-    position: absolute;  border-radius: 4px;
-    display: none; flex-direction: column; z-index: 9999;
-    background: var(--ui-bg-overlay);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    position: fixed;
+    display: none;
+    flex-direction: column;
+    z-index: 9999;
+    background: var(--ui-bg-panel);
     border: 1px solid var(--ui-border);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    min-width: 180px;
+    padding: 4px 0;
+    overflow: hidden;
 }
 .save-dropdown.show { display: flex; }
 .save-dropdown-item {
     color: var(--ui-text-main);
-    transition: background-color 0.1s;
-    gap: 24px;
-    white-space: nowrap; 
-    padding: 8px 16px; cursor: pointer; font-size: 13px;display: flex;
-    justify-content: space-between;
+    transition: background-color 0.08s;
+    white-space: nowrap;
+    padding: 5px 12px 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
     align-items: center;
+    gap: 8px;
+    position: relative;
 }
 .save-dropdown-item:hover { background: var(--ui-accent); color: #fff; }
-.save-dropdown-item .shortcut {
-    margin-left: 24px;
+.save-dropdown-item.disabled { color: var(--ui-text-muted); cursor: default; }
+.save-dropdown-item.disabled:hover { background: transparent; color: var(--ui-text-muted); }
+.save-dropdown-label {
+    flex: 1;
 }
+.save-dropdown-item .shortcut {
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    margin-left: 16px;
+}
+.save-dropdown-item:hover .shortcut { color: rgba(255,255,255,0.6); }
+.save-dropdown-arrow {
+    font-size: 11px;
+    opacity: 0.5;
+    margin-left: 4px;
+}
+.save-dropdown-item:hover .save-dropdown-arrow { opacity: 0.8; }
+.save-dropdown-separator {
+    height: 1px;
+    background: var(--ui-border);
+    margin: 4px 8px;
+}
+.save-dropdown-sub {
+    position: fixed;
+    display: none;
+    flex-direction: column;
+    z-index: 10000;
+    background: var(--ui-bg-panel);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    padding: 4px 0;
+    min-width: 160px;
+}
+.save-dropdown-sub.show { display: flex; }
+.font-popup-input {
+    width: 120px;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+}
+.font-popup-input:focus {
+    border-color: var(--ui-accent);
+}
+
 /* =========================================
    Tree Item Actions (Show/Hide, Lock/Unlock)
    ========================================= */

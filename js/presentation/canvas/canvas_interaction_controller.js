@@ -9,6 +9,7 @@ import { SelectTool } from "./tools/select_tool.js";
 import { DrawTool } from "./tools/draw_tool.js";
 import { NodeTool } from "./tools/node_tool.js";
 import { MeasureTool } from "./tools/measure_tool.js";
+import { EllipseTool } from "./tools/ellipse_tool.js";
 
 /**
  * CanvasInteractionController：薄调度层，将鼠标事件委派给对应工具。
@@ -24,6 +25,7 @@ export class CanvasInteractionController {
         this.drawTool = new DrawTool(canvas, this);
         this.nodeTool = new NodeTool(canvas, this);
         this.measureTool = new MeasureTool(canvas, this);
+        this.ellipseTool = new EllipseTool(canvas, this);
     }
 
     // =========================================================================
@@ -111,6 +113,14 @@ export class CanvasInteractionController {
         this.measureTool.handleMouseDown(worldX, worldY);
     }
 
+    handleMeasureMouseMove(mouseX, mouseY) {
+        this.measureTool.handleMouseMove(mouseX, mouseY);
+    }
+
+    handleMeasureMouseUp() {
+        this.measureTool.handleMouseUp();
+    }
+
     handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, isShiftKey, clientX, clientY) {
         this.selectTool.handleMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, isShiftKey, clientX, clientY);
     }
@@ -135,6 +145,18 @@ export class CanvasInteractionController {
 
     handleDrawMouseDown(mouseX, mouseY, worldX_raw, worldY) {
         this.drawTool.handleMouseDown(mouseX, mouseY, worldX_raw, worldY);
+    }
+
+    handleEllipseMouseDown(mouseX, mouseY, worldX, worldY, isCtrl) {
+        this.ellipseTool.handleMouseDown(mouseX, mouseY, worldX, worldY, isCtrl);
+    }
+
+    handleEllipseMouseMove(mouseX, mouseY, worldX, worldY, isCtrl) {
+        this.ellipseTool.handleMouseMove(mouseX, mouseY, worldX, worldY, isCtrl);
+    }
+
+    handleEllipseMouseUp() {
+        this.ellipseTool.handleMouseUp();
     }
 
     // =========================================================================

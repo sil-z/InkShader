@@ -173,6 +173,17 @@ export class CurveManager {
         return ok;
     }
 
+    deleteControlNode(marker) {
+        const controlNode = this.curveStore.find_node_by_curve(marker);
+        const curve = controlNode?.curve;
+        const ok = this.curveStore.deleteControlNode(marker);
+        if (ok) {
+            if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
+            else this.notifyModelUpdate();
+        }
+        return ok;
+    }
+
     moveSingleNode(marker, x, y, c1, c2) {
         const ok = this.curveStore.moveSingleNode(marker, x, y, c1, c2);
         if (ok) {

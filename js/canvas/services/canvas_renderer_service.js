@@ -161,10 +161,16 @@ export class CanvasRendererService {
             const pd = c.previewData;
             c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd.p2_x, pd.p2_y, pd.p3_x, pd.p3_y);
             c.ctx.strokeStyle = p.preview_color; c.ctx.lineWidth = 0.5; c.ctx.stroke();
-            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker);
-            if (curve && curve.closed && pd._p2_x !== undefined) {
-                c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd._p2_x, pd._p2_y, pd._p3_x, pd._p3_y); c.ctx.stroke();
+            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker) || c.current_curve;
+            let closedBySetting = c.drawToolSettings?.closed === true;
+            if (pd._p2_x !== undefined && curve && (curve.closed || closedBySetting)) {
+                c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd._p2_x, pd._p2_y, pd._p3_x, pd._p3_y);
+                c.ctx.strokeStyle = p.preview_color; c.ctx.lineWidth = 0.5; c.ctx.stroke();
             }
+        }
+        // Ellipse drag preview
+        if (c._ellipseWorldStartX !== undefined && c._ellipseWorldEndX !== undefined) {
+            this._drawEllipsePreview(c, p);
         }
         {
             const rad = Math.PI / 180;
@@ -245,18 +251,25 @@ export class CanvasRendererService {
             let w = Math.abs(c.box_select_start.x - c.box_select_end.x); let h = Math.abs(c.box_select_start.y - c.box_select_end.y);
             c.ctx.fillRect(x, y, w, h); c.ctx.strokeRect(x, y, w, h); c.ctx.restore();
         }
+        // ── Render persistent rulers ──
+        for (const ruler of (c.rulers || [])) {
+            this._drawRuler(c, ruler, offsetX, offsetY, p);
+        }
+        // ── Render current measure drag ──
         if (c.getActiveTool() === "MEASURE" && c.measure_start && c.measure_end) {
             let sx = c.measure_start.x * c.scale + offsetX; let sy = c.measure_start.y * c.scale + offsetY;
             let ex = c.measure_end.x * c.scale + offsetX; let ey = c.measure_end.y * c.scale + offsetY;
             c.ctx.save(); c.ctx.strokeStyle = p.measure_color; c.ctx.lineWidth = 1;
+            c.ctx.setLineDash([3, 3]);
             c.ctx.beginPath(); c.ctx.moveTo(sx, sy); c.ctx.lineTo(ex, ey); c.ctx.stroke();
+            c.ctx.setLineDash([]);
             c.ctx.fillStyle = p.measure_color; c.ctx.beginPath(); c.ctx.arc(sx, sy, 3, 0, Math.PI * 2); c.ctx.fill();
             c.ctx.beginPath(); c.ctx.arc(ex, ey, 3, 0, Math.PI * 2); c.ctx.fill();
             let dx = c.measure_end.x - c.measure_start.x; let dy = c.measure_end.y - c.measure_start.y;
             let length = Math.hypot(dx, dy); let angleRad = Math.atan2(-dy, dx); let angleDeg = (angleRad * 180 / Math.PI).toFixed(1);
             let text = `L: ${length.toFixed(1)}, A: ${angleDeg}°`; c.ctx.font = "12px sans-serif";
-            let textW = c.ctx.measureText(text).width; c.ctx.fillStyle = p.measure_text_bg; c.ctx.fillRect(ex + 6, ey - 20, textW + 8, 16);
-            c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, ex + 10, ey - 8); c.ctx.restore();
+            let midX = (sx + ex) / 2, midY = (sy + ey) / 2;
+            c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, midX + 5, midY - 3); c.ctx.restore();
         }
         let showHandlesSet = new Set();
         for (let i = 0; i < seqTokens.length; i++) {
@@ -351,7 +364,7 @@ export class CanvasRendererService {
             let p0_x = mouseX, p0_y = mouseY; let p1_x = p0_x, p1_y = p0_y;
             let p3_x = (lastNode.x + seqOffsetX) * c.scale + offsetX; let p3_y = lastNode.y * c.scale + offsetY;
             let p2_x = ((lastNode.control1?.x ?? lastNode.x) + seqOffsetX) * c.scale + offsetX; let p2_y = (lastNode.control1?.y ?? lastNode.y) * c.scale + offsetY;
-            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker);
+            let curve = c.curve_manager.find_curve_by_dom(c.last_on_curve_node_marker) || c.current_curve;
             let previewObj = { p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y };
             if (curve && curve.startNode) {
                 previewObj._p3_x = (curve.startNode.x + seqOffsetX) * c.scale + offsetX; previewObj._p3_y = curve.startNode.y * c.scale + offsetY;
@@ -482,5 +495,83 @@ export class CanvasRendererService {
         c.offset = { x: (c.offset.x + x - x_new), y: (c.offset.y + y - y_new) };
         c.editorStore?.syncViewFromCanvas?.();
         c.history.saveCurrentViewState();
+    }
+    _drawRuler(c, ruler, offsetX, offsetY, p) {
+        if (!ruler || ruler.x1 === undefined) return;
+        let sx = ruler.x1 * c.scale + offsetX; let sy = ruler.y1 * c.scale + offsetY;
+        let ex = ruler.x2 * c.scale + offsetX; let ey = ruler.y2 * c.scale + offsetY;
+        let isLineHovered = c._hoveredRulerId === ruler.id;
+        const ep = c._hoveredRulerEndpoint;
+        let isStartHovered = ep?.rulerId === ruler.id && ep?.endpoint === 'start';
+        let isEndHovered = ep?.rulerId === ruler.id && ep?.endpoint === 'end';
+        let lineColor = isLineHovered ? "#facc15" : p.measure_color;
+        let lineWidth = isLineHovered ? 2 : 1;
+        c.ctx.save();
+        c.ctx.strokeStyle = lineColor; c.ctx.lineWidth = lineWidth;
+        c.ctx.beginPath(); c.ctx.moveTo(sx, sy); c.ctx.lineTo(ex, ey); c.ctx.stroke();
+        let startColor = isStartHovered ? "#facc15" : p.measure_color;
+        let endColor = isEndHovered ? "#facc15" : p.measure_color;
+        c.ctx.fillStyle = startColor; c.ctx.beginPath(); c.ctx.arc(sx, sy, 4, 0, Math.PI * 2); c.ctx.fill();
+        c.ctx.fillStyle = endColor; c.ctx.beginPath(); c.ctx.arc(ex, ey, 4, 0, Math.PI * 2); c.ctx.fill();
+        let dx = ruler.x2 - ruler.x1; let dy = ruler.y2 - ruler.y1;
+        let length = Math.hypot(dx, dy); let angleRad = Math.atan2(-dy, dx); let angleDeg = (angleRad * 180 / Math.PI).toFixed(1);
+        let text = `L: ${length.toFixed(1)}, A: ${angleDeg}°`; c.ctx.font = "12px sans-serif";
+        let midX = (sx + ex) / 2, midY = (sy + ey) / 2;
+        c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, midX + 5, midY - 3);
+        c.ctx.restore();
+    }
+
+    _drawEllipsePreview(c, p) {
+        const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+        const sx = c._ellipseWorldStartX * c.scale + offsetX;
+        const sy = c._ellipseWorldStartY * c.scale + offsetY;
+        const ex = c._ellipseWorldEndX * c.scale + offsetX;
+        const ey = c._ellipseWorldEndY * c.scale + offsetY;
+
+        const minSX = Math.min(sx, ex), minSY = Math.min(sy, ey);
+        const maxSX = Math.max(sx, ex), maxSY = Math.max(sy, ey);
+        const pad = 1.5;
+
+        // Selection-style bounding rectangle (solid, no handles)
+        c.ctx.save();
+        c.ctx.strokeStyle = p.select_box_stroke;
+        c.ctx.lineWidth = 1;
+        c.ctx.setLineDash([]);
+        c.ctx.strokeRect(minSX - pad, minSY - pad, maxSX - minSX + pad * 2, maxSY - minSY + pad * 2);
+        c.ctx.restore();
+
+        // Ellipse dimensions
+        const cx = (sx + ex) / 2, cy = (sy + ey) / 2;
+        let rx = Math.abs(ex - sx) / 2, ry = Math.abs(ey - sy) / 2;
+        if (c._ellipseIsCtrl) { const r = Math.max(rx, ry); rx = ry = r; }
+        if (rx < 0.5 || ry < 0.5) return;
+
+        const k = 0.5522847498;
+        const kx = k * rx, ky = k * ry;
+
+        // control1 = outgoing from current node; control2 = incoming to next node
+        const nodes = [
+            { x: cx + rx, y: cy,     c1x: cx + rx, c1y: cy + ky, c2x: cx + rx, c2y: cy - ky },
+            { x: cx,      y: cy + ry, c1x: cx - kx, c1y: cy + ry, c2x: cx + kx, c2y: cy + ry },
+            { x: cx - rx, y: cy,     c1x: cx - rx, c1y: cy - ky, c2x: cx - rx, c2y: cy + ky },
+            { x: cx,      y: cy - ry, c1x: cx + kx, c1y: cy - ry, c2x: cx - kx, c2y: cy - ry }
+        ];
+
+        // Draw filled ellipse (same as final result)
+        c.ctx.save();
+        c.ctx.beginPath();
+        c.ctx.moveTo(nodes[0].x, nodes[0].y);
+        for (let i = 0; i < 4; i++) {
+            const n0 = nodes[i];
+            const n1 = nodes[(i + 1) % 4];
+            c.ctx.bezierCurveTo(n0.c1x, n0.c1y, n1.c2x, n1.c2y, n1.x, n1.y);
+        }
+        c.ctx.closePath();
+        c.ctx.fillStyle = p.path_fill_color;
+        c.ctx.fill("nonzero");
+        c.ctx.strokeStyle = p.path_stroke_color;
+        c.ctx.lineWidth = 1;
+        c.ctx.stroke();
+        c.ctx.restore();
     }
 }

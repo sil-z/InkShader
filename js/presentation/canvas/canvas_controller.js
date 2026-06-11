@@ -1,4 +1,5 @@
 import { StorageUtils } from "../../services/storage.js";
+import { ProjectManager } from "../../services/project_manager.js";
 import { updateThemeParams } from "../../services/theme.js";
 import { CANVAS_ACTIONS, CANVAS_EVENTS, createCanvasAction } from "../../app/canvas_events.js";
 import { REQUEST_ACTION_ROUTES, REQUEST_IO_ROUTES, TOOL_ACTION_ROUTES } from "../../app/canvas_request_routes.js";
@@ -122,7 +123,7 @@ export class CanvasController {
             c.commands.finishAddingPathCommand();
         }
 
-        if (mode !== "DRAW") {
+        if (mode !== "DRAW" && mode !== "ELLIPSE") {
             c.current_curve = null;
             c.previewData = null;
             c.new_curve_handle = null;
@@ -130,6 +131,10 @@ export class CanvasController {
             c.drawing_seq_offset = undefined;
             c.closing_path_on_mouseup = false;
             c.current_state = "IDLE";
+            c._ellipseWorldStartX = undefined;
+            c._ellipseWorldStartY = undefined;
+            c._ellipseWorldEndX = undefined;
+            c._ellipseWorldEndY = undefined;
         } else {
             const gid = c.curve_manager.ensureActiveGroup();
             if (gid) c.commands.syncActiveGroupForDraw(gid);
@@ -280,48 +285,82 @@ export class CanvasController {
                 c.is_dirty = true;
             }
 
-            const savedState = await StorageUtils.load();
-            if (savedState) {
-                let snapshotStr = "";
-                let data = null;
+            await StorageUtils.migrateIfNeeded();
 
-                if (typeof savedState === 'string') {
-                    snapshotStr = savedState;
-                    data = JSON.parse(savedState);
-                    c.commandStack = [];
-                    c.redoCommandStack = [];
-                } else if (savedState.runtimeVersion === 2 && savedState.latestSnapshot) {
-                    snapshotStr = JSON.stringify(savedState.latestSnapshot);
-                    data = savedState.latestSnapshot;
+            const pm = c.projectManager;
+            const activeName = pm ? pm.getActiveProjectName() : StorageUtils.loadActiveProject();
+
+            let loaded = false;
+            if (activeName) {
+                const projectData = await StorageUtils.loadProject(activeName);
+                if (projectData) {
+                    let snapshotStr = "";
+                    let data = null;
+                    if (projectData.latestSnapshot) {
+                        snapshotStr = JSON.stringify(projectData.latestSnapshot);
+                        data = projectData.latestSnapshot;
+                    } else if (typeof projectData === 'string') {
+                        snapshotStr = projectData;
+                        data = JSON.parse(projectData);
+                    } else {
+                        snapshotStr = JSON.stringify(projectData);
+                        data = projectData;
+                    }
+                    await c.commands.loadSnapshotCommand(snapshotStr);
                     const sanitize = (entry) => (typeof c.history._sanitizeCommandEntry === 'function' ? c.history._sanitizeCommandEntry(entry) : entry);
-                    c.commandStack = Array.isArray(savedState.commandStack) ? savedState.commandStack.map(sanitize).filter(Boolean) : [];
-                    c.redoCommandStack = Array.isArray(savedState.redoCommandStack) ? savedState.redoCommandStack.map(sanitize).filter(Boolean) : [];
-                } else {
-                    snapshotStr = JSON.stringify(savedState);
-                    data = savedState;
+                    c.commandStack = Array.isArray(projectData.commandStack) ? projectData.commandStack.map(sanitize).filter(Boolean) : [];
+                    c.redoCommandStack = Array.isArray(projectData.redoCommandStack) ? projectData.redoCommandStack.map(sanitize).filter(Boolean) : [];
+                    loaded = true;
+
+                    let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
+                    let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
+                    if (!seqActiveIndices.length && seqText) {
+                        let tokens = c.curve_manager.parseSequence(seqText);
+                        seqActiveIndices = tokens.map((_, i) => i);
+                    }
+                    this.dispatchAction(
+                        CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                        { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
+                        { source: "restore-state" }
+                    );
+                }
+            }
+
+            if (!loaded) {
+                const savedState = await StorageUtils.load();
+                if (savedState) {
+                    let snapshotStr = "";
+                    let data = null;
+                    if (typeof savedState === 'string') {
+                        snapshotStr = savedState;
+                        data = JSON.parse(savedState);
+                    } else if (savedState.runtimeVersion === 2 && savedState.latestSnapshot) {
+                        snapshotStr = JSON.stringify(savedState.latestSnapshot);
+                        data = savedState.latestSnapshot;
+                    } else {
+                        snapshotStr = JSON.stringify(savedState);
+                        data = savedState;
+                    }
+                    await c.commands.loadSnapshotCommand(snapshotStr);
                     c.commandStack = [];
                     c.redoCommandStack = [];
+                    let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
+                    let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
+                    if (!seqActiveIndices.length && seqText) {
+                        let tokens = c.curve_manager.parseSequence(seqText);
+                        seqActiveIndices = tokens.map((_, i) => i);
+                    }
+                    this.dispatchAction(
+                        CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                        { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
+                        { source: "restore-state" }
+                    );
                 }
-
-                await c.commands.loadSnapshotCommand(snapshotStr);
-
-                let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
-                let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
-
-                if (!seqActiveIndices.length && seqText) {
-                    let tokens = c.curve_manager.parseSequence(seqText);
-                    seqActiveIndices = tokens.map((_, i) => i);
-                }
-
-                this.dispatchAction(
-                    CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
-                    { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
-                    { source: "restore-state" }
-                );
-                c.is_dirty = true;
-                c.currentStateObj = c.history.getHistoryState();
-                if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') c.history._reconcileRuntimeHistoryStacks();
             }
+
+            c.is_dirty = true;
+            c.currentStateObj = c.history.getHistoryState();
+            if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') c.history._reconcileRuntimeHistoryStacks();
 
             if (viewState && viewState.selected_tree_ids?.length) {
                 const validIds = viewState.selected_tree_ids.filter((id) => c.curve_manager.treeItems.has(id));
@@ -349,6 +388,12 @@ export class CanvasController {
         this.registerCommandBridgeListeners();
         this.registerThemeListener();
         this.setupGuidelineToggle();
+
+        const pm = new ProjectManager(this.canvas);
+        this.canvas.projectManager = pm;
+        window.__canvas = this.canvas;
+        await pm.init();
+
         await this.restoreState();
         this.canvas.currentStateObj = this.canvas.history.getHistoryState();
         if (typeof this.canvas.history._reconcileRuntimeHistoryStacks === 'function') this.canvas.history._reconcileRuntimeHistoryStacks();

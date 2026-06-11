@@ -183,6 +183,10 @@ export class CanvasHistoryService {
             commandStack: this._deepClone(c.commandStack || []),
             redoCommandStack: this._deepClone(c.redoCommandStack || [])
         };
+        if (c.projectManager && c.projectManager.getActiveProjectName()) {
+            StorageUtils.saveProject(c.projectManager.getActiveProjectName(), data)
+                .catch((e) => console.error(" [Storage] 项目保存失败:", e));
+        }
         StorageUtils.save(data).catch((e) => console.error(" [Storage] 运行态保存失败:", e));
     }
 

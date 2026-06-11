@@ -25,6 +25,7 @@ export const DOCUMENT_GEOMETRY_COMMANDS = new Set([
     CANVAS_ACTIONS.DELETE_SELECTED_OBJECTS,
     "finishAddingPathCommand",
     "changeControlNodePosition",
+    "deleteControlNode",
     "changeSelectedNodesPosition",
     "changeSelectedObjectsTransform",
     "changeSelectedObjectsBounds",

@@ -11,7 +11,6 @@ const TEMPLATE_HTML = `
             <div class="pref_modal_body">
                 <div class="pref_sidebar">
                     <div class="pref_tab active" data-target="sec_appearance" data-i18n="pref.general">General & Appearance</div>
-                    <div class="pref_tab" data-target="sec_font" data-i18n="pref.font">Font Info</div>
                 </div>
                 <div class="pref_content_area">
                     <div class="pref_section active" id="sec_appearance">
@@ -33,33 +32,6 @@ const TEMPLATE_HTML = `
                         <div id="color_overrides_container"></div>
                         <div class="pref_modal_actions">
                             <button id="btn_reset_colors" class="pref_button_secondary" data-i18n="pref.reset">Reset to Theme Default</button>
-                        </div>
-                    </div>
-                    
-                    <div class="pref_section" id="sec_font">
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.family">Family Name</span>
-                            <input type="text" id="font_family" value="InkShader Default Font" class="pref_input">
-                        </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.style">Style Name</span>
-                            <input type="text" id="font_style" value="Regular" class="pref_input">
-                        </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.upm">Units Per Em (UPM)</span>
-                            <input type="number" id="font_upm" value="1000" class="pref_input">
-                        </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.ascender">Ascender</span>
-                            <input type="number" id="font_ascender" value="800" class="pref_input">
-                        </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.descender">Descender</span>
-                            <input type="number" id="font_descender" value="-200" class="pref_input">
-                        </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="font.version">Version</span>
-                            <input type="text" id="font_version" value="1.0" class="pref_input" placeholder="e.g. 1.0">
                         </div>
                     </div>
                 </div>
@@ -211,18 +183,6 @@ export class PreferencesModal extends HTMLElement {
             this.saveSettings();
             this.notifyCanvasUpdate();
         });
-
-        const fontInputs = ['font_family', 'font_style', 'font_upm', 'font_ascender', 'font_descender', 'font_version'];
-        fontInputs.forEach(id => {
-            const el = this.querySelector('#' + id);
-            if(el) {
-                el.addEventListener('change', (e) => {
-                    const key = id.replace('font_', '');
-                    this.fontSettings[key] = (e.target.type === 'number') ? parseInt(e.target.value) || 0 : e.target.value;
-                    this.saveSettings();
-                });
-            }
-        });
     }
 
     buildColorPickers() {
@@ -297,9 +257,10 @@ export class PreferencesModal extends HTMLElement {
         const theme = this.querySelector('#theme_selector').value;
         const settings = { 
             theme, 
-            customColors: this.customColors,
-            fontSettings: this.fontSettings 
+            customColors: this.customColors
         };
+        const existing = JSON.parse(localStorage.getItem('InkShader_preferences') || '{}');
+        settings.fontSettings = existing.fontSettings || {};
         localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
     }
 
@@ -322,15 +283,6 @@ export class PreferencesModal extends HTMLElement {
                 if (settings.customColors) {
                     this.customColors = settings.customColors;
                     this.applyTheme(settings.theme || 'light');
-                }
-                if (settings.fontSettings) {
-                    this.fontSettings = { ...this.fontSettings, ...settings.fontSettings };
-                    this.querySelector('#font_family').value = this.fontSettings.family;
-                    this.querySelector('#font_style').value = this.fontSettings.style;
-                    this.querySelector('#font_upm').value = this.fontSettings.upm;
-                    this.querySelector('#font_ascender').value = this.fontSettings.ascender;
-                    this.querySelector('#font_descender').value = this.fontSettings.descender;
-                    this.querySelector('#font_version').value = this.fontSettings.version;
                 }
             }
         } catch(e) { console.warn("Failed to load preferences", e); }

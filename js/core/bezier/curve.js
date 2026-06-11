@@ -607,7 +607,6 @@ export class Curve {
     }
 
     getSkeletonWinding() {
-        if (!this.closed) return 'open';
         if (!this.startNode || !this.endNode) return null;
 
         const evalBezier = (t, p0, p1, p2, p3) => {
@@ -627,7 +626,6 @@ export class Curve {
 
             const sampleCount = 8;
             for (let i = 0; i <= sampleCount; i++) {
-                // Skip the very first point of each segment to avoid duplicates at joints.
                 if (i === 0 && out.length > 0) continue;
                 const t = i / sampleCount;
                 out.push(evalBezier(t, p0, p1, p2, p3));
@@ -642,18 +640,46 @@ export class Curve {
             current = next;
         }
 
-        if (this.closed && this.startNode !== this.endNode) {
+        if (this.startNode !== this.endNode) {
             sampleSegment(this.endNode, this.startNode, samples);
         }
 
         if (samples.length < 3) return null;
-        let area = 0;
-        for (let i = 0; i < samples.length; i++) {
-            const j = (i + 1) % samples.length;
-            area += samples[i].x * samples[j].y - samples[j].x * samples[i].y;
+
+        // Compute start tangent (first segment derivative at t=0)
+        const s0 = { x: this.startNode.x, y: this.startNode.y };
+        let s1;
+        if (this.startNode.control1) {
+            s1 = { x: this.startNode.control1.x, y: this.startNode.control1.y };
+        } else {
+            const next = this.startNode.nextOnCurve || this.endNode;
+            s1 = { x: next.x, y: next.y };
         }
-        if (Math.abs(area) < 1e-6) return null;
-        return area > 0 ? 'cw' : 'ccw';
+        const tangent = { x: s1.x - s0.x, y: s1.y - s0.y };
+        const len = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
+        if (len < 1e-10) return null;
+
+        // Left normal (rotate tangent 90° counter-clockwise)
+        const nx = -tangent.y / len;
+        const ny = tangent.x / len;
+
+        // Test point slightly to the left of start
+        const eps = 0.5;
+        const tx = s0.x + nx * eps;
+        const ty = s0.y + ny * eps;
+
+        // Ray casting point-in-polygon test
+        let inside = false;
+        for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
+            const xi = samples[i].x, yi = samples[i].y;
+            const xj = samples[j].x, yj = samples[j].y;
+            if ((yi > ty) !== (yj > ty) &&
+                tx < ((xj - xi) * (ty - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+        }
+
+        return inside ? 'ccw' : 'cw';
     }
 
     reverseSkeletonDirection() {

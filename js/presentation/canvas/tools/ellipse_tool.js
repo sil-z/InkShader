@@ -1,0 +1,121 @@
+import { generateMarker } from "../../../core/bezier/utils.js";
+import { CurveNode } from "../../../core/bezier/node.js";
+
+export class EllipseTool {
+    constructor(canvas, controller) {
+        this.canvas = canvas;
+        this.controller = controller;
+    }
+
+    handleMouseDown(mouseX, mouseY, worldX, worldY, isCtrl) {
+        const c = this.canvas;
+        if (c.curve_manager.activeSequenceIndices.size === 0) return;
+
+        c._ellipseWorldStartX = worldX;
+        c._ellipseWorldStartY = worldY;
+        c._ellipseIsCtrl = isCtrl;
+        c._ellipseWorldEndX = worldX;
+        c._ellipseWorldEndY = worldY;
+        c.current_state = 'DRAGGING_ELLIPSE';
+        c.is_dirty = true;
+    }
+
+    handleMouseMove(mouseX, mouseY, worldX, worldY, isCtrl) {
+        const c = this.canvas;
+        if (c.current_state !== 'DRAGGING_ELLIPSE') return;
+        if (isCtrl !== undefined) c._ellipseIsCtrl = isCtrl;
+        if (isCtrl) {
+            const sx = c._ellipseWorldStartX, sy = c._ellipseWorldStartY;
+            const dx = worldX - sx, dy = worldY - sy;
+            const r = Math.max(Math.abs(dx), Math.abs(dy));
+            c._ellipseWorldEndX = sx + r * Math.sign(dx);
+            c._ellipseWorldEndY = sy + r * Math.sign(dy);
+        } else {
+            c._ellipseWorldEndX = worldX;
+            c._ellipseWorldEndY = worldY;
+        }
+        c.is_dirty = true;
+    }
+
+    handleMouseUp() {
+        const c = this.canvas;
+        if (c.current_state !== 'DRAGGING_ELLIPSE') return;
+        c.current_state = 'IDLE';
+
+        const sx = c._ellipseWorldStartX;
+        const sy = c._ellipseWorldStartY;
+        const ex = c._ellipseWorldEndX;
+        const ey = c._ellipseWorldEndY;
+
+        c._ellipseWorldStartX = undefined;
+        c._ellipseWorldStartY = undefined;
+        c._ellipseWorldEndX = undefined;
+        c._ellipseWorldEndY = undefined;
+        c._ellipseIsCtrl = false;
+
+        if (sx === undefined || ex === undefined) return;
+        const dx = Math.abs(ex - sx), dy = Math.abs(ey - sy);
+        if (dx < 0.5 && dy < 0.5) return;
+
+        this._createEllipse(c, sx, sy, ex, ey);
+    }
+
+    _createEllipse(c, sx, sy, ex, ey) {
+        const cm = c.curve_manager;
+        const activeGroupId = cm.ensureActiveGroup();
+        if (!activeGroupId) return;
+
+        // Compute sequence offset for this group
+        let seqOffsetX = 0;
+        const seqTokens = cm.sequenceTokens;
+        const activeIndices = Array.from(cm.activeSequenceIndices).sort((a, b) => a - b);
+        for (let idx of activeIndices) {
+            const t = seqTokens[idx];
+            const gid = t.isChar ? cm.getDefaultGroupForChar(t.value) : t.value;
+            if (gid === activeGroupId) { seqOffsetX = cm.getSeqOffset(idx); break; }
+        }
+
+        const lx = sx - seqOffsetX, ly = sy;
+        const rx2 = ex - seqOffsetX, ry2 = ey;
+        let cx = (lx + rx2) / 2, cy = (ly + ry2) / 2;
+        let rx = Math.abs(rx2 - lx) / 2, ry = Math.abs(ry2 - ly) / 2;
+
+        if (c._ellipseIsCtrl) {
+            const r = Math.max(rx, ry);
+            rx = ry = r;
+        }
+
+        if (rx < 0.25 || ry < 0.25) return;
+
+        if (!c.commands.startAddingPath(activeGroupId, 0)) return;
+
+        const k = 0.5522847498;
+        const kx = k * rx, ky = k * ry;
+
+        const nodeData = [
+            { x: cx + rx, y: cy,     c1x: cx + rx, c1y: cy + ky, c2x: cx + rx, c2y: cy - ky },
+            { x: cx,      y: cy + ry, c1x: cx - kx, c1y: cy + ry, c2x: cx + kx, c2y: cy + ry },
+            { x: cx - rx, y: cy,     c1x: cx - rx, c1y: cy - ky, c2x: cx - rx, c2y: cy + ky },
+            { x: cx,      y: cy - ry, c1x: cx + kx, c1y: cy - ry, c2x: cx - kx, c2y: cy - ry }
+        ];
+
+        const markers = [];
+        for (const nd of nodeData) {
+            const m = c.commands.addMainNode(nd.x, nd.y);
+            if (m) markers.push(m);
+        }
+
+        c.current_curve.closed = true;
+
+        for (let i = 0; i < markers.length; i++) {
+            const n = cm.find_node_by_curve(markers[i]);
+            if (!n) continue;
+            cm.changeSmoothModeOnSingleNode(markers[i], 2, true);
+            const nd = nodeData[i];
+            if (n.control1) { n.control1.x = nd.c1x; n.control1.y = nd.c1y; }
+            if (n.control2) { n.control2.x = nd.c2x; n.control2.y = nd.c2y; }
+        }
+
+        c.commands.finishAddingPathCommand();
+    }
+}

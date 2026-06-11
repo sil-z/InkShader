@@ -113,6 +113,36 @@ export class CurveStore {
         return true;
     }
 
+    deleteControlNode(marker) {
+        let controlNode = this.find_node_by_curve(marker);
+        if (!controlNode || controlNode.type !== null) return false;
+
+        let mainNode = controlNode.nextOnCurve;
+        if (!mainNode || mainNode.type === null) return false;
+
+        let curve = mainNode.curve;
+        if (!curve) return false;
+
+        if (mainNode.control1?.main_node === marker) {
+            mainNode.control1 = null;
+        } else if (mainNode.control2?.main_node === marker) {
+            mainNode.control2 = null;
+        } else {
+            return false;
+        }
+
+        curve.domMap.delete(marker);
+        this.domMap.delete(marker);
+
+        if (!mainNode.control1 && !mainNode.control2) {
+            mainNode.control_mode = 0;
+        } else {
+            mainNode.control_mode = 1;
+        }
+
+        return true;
+    }
+
     moveSingleNode(marker, x, y, control1 = null, control2 = null) {
         let node = this.find_node_by_curve(marker);
         if (!node || node.type === null) return false;

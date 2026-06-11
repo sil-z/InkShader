@@ -49,6 +49,16 @@ export class CanvasCommands {
         return success;
     }
 
+    deleteControlNode(marker) {
+        let success = this.curve_manager.deleteControlNode(marker);
+        if (success) {
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            this._commitHistory("deleteControlNode");
+        }
+        return success;
+    }
+
     /**
      * Command: 确认对选中主节点坐标的改变
      * 作用: 拖拽主节点释放(mouseup)时终期调用，统一写入一次历史

@@ -94,6 +94,7 @@ export class CanvasInputController {
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
                 else if (tool === 'NODE') ic.handleNodeMissMouseDown(mouseX, mouseY, e.shiftKey);
                 else if (tool === 'DRAW') ic.handleDrawMouseDown(mouseX, mouseY, worldX, worldY);
+                else if (tool === 'ELLIPSE') ic.handleEllipseMouseDown(mouseX, mouseY, worldX, worldY, e.ctrlKey);
             }
             else if (e.button === 2) {
                 if (tool === "DRAW") {
@@ -108,6 +109,13 @@ export class CanvasInputController {
                     c.new_curve_handle = null;
                     c.previewData = null;
                     c.dragging_node_marker = null;
+                } else if (tool === "NODE" && hitMarker) {
+                    let hitNode = c.curve_manager.find_node_by_curve(hitMarker);
+                    if (hitNode && hitNode.type === null) {
+                        c._pendingDeleteControlMarker = hitMarker;
+                        c._pendingDeleteMouseX = mouseX;
+                        c._pendingDeleteMouseY = mouseY;
+                    }
                 }
                 c.is_dirty = true;
             }
@@ -138,10 +146,7 @@ export class CanvasInputController {
                 c._rulerIndicatorV.style.display = inCanvas ? "block" : "none";
                 c._rulerIndicatorV.style.top = `${py - 5}px`;
             }
-            if (tool === 'MEASURE' && c.is_measuring) {
-                const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                c.measure_end = {x: worldX, y: worldY}; c.is_dirty = true;
-            }
+            if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
             if ((tool === 'SELECT' || tool === 'NODE') && c.is_box_selecting) {
                 c.box_select_end = {x: mouseX, y: mouseY}; c.is_dirty = true;
             }
@@ -154,6 +159,10 @@ export class CanvasInputController {
                 const dx = e.clientX - c.drag_start.x, dy = e.clientY - c.drag_start.y;
                 c.offset = { x: c.offset_start.x + dx, y: c.offset_start.y + dy };
                 c.is_dirty = true;
+            }
+            else if((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_ELLIPSE') {
+                const ewX = (mouseX - offsetX) / c.scale, ewY = (mouseY - offsetY) / c.scale;
+                ic.handleEllipseMouseMove(mouseX, mouseY, ewX, ewY, e.ctrlKey);
             }
             else if((e.buttons & 1) !== 0 && c.current_state === 'PAINTING_HANDLE') {
                 ic.handleMouseMovePaintingHandle(mouseX, mouseY);
@@ -205,6 +214,11 @@ export class CanvasInputController {
             }
             if (!c._draggingDivider) {
                 c._hoveredDividerId = null;
+                c.is_dirty = true;
+            }
+            if (c._hoveredRulerId !== null || c._hoveredRulerEndpoint !== null) {
+                c._hoveredRulerId = null;
+                c._hoveredRulerEndpoint = null;
                 c.is_dirty = true;
             }
         });
@@ -332,7 +346,7 @@ export class CanvasInputController {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
             if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
             c.refreshViewportConfig();
-            const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             const newId = hit ? hit.guide.id : null;
             if (c._hoveredUserGuideId !== newId) {
@@ -346,10 +360,41 @@ export class CanvasInputController {
                 c._hoveredDividerId = divId;
                 c.is_dirty = true;
             }
+            // Ruler hover (only in MEASURE mode)
+            if (c.getActiveTool() === "MEASURE") {
+                // Check endpoint first; when an endpoint is hovered, skip line hover
+                const epHit = c._hitTestRulerEndpoint(pointer.x, pointer.y);
+                const prevEpRulerId = c._hoveredRulerEndpoint?.rulerId;
+                const prevEp = c._hoveredRulerEndpoint?.endpoint;
+                const newEpRulerId = epHit ? epHit.ruler.id : null;
+                const newEp = epHit ? epHit.endpoint : null;
+                if (newEpRulerId !== prevEpRulerId || newEp !== prevEp) {
+                    c._hoveredRulerEndpoint = epHit ? { rulerId: epHit.ruler.id, endpoint: epHit.endpoint } : null;
+                    c.is_dirty = true;
+                }
+                // Only line-hover when NOT hovering an endpoint
+                const rulerHit = !epHit ? c._hitTestRulerLine(pointer.x, pointer.y) : null;
+                const prevRulerId = c._hoveredRulerId;
+                c._hoveredRulerId = rulerHit ? rulerHit.id : null;
+                if (c._hoveredRulerId !== prevRulerId) c.is_dirty = true;
+            } else if (c._hoveredRulerId !== null || c._hoveredRulerEndpoint !== null) {
+                c._hoveredRulerId = null;
+                c._hoveredRulerEndpoint = null;
+                c.is_dirty = true;
+            }
         });
         c.addGlobalListener(c.canvasObj, "dblclick", (e) => {
             c.refreshViewportConfig();
-            const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+            if (c.getActiveTool() === "MEASURE") {
+                const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
+                if (rulerHit) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    c._showRulerEditDialog(rulerHit, e.clientX, e.clientY);
+                    return;
+                }
+            }
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;
@@ -406,6 +451,18 @@ export class CanvasInputController {
                     _dragStarted: false
                 };
                 return;
+            }
+        });
+        c.addGlobalListener(c.canvasObj, "contextmenu", (e) => {
+            if (c.getActiveTool() === "MEASURE") {
+                const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+                const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
+                if (rulerHit) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
+                    c.is_dirty = true;
+                }
             }
         });
         c._showUserGuideEditDialog = (guide, clientX, clientY) => {
@@ -472,6 +529,112 @@ export class CanvasInputController {
             overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
             input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") apply(); if (ev.key === "Escape") overlay.remove(); });
         };
+        c._showRulerEditDialog = (ruler, clientX, clientY) => {
+            const old = document.querySelector(".user-guide-edit-overlay");
+            if (old) old.remove();
+            const overlay = document.createElement("div");
+            overlay.className = "user-guide-edit-overlay";
+            const dlg = document.createElement("div");
+            dlg.className = "user-guide-edit-dialog ruler-edit-dialog";
+            dlg.style.left = `${clientX}px`;
+            dlg.style.top = `${clientY}px`;
+            const dx = ruler.x2 - ruler.x1, dy = ruler.y2 - ruler.y1;
+            const len = Math.hypot(dx, dy);
+            const angleDeg = Math.atan2(-dy, dx) * 180 / Math.PI;
+            dlg.innerHTML = `<div class="field-row"><label>X1</label><input type="number" step="0.1" value="${ruler.x1.toFixed(1)}" data-field="x1"></div>
+                <div class="field-row"><label>Y1</label><input type="number" step="0.1" value="${ruler.y1.toFixed(1)}" data-field="y1"></div>
+                <div class="field-row"><label>X2</label><input type="number" step="0.1" value="${ruler.x2.toFixed(1)}" data-field="x2"></div>
+                <div class="field-row"><label>Y2</label><input type="number" step="0.1" value="${ruler.y2.toFixed(1)}" data-field="y2"></div>
+                <div class="field-row"><label>L</label><input type="number" step="0.1" value="${len.toFixed(1)}" data-field="length"></div>
+                <div class="field-row"><label>Angle</label><input type="number" step="0.1" value="${angleDeg.toFixed(1)}" data-field="angle"></div>
+                <div class="btn-row"><button class="btn-delete">Delete</button><button class="btn-ok">OK</button></div>`;
+            overlay.appendChild(dlg);
+            document.body.appendChild(overlay);
+            const rect = dlg.getBoundingClientRect();
+            if (rect.right > window.innerWidth) dlg.style.left = `${clientX - rect.width}px`;
+            if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
+            const inputs = {
+                x1: dlg.querySelector('[data-field="x1"]'),
+                y1: dlg.querySelector('[data-field="y1"]'),
+                x2: dlg.querySelector('[data-field="x2"]'),
+                y2: dlg.querySelector('[data-field="y2"]'),
+                length: dlg.querySelector('[data-field="length"]'),
+                angle: dlg.querySelector('[data-field="angle"]')
+            };
+            inputs.x1.focus(); inputs.x1.select();
+            const updateFromEndpoints = () => {
+                const x1 = parseFloat(inputs.x1.value) || 0;
+                const y1 = parseFloat(inputs.y1.value) || 0;
+                const x2 = parseFloat(inputs.x2.value) || 0;
+                const y2 = parseFloat(inputs.y2.value) || 0;
+                const ddx = x2 - x1, ddy = y2 - y1;
+                inputs.length.value = Math.hypot(ddx, ddy).toFixed(1);
+                const ang = Math.atan2(-ddy, ddx) * 180 / Math.PI;
+                inputs.angle.value = ang.toFixed(1);
+            };
+            const updateFromPolar = () => {
+                const x1 = parseFloat(inputs.x1.value) || 0;
+                const y1 = parseFloat(inputs.y1.value) || 0;
+                const l = parseFloat(inputs.length.value) || 0;
+                const a = parseFloat(inputs.angle.value) || 0;
+                const aRad = a * Math.PI / 180;
+                inputs.x2.value = (x1 + l * Math.cos(aRad)).toFixed(1);
+                inputs.y2.value = (y1 - l * Math.sin(aRad)).toFixed(1);
+            };
+            inputs.x1.addEventListener("input", updateFromEndpoints);
+            inputs.y1.addEventListener("input", updateFromEndpoints);
+            inputs.x2.addEventListener("input", updateFromEndpoints);
+            inputs.y2.addEventListener("input", updateFromEndpoints);
+            inputs.length.addEventListener("input", updateFromPolar);
+            inputs.angle.addEventListener("input", updateFromPolar);
+            const apply = () => {
+                ruler.x1 = parseFloat(inputs.x1.value) || 0;
+                ruler.y1 = parseFloat(inputs.y1.value) || 0;
+                ruler.x2 = parseFloat(inputs.x2.value) || 0;
+                ruler.y2 = parseFloat(inputs.y2.value) || 0;
+                overlay.remove();
+                c.is_dirty = true;
+            };
+            const deleteRuler = () => {
+                c.rulers = c.rulers.filter(r => r.id !== ruler.id);
+                overlay.remove();
+                c.is_dirty = true;
+            };
+            dlg.querySelector(".btn-ok").addEventListener("click", apply);
+            dlg.querySelector(".btn-delete").addEventListener("click", deleteRuler);
+            overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
+            Object.values(inputs).forEach(inp => inp.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter") apply();
+                if (ev.key === "Escape") overlay.remove();
+            }));
+        };
+        c._hitTestRulerLine = (canvasX, canvasY) => {
+            const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+            for (const ruler of (c.rulers || [])) {
+                const sx = ruler.x1 * c.scale + offsetX, sy = ruler.y1 * c.scale + offsetY;
+                const ex = ruler.x2 * c.scale + offsetX, ey = ruler.y2 * c.scale + offsetY;
+                const dist = c._pointToSegmentDist(canvasX, canvasY, sx, sy, ex, ey);
+                if (dist < 6) return ruler;
+            }
+            return null;
+        };
+        c._hitTestRulerEndpoint = (canvasX, canvasY) => {
+            const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+            for (const ruler of (c.rulers || [])) {
+                const sx = ruler.x1 * c.scale + offsetX, sy = ruler.y1 * c.scale + offsetY;
+                const ex = ruler.x2 * c.scale + offsetX, ey = ruler.y2 * c.scale + offsetY;
+                if (Math.hypot(canvasX - sx, canvasY - sy) < 6) return { ruler, endpoint: 'start' };
+                if (Math.hypot(canvasX - ex, canvasY - ey) < 6) return { ruler, endpoint: 'end' };
+            }
+            return null;
+        };
+        c._pointToSegmentDist = (px, py, ax, ay, bx, by) => {
+            const abx = bx - ax, aby = by - ay;
+            const apx = px - ax, apy = py - ay;
+            const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+            const cx = ax + t * abx, cy = ay + t * aby;
+            return Math.hypot(px - cx, py - cy);
+        };
         c.handleMouseUp = (e) => {
             const tool = resolveActiveCanvasTool(c);
             if (c._pointerCaptureId != null && c.canvasObj.releasePointerCapture) {
@@ -505,9 +668,15 @@ export class CanvasInputController {
                 c.is_dirty = true;
                 return;
             }
+            if (c.current_state === 'DRAGGING_RULER_ENDPOINT') {
+                c._draggingRulerEndpoint = null;
+                c.current_state = 'IDLE';
+                c.is_dirty = true;
+                return;
+            }
             if (e.button === 0) {
                 if (c.current_state === 'TRANSFORMING_OBJECTS') { ic.handleTransformMouseUp(); return; }
-                if (tool === 'MEASURE' && c.is_measuring) { c.is_measuring = false; c.is_dirty = true; return; }
+                if (tool === 'MEASURE') { ic.handleMeasureMouseUp(); return; }
                 if (tool === 'SELECT' && c.is_box_selecting) {
                     c.refreshViewportConfig();
                     const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
@@ -520,12 +689,27 @@ export class CanvasInputController {
                 }
                 if (c.current_state === 'DRAGGING_NODE' || c.current_state === 'DRAGGING_NODE_READY') { ic.handleNodeDragMouseUp(e); return; }
                 if (c.current_state === 'PAINTING_HANDLE') { ic.handlePaintHandleMouseUp(e); return; }
+                if (c.current_state === 'DRAGGING_ELLIPSE') { ic.handleEllipseMouseUp(); c.is_dirty = true; return; }
                 c.current_state = 'IDLE'; c.dragging_node_marker = null; c.dragging_node_seq_idx = -1;
                 c.dragging_node_matrix = null; c.dragging_node_refId = null;
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
                 c.renderer.update_previewData(pointer.x, pointer.y);
                 c.notifyPropertiesUpdate(); c.is_dirty = true;
+            }
+            if (e.button === 2 && c._pendingDeleteControlMarker) {
+                c.refreshViewportConfig();
+                const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+                const dist = Math.hypot(pointer.x - c._pendingDeleteMouseX, pointer.y - c._pendingDeleteMouseY);
+                if (dist < 10) {
+                    let node = c.curve_manager.find_node_by_curve(c._pendingDeleteControlMarker);
+                    if (node && node.type === null) {
+                        c.commands.deleteControlNode(c._pendingDeleteControlMarker);
+                    }
+                }
+                c._pendingDeleteControlMarker = null;
+                c._pendingDeleteMouseX = null;
+                c._pendingDeleteMouseY = null;
             }
         };
         c.addGlobalListener('window', "mouseup", c.handleMouseUp);

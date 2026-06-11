@@ -5,6 +5,8 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { NODE_PROPS_DOCKED, NODE_PROPS_UNDOCKED } from "./node_property_popup.js";
+import { PATH_PROPS_DOCKED, PATH_PROPS_UNDOCKED } from "./path_property_popup.js";
+import { BBOX_DOCKED, BBOX_UNDOCKED } from "./bounding_box_popup.js";
 
 const TEMPLATE_HTML = `
     <div class="prop_panel_title_wrapper">
@@ -23,6 +25,12 @@ export class PropertyPanel extends HTMLElement {
         this.lastSignature = "";
         this._drawToolSettings = null;
         this._nodePropsDocked = false;
+        this._pathPropsDocked = false;
+        this._bboxDocked = false;
+        this._focusedInput = null;
+        this._sectionOrder = [];
+        this._loadSectionOrder();
+        this._dragState = null;
     }
 
     addGlobalListener(target, type, listener, options = false) {
@@ -53,11 +61,18 @@ export class PropertyPanel extends HTMLElement {
                 }
             });
 
+            this.container.addEventListener('focusin', (e) => {
+                if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+            });
+            this.container.addEventListener('focusout', (e) => {
+                if (e.target.tagName === 'INPUT') this._focusedInput = null;
+            });
+
             const realtimeIds = [
                 'ref_tx', 'ref_ty',
                 'sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h',
                 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_out_x', 'prop_out_y', 'prop_in_a', 'prop_out_a',
-                'tool_stroke', 'path_stroke'
+                'path_stroke'
             ];
 
             this.container.addEventListener('input', (e) => {
@@ -101,9 +116,22 @@ export class PropertyPanel extends HTMLElement {
             this.render();
         });
         this.addGlobalListener(appEventBus, NODE_PROPS_DOCKED, (e) => {
+            const was = this._nodePropsDocked;
             this._nodePropsDocked = true;
             this._nodePropsAnchorId = e?.detail?.anchorId || null;
-            this.lastSignature = "";
+            if (!was) this.lastSignature = "";
+            this.render();
+        });
+        this.addGlobalListener(appEventBus, PATH_PROPS_DOCKED, (e) => {
+            const was = this._pathPropsDocked;
+            this._pathPropsDocked = true;
+            if (!was) this.lastSignature = "";
+            this.render();
+        });
+        this.addGlobalListener(appEventBus, BBOX_DOCKED, (e) => {
+            const was = this._bboxDocked;
+            this._bboxDocked = true;
+            if (!was) this.lastSignature = "";
             this.render();
         });
     }
@@ -131,6 +159,24 @@ export class PropertyPanel extends HTMLElement {
         this.render();
     }
 
+    _loadSectionOrder() {
+        try {
+            const saved = localStorage.getItem('prop_section_order');
+            if (saved) {
+                this._sectionOrder = JSON.parse(saved);
+                if (!Array.isArray(this._sectionOrder)) this._sectionOrder = [];
+            }
+        } catch (e) {
+            this._sectionOrder = [];
+        }
+    }
+
+    _saveSectionOrder() {
+        try {
+            localStorage.setItem('prop_section_order', JSON.stringify(this._sectionOrder));
+        } catch (e) {}
+    }
+
     _resolveSelectedCurves() {
         const ids = this.interaction.selectedCurveIds;
         if (!ids?.length) return [];
@@ -144,8 +190,12 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _resolvePrimaryNodeMarker() {
-        const markerId = this.interaction.selectedNodeMarkerIds[0];
+        const ids = this.interaction.selectedNodeMarkerIds;
+        const markerId = ids.length > 0 ? ids[ids.length - 1] : null;
         return markerId ? EditorModel.resolveNodeMarker(markerId) : null;
+    }
+    _resolveNodeMarkerById(anchorId) {
+        return anchorId ? EditorModel.resolveNodeMarker(anchorId) : null;
     }
 
     decomposeMatrix(m) {
@@ -188,11 +238,10 @@ export class PropertyPanel extends HTMLElement {
         });
 
         hasPath = selectedCurves.length > 0;
-        let isToolSettings = (this.currentTool === 'DRAW');
 
-        let bounds = (this.currentTool === 'SELECT') ? this.getSelectionBounds() : null;
+        let bounds = (this.currentTool === 'SELECT' && selectedIds.length > 0) ? this.getSelectionBounds() : null;
         let hasBounds = bounds !== null;
-        let nodeCount = (this.currentTool === 'NODE') ? this.interaction.nodeSelectionCount : 0;
+        let nodeCount = this.interaction.nodeSelectionCount || 0;
 
         if (selectedIds.length === 1 && nodeCount === 0) {
             item = EditorModel.getTreeItem(selectedIds[0]);
@@ -202,120 +251,345 @@ export class PropertyPanel extends HTMLElement {
             }
         }
 
-        let sig = `${isToolSettings}_${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}`;
+        let sig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}`;
 
         if (this.lastSignature !== sig) {
-            this.buildDOM(isToolSettings, hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount);
+            if (this._focusedInput) {
+                this.patchValues(item, selectedCurves, bounds, nodeCount, selectedIds);
+                return;
+            }
+            this.buildDOM(hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount);
             this.lastSignature = sig;
         }
 
-        this.patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings, selectedIds);
+        this.patchValues(item, selectedCurves, bounds, nodeCount, selectedIds);
     }
 
-    /* 将原本巨长的 DOM 构建逻辑安全拆分 */
-    buildDOM(isToolSettings, hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount) {
-        let blocks = [];
+    buildDOM(hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
 
-        if (nodeCount > 0) blocks.push(this._buildNodeProps(nodeCount, t));
-        if (hasBounds) blocks.push(this._buildBoundsProps(t));
-        if (hasPath) blocks.push(this._buildPathProps(pathCount, t));
-        if (isToolSettings) blocks.push(this._buildPenProps(t));
-        if (hasRef) blocks.push(this._buildRefProps(t));
-        else if (hasGroup && !hasPath) blocks.push(this._buildGroupProps(t));
+        const sections = {};
+        if (nodeCount > 0 || this._nodePropsDocked) {
+            const html = this._buildNodeProps(nodeCount, t);
+            if (html) sections.npp = html;
+        }
+        if (hasBounds && this._bboxDocked) sections.bbox = this._buildBoundsProps(t);
+        if (hasPath) {
+            const html = this._buildPathProps(pathCount, t);
+            if (html) sections.ppp = html;
+        }
 
-        if (blocks.length === 0) {
+        const sectionKeys = Object.keys(sections);
+        if (sectionKeys.length === 0 && !hasRef && !(hasGroup && !hasPath)) {
             this.container.replaceChildren();
             this.container.classList.add("is_empty");
             return;
         }
 
-        this.container.classList.remove("is_empty");
-        const frag = document.createDocumentFragment();
-        const dividerProto = document.createElement("div");
-        dividerProto.className = "prop_divider";
+        this._ensureSectionOrder(sectionKeys);
 
-        blocks.forEach((html, index) => {
-            if (index > 0) frag.appendChild(dividerProto.cloneNode(false));
-            const holder = document.createElement("div");
+        const frag = document.createDocumentFragment();
+        this._sectionOrder.forEach(key => {
+            if (sections[key]) {
+                const holder = document.createElement('div');
+                holder.innerHTML = sections[key];
+                while (holder.firstChild) frag.appendChild(holder.firstChild);
+            }
+        });
+
+        if (hasRef) {
+            const html = this._buildRefProps(t);
+            const holder = document.createElement('div');
             holder.innerHTML = html;
             while (holder.firstChild) frag.appendChild(holder.firstChild);
-        });
+        } else if (hasGroup && !hasPath) {
+            const html = this._buildGroupProps(t);
+            const holder = document.createElement('div');
+            holder.innerHTML = html;
+            while (holder.firstChild) frag.appendChild(holder.firstChild);
+        }
+
+        this.container.classList.remove("is_empty");
+        const st = this.container.scrollTop;
         this.container.replaceChildren(frag);
-        if (nodeCount > 0) this._initExtractDrag();
+        this.container.scrollTop = st;
+
+        this._initSectionReorder();
     }
 
-    _initExtractDrag() {
-        const handle = this.container.querySelector('#npp_extract_handle');
-        if (!handle) return;
-        handle.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
+    _ensureSectionOrder(availableKeys) {
+        const allKeys = ['npp', 'bbox', 'ppp'];
+        const existing = this._sectionOrder.filter(k => allKeys.includes(k));
+        allKeys.forEach(k => {
+            if (!existing.includes(k)) existing.push(k);
+        });
+        this._sectionOrder = existing;
+        this._saveSectionOrder();
+    }
 
-            const popup = document.querySelector('node-property-popup');
-            if (!popup) return;
+    _initSectionReorder() {
+        const handles = this.container.querySelectorAll('.npp-section-handle');
+        if (handles.length < 1) return;
 
-            const anchorId = popup._anchorNodeId;
+        handles.forEach(handle => {
+            handle.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                if (this._dragState) return;
+
+                const section = handle.closest('.npp-section');
+                if (!section) return;
+
+                const sectionId = section.dataset.section;
+                let popup = null;
+                let extracted = false;
+                this._dragState = { section, handle, startX: e.clientX, startY: e.clientY };
+
+                const onMove = (ev) => {
+                    if (!this._dragState) return;
+                    const dx = ev.clientX - this._dragState.startX;
+                    const dy = ev.clientY - this._dragState.startY;
+                    const dist = Math.abs(dx) + Math.abs(dy);
+
+                    if (!extracted && dist >= 3) {
+                        extracted = true;
+                        section.classList.add('is-dragging');
+                        popup = this._getPopupForSection(sectionId);
+                        if (!popup) {
+                            section.classList.remove('is-dragging');
+                            this._dragState = null;
+                            return;
+                        }
+                        this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY);
+                        // Override position to follow cursor after render
+                        const pw = popup.offsetWidth || 220, ph = popup.offsetHeight || 100;
+                        popup.style.left = Math.max(0, Math.min(ev.clientX - pw / 2, window.innerWidth - pw)) + 'px';
+                        popup.style.top = Math.max(0, Math.min(ev.clientY - 10, window.innerHeight - ph)) + 'px';
+                        return;
+                    }
+
+                    if (extracted && popup) {
+                        const vw = window.innerWidth, vh = window.innerHeight;
+                        const pw = popup.offsetWidth || 220, ph = popup.offsetHeight || 100;
+                        let nl = Math.max(0, Math.min(ev.clientX - pw / 2, vw - pw));
+                        let nt = Math.max(0, Math.min(ev.clientY - 10, vh - ph));
+                        popup.style.left = nl + 'px';
+                        popup.style.top = nt + 'px';
+                        const r = this.getBoundingClientRect();
+                        const over = ev.clientX >= r.left && ev.clientX <= r.right &&
+                                    ev.clientY >= r.top && ev.clientY <= r.bottom;
+                        this.classList.toggle('npp-drop-target', over);
+                    }
+                };
+
+                const onUp = (ev) => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    this.classList.remove('npp-drop-target');
+                    this._clearReorderPreview();
+                    if (this._dragState?.section) {
+                        this._dragState.section.classList.remove('is-dragging');
+                    }
+
+                    if (extracted && popup) {
+                        const r = this.getBoundingClientRect();
+                        const over = ev.clientX >= r.left && ev.clientX <= r.right &&
+                                    ev.clientY >= r.top && ev.clientY <= r.bottom;
+                        if (over) {
+                            popup._setDocked(true);
+                        } else if (typeof popup._savePosition === 'function') {
+                            popup._savePosition();
+                        }
+                    }
+                    this._dragState = null;
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        });
+    }
+
+    _getPopupForSection(sectionId) {
+        if (sectionId === 'npp') return document.querySelector('node-property-popup');
+        if (sectionId === 'bbox') return document.querySelector('bounding-box-popup');
+        if (sectionId === 'ppp') return document.querySelector('path-property-popup');
+        return null;
+    }
+
+    _extractSectionImpl(sectionId, popup, startX, startY) {
+        const self = this;
+
+        if (sectionId === 'npp') {
             this._nodePropsDocked = false;
             this._nodePropsAnchorId = null;
             this.lastSignature = '';
             this.render();
 
+            const anchorId = popup._anchorNodeId;
             popup._docked = false;
             popup._anchorNodeId = anchorId;
             popup.classList.add('visible');
+            popup._patchValues(anchorId);
+        } else if (sectionId === 'bbox') {
+            this._bboxDocked = false;
+            this.lastSignature = '';
+            this.render();
 
-            popup.style.left = e.clientX + 'px';
-            popup.style.top = e.clientY + 'px';
+            popup._docked = false;
+            popup._selectedTreeIds = [...this.interaction.selectedTreeIds];
+            popup._bounds = this.getSelectionBounds();
+            popup.classList.add('visible');
+            popup._patchValues();
+        } else if (sectionId === 'ppp') {
+            this._pathPropsDocked = false;
+            this.lastSignature = '';
+            this.render();
 
-            const sx = e.clientX, sy = e.clientY;
-            const sl = e.clientX, st = e.clientY;
-
-            const onMove = (ev) => {
-                const vw = window.innerWidth, vh = window.innerHeight;
-                const pw = popup.offsetWidth, ph = popup.offsetHeight;
-                let nl = sl + ev.clientX - sx;
-                let nt = st + ev.clientY - sy;
-                nl = Math.max(0, Math.min(nl, vw - pw));
-                nt = Math.max(0, Math.min(nt, vh - ph));
-                popup.style.left = nl + 'px';
-                popup.style.top = nt + 'px';
-
-                const r = this.getBoundingClientRect();
-                const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
-                this.classList.toggle('npp-drop-target', over);
-            };
-
-            const onUp = (ev) => {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                this.classList.remove('npp-drop-target');
-
-                const r = this.getBoundingClientRect();
-                const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
-                if (over) {
-                    popup.classList.remove('visible');
-                    popup._docked = true;
-                    this._nodePropsDocked = true;
-                    this._nodePropsAnchorId = anchorId;
-                    this.lastSignature = '';
-                    this.render();
-                } else {
-                    popup._savePosition();
+            popup._docked = false;
+            const selIds = [...this.interaction.selectedTreeIds];
+            const curves = [];
+            selIds.forEach(id => {
+                const it = EditorModel.getTreeItem(id);
+                if (it && it.type === 'curve') {
+                    const curve = EditorModel.getCurveById(it.curveId);
+                    if (curve) curves.push(curve);
                 }
-            };
+            });
+            popup._selectedCurveIds = selIds.filter(id => {
+                const it = EditorModel.getTreeItem(id);
+                return it && it.type === 'curve';
+            });
+            popup._selectedTreeIds = [...selIds];
+            popup.classList.add('visible');
+            popup._patchValues(curves);
+        }
 
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
+        popup.style.left = startX + 'px';
+        popup.style.top = startY + 'px';
+
+        const sx = startX, sy = startY;
+        const sl = startX, st = startY;
+        const dropClass = sectionId === 'npp' ? 'npp-drop-target'
+                        : sectionId === 'bbox' ? 'bbox-drop-target'
+                        : 'ppp-drop-target';
+
+        const onMove = (ev) => {
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const pw = popup.offsetWidth, ph = popup.offsetHeight;
+            let nl = sl + ev.clientX - sx;
+            let nt = st + ev.clientY - sy;
+            nl = Math.max(0, Math.min(nl, vw - pw));
+            nt = Math.max(0, Math.min(nt, vh - ph));
+            popup.style.left = nl + 'px';
+            popup.style.top = nt + 'px';
+
+            const r = this.getBoundingClientRect();
+            const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+            this.classList.toggle(dropClass, over);
+        };
+
+        const onUp = (ev) => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            this.classList.remove(dropClass);
+
+            const r = this.getBoundingClientRect();
+            const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+            if (over) {
+                popup.classList.remove('visible');
+                this._setSectionDocked(sectionId, true, popup);
+            } else {
+                popup._savePosition();
+            }
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    _setSectionDocked(sectionId, docked, popup) {
+        if (sectionId === 'npp') {
+            popup._docked = true;
+            this._nodePropsDocked = true;
+        } else if (sectionId === 'bbox') {
+            popup._docked = true;
+            this._bboxDocked = true;
+        } else if (sectionId === 'ppp') {
+            popup._docked = true;
+            this._pathPropsDocked = true;
+        }
+        this.lastSignature = '';
+        this.render();
+    }
+
+    _updateReorderPreview(mouseY) {
+        this._clearReorderPreview();
+
+        const sections = [...this.container.querySelectorAll('.npp-section')];
+        const dragged = this._dragState.section;
+        const siblings = sections.filter(s => s !== dragged);
+
+        let insertIdx = siblings.length;
+        for (let i = 0; i < siblings.length; i++) {
+            const rect = siblings[i].getBoundingClientRect();
+            if (mouseY < rect.top + rect.height / 2) {
+                insertIdx = i;
+                break;
+            }
+        }
+
+        const preview = document.createElement('div');
+        preview.className = 'npp-section-preview';
+        this._dragState._insertIdx = insertIdx;
+
+        if (insertIdx >= siblings.length) {
+            const last = siblings[siblings.length - 1] || dragged;
+            last.parentNode.insertBefore(preview, last.nextSibling);
+        } else {
+            siblings[insertIdx].parentNode.insertBefore(preview, siblings[insertIdx]);
+        }
+    }
+
+    _clearReorderPreview() {
+        const existing = this.container.querySelector('.npp-section-preview');
+        if (existing) existing.remove();
+    }
+
+    _commitReorder(mouseY) {
+        const sections = [...this.container.querySelectorAll('.npp-section')];
+        const dragged = this._dragState.section;
+        const siblings = sections.filter(s => s !== dragged);
+
+        let insertIdx = siblings.length;
+        for (let i = 0; i < siblings.length; i++) {
+            const rect = siblings[i].getBoundingClientRect();
+            if (mouseY < rect.top + rect.height / 2) {
+                insertIdx = i;
+                break;
+            }
+        }
+
+        if (insertIdx >= siblings.length) {
+            const last = siblings[siblings.length - 1] || dragged;
+            last.parentNode.insertBefore(dragged, last.nextSibling);
+        } else {
+            siblings[insertIdx].parentNode.insertBefore(dragged, siblings[insertIdx]);
+        }
+
+        const newOrder = [...this.container.querySelectorAll('.npp-section')].map(
+            el => el.dataset.section
+        );
+        this._sectionOrder = newOrder;
+        this._saveSectionOrder();
     }
 
     _buildNodeProps(nodeCount, t) {
-        if (nodeCount === 1 && this._nodePropsDocked) {
+        if (nodeCount > 0 && this._nodePropsDocked) {
+            const countHtml = nodeCount > 1 ? `<div class="prop_node_count">${nodeCount} ${t('prop.nodes_selected', 'nodes selected')}</div>` : '';
             return `
-                <div class="property_group npp-docked-group">
-                    <div class="property_group_title npp-extract-handle" id="npp_extract_handle">${t('prop.node_props', 'Node Properties')}</div>
+                <div class="npp-section" data-section="npp">
+                    <div class="npp-section-handle" data-section="npp">${t('prop.node_props', 'Node Properties')}</div>
+                    ${countHtml}
                     <div class="npp-docked-fields">
                         <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div>
                         <div class="npp-row"><label>In</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div>
@@ -323,73 +597,62 @@ export class PropertyPanel extends HTMLElement {
                         <div class="npp-row"><label>Angle</label><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div>
                     </div>
                 </div>`;
-        } else if (nodeCount > 1) {
-            return `
-                <div class="property_group">
-                    <div class="property_group_title">${t('prop.node_props', 'Node Properties')}</div>
-                    <div class="prop_node_count">${nodeCount} ${t('prop.nodes_selected', 'nodes selected')}</div>
-                </div>`;
         }
         return '';
     }
 
     _buildBoundsProps(t) {
         return `
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.bbox', 'Bounding Box')}</div>
-                <div class="property_single_row">
-                    <label>X, Y</label>
-                    <div class="prop_inputs"><input type="number" step="0.1" id="sel_prop_x" placeholder="X"><input type="number" step="0.1" id="sel_prop_y" placeholder="Y"></div>
-                </div>
-                <div class="property_single_row">
-                    <label>W, H</label>
-                    <div class="prop_inputs"><input type="number" step="0.1" id="sel_prop_w" placeholder="W"><input type="number" step="0.1" id="sel_prop_h" placeholder="H"></div>
+            <div class="npp-section" data-section="bbox">
+                <div class="npp-section-handle" data-section="bbox">${t('prop.bbox', 'Bounding Box')}</div>
+                <div class="npp-docked-fields">
+                    <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div>
+                    <div class="npp-row"><label>Size</label><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div>
                 </div>
             </div>`;
     }
 
     _buildPathProps(pathCount, t) {
-        let pathHtml = `
-            <div class="property_group">
-                <div class="property_group_title">${pathCount === 1 ? t('prop.path_props', 'Path Properties') : t('prop.multiple_paths', 'Multiple Paths')}</div>
-                <div class="property_single_row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
-                <div class="property_single_row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
-                <div class="property_single_row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
-                <div class="property_single_row"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
-            </div>`;
-        if (pathCount === 1) {
-            pathHtml += `
-                <div class="property_group">
-                    <div class="property_group_title">${t('prop.path_details', 'Path Details')}</div>
-                    <div class="property_single_row"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"></div>
-                    <div class="property_single_row">
-                        <label>${t('prop.path_direction', 'Path Direction')}</label>
-                        <div class="prop_direction_controls">
-                            <button type="button" id="path_reverse_dir_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
-                            <span id="path_direction" class="prop_direction_label">—</span>
+        if (pathCount > 0 && this._pathPropsDocked) {
+            return `
+                <div class="npp-section" data-section="ppp">
+                    <div class="npp-section-handle" data-section="ppp">${t('prop.path_props', 'Path Properties')}</div>
+                    <div class="npp-docked-fields">
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
+                        ${pathCount === 1 ? `
+                        <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"></div>
+                        <div class="ppp-row ppp-single-path">
+                            <label>${t('prop.path_direction', 'Path Direction')}</label>
+                            <div class="prop_direction_controls">
+                                <button type="button" id="path_reverse_dir_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
+                                <span id="path_direction" class="prop_direction_label">—</span>
+                            </div>
                         </div>
+                        <div class="ppp-row ppp-single-path">
+                            <label>${t('prop.smart_expand_direction', 'Smart Expand Direction')}</label>
+                            <div class="prop_direction_controls">
+                                <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
+                                <span id="path_smart_winding" class="prop_direction_label">—</span>
+                            </div>
+                        </div>` : ''}
                     </div>
-                    <div class="property_single_row">
-                        <label>${t('prop.smart_expand_direction', 'Smart Expand Direction')}</label>
-                        <div class="prop_direction_controls">
-                            <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
-                            <span id="path_smart_winding" class="prop_direction_label">—</span>
-                        </div>
+                </div>`;
+        } else if (pathCount > 1) {
+            return `
+                <div class="property_group">
+                    <div class="property_group_title">${t('prop.multiple_paths', 'Multiple Paths')}</div>
+                    <div class="npp-docked-fields">
+                        <div class="ppp-row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
+                        <div class="ppp-row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
+                        <div class="ppp-row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
+                        <div class="ppp-row"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
                     </div>
                 </div>`;
         }
-        return pathHtml;
-    }
-
-    _buildPenProps(t) {
-        return `
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.pen_settings', 'Pen Tool Settings')}</div>
-                <div class="property_single_row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="tool_stroke"></div>
-                <div class="property_single_row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="tool_closed"></div>
-                <div class="property_single_row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="tool_smart_stroke"></div>
-                <div class="property_single_row"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="tool_show_skel"></div>
-            </div>`;
+        return '';
     }
 
     _buildRefProps(t) {
@@ -420,13 +683,13 @@ export class PropertyPanel extends HTMLElement {
             </div>`;
     }
 
-    patchValues(item, selectedCurves, bounds, nodeCount, isToolSettings, selectedIds) {
+    patchValues(item, selectedCurves, bounds, nodeCount, selectedIds) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
         const patch = (id, val, disable = false) => {
             let el = this.container.querySelector('#' + id);
             if (!el) return;
             if (disable !== undefined) el.disabled = disable;
-            if (document.activeElement === el) return; 
+            if (el === this._focusedInput) return; 
 
             if (el.type === 'checkbox') {
                 if (val === 'mixed') {
@@ -447,14 +710,6 @@ export class PropertyPanel extends HTMLElement {
                 }
             }
         };
-
-        if (isToolSettings && this._drawToolSettings) {
-            const tool = this._drawToolSettings;
-            patch('tool_stroke', tool.stroke_width);
-            patch('tool_closed', tool.closed);
-            patch('tool_smart_stroke', tool.smart_expand);
-            patch('tool_show_skel', tool.show_skeleton);
-        }
 
         if (selectedCurves.length > 0) {
             patch('path_stroke', this.getCommonValue(selectedCurves, 'stroke_width'));
@@ -515,9 +770,14 @@ export class PropertyPanel extends HTMLElement {
             patch('sel_prop_h', (bounds.maxY - bounds.minY).toFixed(1));
         }
 
-        if (nodeCount === 1) {
-            let marker = this._resolvePrimaryNodeMarker();
-            const markerId = typeof marker === 'object' ? marker?.id : marker;
+        if (nodeCount === 1 || (nodeCount > 1 && this._nodePropsDocked)) {
+            let markerId;
+            if (nodeCount === 1) {
+                let marker = this._resolvePrimaryNodeMarker();
+                markerId = typeof marker === 'object' ? marker?.id : marker;
+            } else if (this._nodePropsAnchorId) {
+                markerId = this._nodePropsAnchorId;
+            }
             const node = EditorModel.getNodeReadByMarkerId(markerId);
             if (node) {
                 patch('prop_x', node.x.toFixed(1));
@@ -566,18 +826,6 @@ export class PropertyPanel extends HTMLElement {
         let val = target.type === 'checkbox' ? target.checked : target.value.trim();
         let numVal = target.type === 'number' ? target.valueAsNumber : parseFloat(val);
         let selectedIds = [...this.interaction.selectedTreeIds];
-
-        if (id.startsWith('tool_')) {
-            const propMap = { 'tool_stroke': 'stroke_width', 'tool_closed': 'closed', 'tool_smart_stroke': 'smart_expand', 'tool_show_skel': 'show_skeleton' };
-            const prop = propMap[id];
-            if (prop) {
-                CanvasDispatcher.requestSetPenProperties(
-                    { [prop]: (target.type === 'checkbox' ? val : numVal) },
-                    { recordHistory: e.type === 'change' }
-                );
-            }
-            return;
-        }
 
         if (id.startsWith('path_')) {
             const propMap = { 'path_stroke': 'stroke_width', 'path_closed': 'closed', 'path_smart_stroke': 'smart_stroke', 'path_show_skel': 'show_skeleton' };
@@ -669,7 +917,12 @@ export class PropertyPanel extends HTMLElement {
 
         if (['prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
             if (isNaN(numVal)) return;
-            let marker = this._resolvePrimaryNodeMarker();
+            let marker;
+            if (this._nodePropsDocked && this._nodePropsAnchorId) {
+                marker = this._nodePropsAnchorId;
+            } else {
+                marker = this._resolvePrimaryNodeMarker();
+            }
             CanvasDispatcher.requestUpdateNodeProperty(marker, id, numVal, { recordHistory: e.type === 'change' });
             return;
         }

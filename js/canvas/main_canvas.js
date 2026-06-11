@@ -37,6 +37,9 @@ class MainCanvasBase extends HTMLElement {
         this.dragging_node_start = { x: 0, y: 0 }; this.dragging_node_seq_idx = -1;
         this.dragging_node_matrix = null; this.drawing_seq_offset = undefined;
         this.is_measuring = false; this.measure_start = null; this.measure_end = null;
+        this.rulers = [];
+        this._nextRulerId = 1;
+        this._draggingRulerEndpoint = null; // {rulerId, endpoint:'start'|'end'}
         this.is_box_selecting = false; this.box_select_start = null; this.box_select_end = null;
         this.transform_action = null; this.transform_snapshot = null;
         this.transform_snapshot_refs = null; this.transform_pivot = null; this.transform_start_world = null;
@@ -74,6 +77,8 @@ class MainCanvasBase extends HTMLElement {
         this._nextUserGuideId = 1;
         this._draggingDivider = null;
         this._hoveredDividerId = null;
+        this._hoveredRulerId = null;
+        this._hoveredRulerEndpoint = null;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
         /** 高频编辑期间仅这些曲线 id 走智能描边预览（骨架 + 浏览器 lineWidth） */
         this._interactiveStrokePreviewIds = new Set();

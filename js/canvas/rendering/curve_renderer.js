@@ -129,8 +129,8 @@ export function appendCurveFillPath(ctx, curve, viewport, { refId = null, stroke
         return;
     }
 
-    if (!curve.smart_stroke && isClosedRing) {
-        emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: true });
+    if (!curve.smart_stroke) {
+        emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: isClosedRing });
     }
 }
 

@@ -51,9 +51,13 @@ export const CANVAS_EVENTS = Object.freeze({
     REQUEST_SAVE: "request-save",
     REQUEST_EXPORT: "request-export",
     REQUEST_LOAD: "request-load",
+    REQUEST_NEW_PROJECT: "request-new-project",
+    REQUEST_LOAD_FROM_CACHE: "request-load-from-cache",
+    REQUEST_SAVE_TO_CACHE: "request-save-to-cache",
     REQUEST_UNDO: "request-undo",
     REQUEST_REDO: "request-redo",
     REQUEST_SAVE_VIEW_STATE: "request-save-view-state",
+    REQUEST_FINISH_DRAWING_PATH: "request-finish-drawing-path",
     STATE_CHANGED: "canvas-state-changed"
 });
 

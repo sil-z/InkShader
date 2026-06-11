@@ -125,12 +125,16 @@ export const CanvasDispatcher = Object.freeze({
         }
     },
 
+    requestFinishDrawingPath() { emitRequest(CANVAS_EVENTS.REQUEST_FINISH_DRAWING_PATH); },
     requestBooleanUnion() { emitRequest(CANVAS_EVENTS.REQUEST_BOOLEAN_UNION); },
     requestExpandStroke() { emitRequest(CANVAS_EVENTS.REQUEST_EXPAND_STROKE); },
     requestUnlink(ids = []) { emitRequest(CANVAS_EVENTS.REQUEST_UNLINK, { ids }); },
     requestImport() { emitRequest(CANVAS_EVENTS.REQUEST_IMPORT); },
     requestSave() { emitRequest(CANVAS_EVENTS.REQUEST_SAVE); },
     requestLoad() { emitRequest(CANVAS_EVENTS.REQUEST_LOAD); },
+    requestNewProject() { emitRequest(CANVAS_EVENTS.REQUEST_NEW_PROJECT); },
+    requestLoadFromCache(projectName) { emitRequest(CANVAS_EVENTS.REQUEST_LOAD_FROM_CACHE, { projectName }); },
+    requestSaveToCache(projectName) { emitRequest(CANVAS_EVENTS.REQUEST_SAVE_TO_CACHE, { projectName }); },
     requestExport() { emitRequest(CANVAS_EVENTS.REQUEST_EXPORT); },
 
     /** 领域通知：序列文本变更（由 sequence UI 发出，Controller 转 SET_SEQUENCE_EDITOR_STATE） */

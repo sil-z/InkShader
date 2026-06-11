@@ -5,6 +5,9 @@ import { appEventBus } from "../app/event_bus.js";
 export const translations = {
     en: {
         "menu.load": "Load", "menu.save": "Save", "menu.export": "Export As", "menu.prefs": "Preferences", "menu.help": "Help",
+        "menu.new": "New", "menu.font": "Font",
+        "dropdown.load_file": "Load from File", "dropdown.load_cache": "Load from Cache", "dropdown.no_projects": "No cached projects",
+        "font.project_name": "Project Name",
         "tool.select": "Select and transform objects", "tool.node": "Edit paths by nodes", "tool.draw": "Draw Bezier curves", "tool.ellipse": "Create Ellipses", "tool.measure": "Measure objects",
         "mode.corner": "Make selected nodes corner", "mode.smooth": "Make selected nodes smooth", "mode.symmetric": "Make selected nodes symmetric",
         "action.union": "Create union of selected paths", "action.expand": "Expand a stroke into a filled path",
@@ -40,6 +43,9 @@ export const translations = {
     },
     zh: {
         "menu.load": "加载", "menu.save": "保存", "menu.export": "导出为", "menu.prefs": "首选项", "menu.help": "帮助",
+        "menu.new": "新建", "menu.font": "字体",
+        "dropdown.load_file": "从文件加载", "dropdown.load_cache": "从缓存加载", "dropdown.no_projects": "没有缓存的项目",
+        "font.project_name": "项目名称",
         "tool.select": "选择与变换对象", "tool.node": "编辑路径节点", "tool.draw": "绘制贝塞尔曲线", "tool.ellipse": "创建椭圆", "tool.measure": "测量对象",
         "mode.corner": "使选中节点成为角点", "mode.smooth": "使选中节点平滑", "mode.symmetric": "使选中节点对称",
         "action.union": "合并选中的路径", "action.expand": "将描边扩展为填充路径",
