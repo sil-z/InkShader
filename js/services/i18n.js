@@ -28,6 +28,7 @@ export const translations = {
         "prop.bbox": "Bounding Box", "prop.multiple_paths": "Multiple Paths", "prop.path_props": "Path Properties", "prop.weight": "Weight", "prop.closed": "Closed", "prop.smart": "Smart", "prop.skel": "Skeleton", "prop.path_details": "Path Details", "prop.name": "Name",
         "prop.path_direction": "Path Direction", "prop.smart_expand_direction": "Smart Expand Direction",
         "prop.toggle_path_direction": "Toggle path direction", "prop.toggle_smart_expand_direction": "Toggle smart expand direction",
+        "prop.dir_cw": "Clockwise", "prop.dir_ccw": "Counter-clockwise", "prop.dir_open": "Open",
         "prop.pen_settings": "Pen Tool Settings", "prop.trans_ref": "Transform (Ref)", "prop.trans": "Trans", "prop.ref_details": "Reference Details", "prop.group_spacing": "Group Spacing", "prop.advance": "Advance", "prop.group_details": "Group Details", "prop.char": "Char", "prop.mixed": "Mixed",
 
         "tree.menu.delete": "Delete", "tree.menu.copy": "Copy", "tree.menu.copy_ref": "Copy Reference", "tree.menu.paste": "Paste", "tree.menu.duplicate": "Duplicate", "tree.menu.unlink": "Unlink Reference", "tree.menu.go_source": "Go to Reference Source",
@@ -66,6 +67,7 @@ export const translations = {
         "prop.bbox": "包围盒", "prop.multiple_paths": "多个路径", "prop.path_props": "路径属性", "prop.weight": "粗细", "prop.closed": "闭合", "prop.smart": "智能", "prop.skel": "骨架", "prop.path_details": "路径详情", "prop.name": "名称",
         "prop.path_direction": "路径方向", "prop.smart_expand_direction": "智能描边方向",
         "prop.toggle_path_direction": "切换路径方向", "prop.toggle_smart_expand_direction": "切换智能描边方向",
+        "prop.dir_cw": "顺时针", "prop.dir_ccw": "逆时针", "prop.dir_open": "开放",
         "prop.pen_settings": "钢笔工具设置", "prop.trans_ref": "变换 (引用)", "prop.trans": "平移", "prop.ref_details": "引用详情", "prop.group_spacing": "字距", "prop.advance": "步进宽度", "prop.group_details": "分组详情", "prop.char": "字符映射", "prop.mixed": "混合",
 
         "tree.menu.delete": "删除", "tree.menu.copy": "复制", "tree.menu.copy_ref": "复制为引用", "tree.menu.paste": "粘贴", "tree.menu.duplicate": "建立副本", "tree.menu.unlink": "取消引用链接", "tree.menu.go_source": "跳转至源对象",

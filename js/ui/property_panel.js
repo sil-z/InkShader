@@ -16,6 +16,8 @@ const TEMPLATE_HTML = `
     <div id="property_container" class="prop_panel_container"></div>
 `;
 
+const PROPS_DOCK_KEY = 'props_section_dock';
+
 export class PropertyPanel extends HTMLElement {
     constructor() {
         super();
@@ -24,13 +26,36 @@ export class PropertyPanel extends HTMLElement {
         this.globalEventTrackers = [];
         this.lastSignature = "";
         this._drawToolSettings = null;
-        this._nodePropsDocked = false;
-        this._pathPropsDocked = false;
-        this._bboxDocked = false;
+        this._nodePropsDocked = true;
+        this._pathPropsDocked = true;
+        this._bboxDocked = true;
+        this._loadSectionDockState();
         this._focusedInput = null;
         this._sectionOrder = [];
         this._loadSectionOrder();
         this._dragState = null;
+    }
+
+    _loadSectionDockState() {
+        try {
+            const saved = localStorage.getItem(PROPS_DOCK_KEY);
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (typeof data.npp === 'boolean') this._nodePropsDocked = data.npp;
+                if (typeof data.ppp === 'boolean') this._pathPropsDocked = data.ppp;
+                if (typeof data.bbox === 'boolean') this._bboxDocked = data.bbox;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    _saveSectionDockState() {
+        try {
+            localStorage.setItem(PROPS_DOCK_KEY, JSON.stringify({
+                npp: this._nodePropsDocked,
+                ppp: this._pathPropsDocked,
+                bbox: this._bboxDocked,
+            }));
+        } catch (e) { /* ignore */ }
     }
 
     addGlobalListener(target, type, listener, options = false) {
@@ -92,6 +117,19 @@ export class PropertyPanel extends HTMLElement {
             });
 
             this.container.addEventListener('click', (e) => {
+                const dirTextToggle = e.target.closest('.prop_direction_text_toggle');
+                if (dirTextToggle) {
+                    const toggleBtn = dirTextToggle.querySelector('.prop_toggle_btn');
+                    if (toggleBtn && !toggleBtn.disabled) {
+                        const id = toggleBtn.id;
+                        if (id === 'path_reverse_dir_toggle') {
+                            this.handlePathReverseDirection();
+                        } else if (id === 'path_smart_winding_toggle') {
+                            this.handleSmartStrokeWindingToggle();
+                        }
+                    }
+                    return;
+                }
                 const reverseBtn = e.target.closest('#path_reverse_dir_toggle');
                 if (reverseBtn) {
                     this.handlePathReverseDirection();
@@ -120,18 +158,21 @@ export class PropertyPanel extends HTMLElement {
             this._nodePropsDocked = true;
             this._nodePropsAnchorId = e?.detail?.anchorId || null;
             if (!was) this.lastSignature = "";
+            this._saveSectionDockState();
             this.render();
         });
         this.addGlobalListener(appEventBus, PATH_PROPS_DOCKED, (e) => {
             const was = this._pathPropsDocked;
             this._pathPropsDocked = true;
             if (!was) this.lastSignature = "";
+            this._saveSectionDockState();
             this.render();
         });
         this.addGlobalListener(appEventBus, BBOX_DOCKED, (e) => {
             const was = this._bboxDocked;
             this._bboxDocked = true;
             if (!was) this.lastSignature = "";
+            this._saveSectionDockState();
             this.render();
         });
     }
@@ -342,10 +383,17 @@ export class PropertyPanel extends HTMLElement {
                 const sectionId = section.dataset.section;
                 let popup = null;
                 let extracted = false;
+                // Capture where within the handle the user clicked — this is the
+                // drag anchor offset (like dragging a tab: the click position on
+                // the tab determines the follow-mouse offset).
+                const hr = handle.getBoundingClientRect();
+                const handleOffsetX = e.clientX - hr.left;
+                const handleOffsetY = e.clientY - hr.top;
                 this._dragState = { section, handle, startX: e.clientX, startY: e.clientY };
 
                 const onMove = (ev) => {
                     if (!this._dragState) return;
+                    if (extracted) return;
                     const dx = ev.clientX - this._dragState.startX;
                     const dy = ev.clientY - this._dragState.startY;
                     const dist = Math.abs(dx) + Math.abs(dy);
@@ -359,26 +407,11 @@ export class PropertyPanel extends HTMLElement {
                             this._dragState = null;
                             return;
                         }
-                        this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY);
-                        // Override position to follow cursor after render
-                        const pw = popup.offsetWidth || 220, ph = popup.offsetHeight || 100;
-                        popup.style.left = Math.max(0, Math.min(ev.clientX - pw / 2, window.innerWidth - pw)) + 'px';
-                        popup.style.top = Math.max(0, Math.min(ev.clientY - 10, window.innerHeight - ph)) + 'px';
+                        this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY, handleOffsetX, handleOffsetY);
                         return;
                     }
 
-                    if (extracted && popup) {
-                        const vw = window.innerWidth, vh = window.innerHeight;
-                        const pw = popup.offsetWidth || 220, ph = popup.offsetHeight || 100;
-                        let nl = Math.max(0, Math.min(ev.clientX - pw / 2, vw - pw));
-                        let nt = Math.max(0, Math.min(ev.clientY - 10, vh - ph));
-                        popup.style.left = nl + 'px';
-                        popup.style.top = nt + 'px';
-                        const r = this.getBoundingClientRect();
-                        const over = ev.clientX >= r.left && ev.clientX <= r.right &&
-                                    ev.clientY >= r.top && ev.clientY <= r.bottom;
-                        this.classList.toggle('npp-drop-target', over);
-                    }
+
                 };
 
                 const onUp = (ev) => {
@@ -389,17 +422,8 @@ export class PropertyPanel extends HTMLElement {
                     if (this._dragState?.section) {
                         this._dragState.section.classList.remove('is-dragging');
                     }
-
-                    if (extracted && popup) {
-                        const r = this.getBoundingClientRect();
-                        const over = ev.clientX >= r.left && ev.clientX <= r.right &&
-                                    ev.clientY >= r.top && ev.clientY <= r.bottom;
-                        if (over) {
-                            popup._setDocked(true);
-                        } else if (typeof popup._savePosition === 'function') {
-                            popup._savePosition();
-                        }
-                    }
+                    // _extractSectionImpl's onUp handles dock/undock for the
+                    // extracted popup — skip here to avoid double-handling.
                     this._dragState = null;
                 };
 
@@ -416,36 +440,37 @@ export class PropertyPanel extends HTMLElement {
         return null;
     }
 
-    _extractSectionImpl(sectionId, popup, startX, startY) {
+    _extractSectionImpl(sectionId, popup, startX, startY, handleOffsetX, handleOffsetY) {
         const self = this;
 
         if (sectionId === 'npp') {
             this._nodePropsDocked = false;
             this._nodePropsAnchorId = null;
             this.lastSignature = '';
+            this._saveSectionDockState();
             this.render();
 
             const anchorId = popup._anchorNodeId;
-            popup._docked = false;
+            popup._setDocked(false);
             popup._anchorNodeId = anchorId;
-            popup.classList.add('visible');
             popup._patchValues(anchorId);
         } else if (sectionId === 'bbox') {
             this._bboxDocked = false;
             this.lastSignature = '';
+            this._saveSectionDockState();
             this.render();
 
-            popup._docked = false;
+            popup._setDocked(false);
             popup._selectedTreeIds = [...this.interaction.selectedTreeIds];
             popup._bounds = this.getSelectionBounds();
-            popup.classList.add('visible');
             popup._patchValues();
         } else if (sectionId === 'ppp') {
             this._pathPropsDocked = false;
             this.lastSignature = '';
+            this._saveSectionDockState();
             this.render();
 
-            popup._docked = false;
+            popup._setDocked(false);
             const selIds = [...this.interaction.selectedTreeIds];
             const curves = [];
             selIds.forEach(id => {
@@ -460,26 +485,37 @@ export class PropertyPanel extends HTMLElement {
                 return it && it.type === 'curve';
             });
             popup._selectedTreeIds = [...selIds];
-            popup.classList.add('visible');
             popup._patchValues(curves);
         }
 
-        popup.style.left = startX + 'px';
-        popup.style.top = startY + 'px';
-
-        const sx = startX, sy = startY;
-        const sl = startX, st = startY;
+        // Position the popup so the cursor is at the same relative position
+        // within it as it was within the section handle — like dragging a browser
+        // tab: the click point on the tab determines the drag offset.
+        popup.style.left = (startX - handleOffsetX) + 'px';
+        popup.style.top = (startY - handleOffsetY) + 'px';
+        // Mark position ready so the popup's _show() won't schedule _restorePosition()
+        // and override our carefully calculated placement.
+        popup._positionReady = true;
+        popup.classList.add('visible');
+        const initPw = popup.offsetWidth || 220;
+        const initPh = popup.offsetHeight || 100;
+        // Clamp to viewport
+        popup.style.left = Math.max(0, Math.min(parseFloat(popup.style.left), window.innerWidth - initPw)) + 'px';
+        popup.style.top = Math.max(0, Math.min(parseFloat(popup.style.top), window.innerHeight - initPh)) + 'px';
+        // The offset captures the actual cursor-to-popup-left-edge distance after clamping
+        const offX = startX - parseFloat(popup.style.left);
+        const offY = startY - parseFloat(popup.style.top);
         const dropClass = sectionId === 'npp' ? 'npp-drop-target'
                         : sectionId === 'bbox' ? 'bbox-drop-target'
                         : 'ppp-drop-target';
 
         const onMove = (ev) => {
             const vw = window.innerWidth, vh = window.innerHeight;
-            const pw = popup.offsetWidth, ph = popup.offsetHeight;
-            let nl = sl + ev.clientX - sx;
-            let nt = st + ev.clientY - sy;
-            nl = Math.max(0, Math.min(nl, vw - pw));
-            nt = Math.max(0, Math.min(nt, vh - ph));
+            const pw2 = popup.offsetWidth, ph2 = popup.offsetHeight;
+            let nl = ev.clientX - offX;
+            let nt = ev.clientY - offY;
+            nl = Math.max(0, Math.min(nl, vw - (pw2 || initPw)));
+            nt = Math.max(0, Math.min(nt, vh - (ph2 || initPh)));
             popup.style.left = nl + 'px';
             popup.style.top = nt + 'px';
 
@@ -518,7 +554,15 @@ export class PropertyPanel extends HTMLElement {
             popup._docked = true;
             this._pathPropsDocked = true;
         }
+        // Sync popup's localStorage so a page refresh preserves the docked state
+        try {
+            const key = sectionId === 'npp' ? 'npp_docked'
+                      : sectionId === 'bbox' ? 'bbox_docked'
+                      : 'ppp_docked';
+            localStorage.setItem(key, '1');
+        } catch (_) {}
         this.lastSignature = '';
+        this._saveSectionDockState();
         this.render();
     }
 
@@ -626,16 +670,16 @@ export class PropertyPanel extends HTMLElement {
                         <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"></div>
                         <div class="ppp-row ppp-single-path">
                             <label>${t('prop.path_direction', 'Path Direction')}</label>
-                            <div class="prop_direction_controls">
-                                <button type="button" id="path_reverse_dir_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
-                                <span id="path_direction" class="prop_direction_label">—</span>
+                            <div class="prop_direction_text_toggle" id="path_reverse_dir_wrapper">
+                                <input type="text" readonly class="prop_direction_input" id="path_direction_text" value="" tabindex="-1">
+                                <button type="button" id="path_reverse_dir_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
                             </div>
                         </div>
                         <div class="ppp-row ppp-single-path">
                             <label>${t('prop.smart_expand_direction', 'Smart Expand Direction')}</label>
-                            <div class="prop_direction_controls">
-                                <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false"></button>
-                                <span id="path_smart_winding" class="prop_direction_label">—</span>
+                            <div class="prop_direction_text_toggle" id="path_smart_winding_wrapper">
+                                <input type="text" readonly class="prop_direction_input" id="path_smart_winding_text" value="" tabindex="-1">
+                                <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
                             </div>
                         </div>` : ''}
                     </div>
@@ -720,29 +764,50 @@ export class PropertyPanel extends HTMLElement {
                 if (!item) item = EditorModel.getTreeItem(selectedIds[0]);
                 patch('c_name', item?.name ?? '');
                 const curve = selectedCurves[0];
-                const winding = curve.skeletonWinding ?? 'open';
-                const dirText = winding === 'cw' ? t('prop.dir_cw', 'Clockwise')
-                    : winding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
-                    : t('prop.dir_open', 'Open');
-                const dirEl = this.container.querySelector('#path_direction');
-                if (dirEl) dirEl.textContent = dirText;
+                const dirEl = this.container.querySelector('#path_direction_text');
                 const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
                 if (revBtn) {
-                    const canReverse = (curve.skeletonVertexCount ?? 0) >= 2;
-                    revBtn.disabled = !canReverse;
-                    revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
+                    revBtn.disabled = false;
                     revBtn.title = t('prop.toggle_path_direction', 'Toggle path direction');
+                    // If the curve changed, clear stale dataset from previous curve
+                    if (this._lastDirCurveId !== curve.id) {
+                        this._lastDirCurveId = curve.id;
+                        delete revBtn.dataset.winding;
+                    }
+                    // Restore manual winding from JS store (survives buildDOM)
+                    if (this._manualDirWinding && this._manualDirWinding[curve.id]) {
+                        revBtn.dataset.winding = this._manualDirWinding[curve.id];
+                    }
+                }
+                // Use data-winding if set (manually toggled, figure-8 workaround);
+                // fall back to skeletonWinding from the curve model.
+                const winding = (revBtn && revBtn.dataset && revBtn.dataset.winding) || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
+                if (dirEl) {
+                    dirEl.value = winding === 'cw' ? t('prop.dir_cw', 'Clockwise')
+                        : winding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
+                        : t('prop.dir_open', 'Open');
+                }
+                if (revBtn) {
+                    revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
+                }
+                const revWrapper = this.container.querySelector('#path_reverse_dir_wrapper');
+                if (revWrapper) {
+                    revWrapper.title = t('prop.toggle_path_direction', 'Toggle path direction');
                 }
 
                 const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
-                let smartDirEl = this.container.querySelector('#path_smart_winding');
-                if (smartDirEl) smartDirEl.textContent = smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
+                let smartDirEl = this.container.querySelector('#path_smart_winding_text');
+                if (smartDirEl) smartDirEl.value = smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
                 let smartBtn = this.container.querySelector('#path_smart_winding_toggle');
                 if (smartBtn) {
                     const enableSmartWinding = curve.smart_stroke === true;
                     smartBtn.disabled = !enableSmartWinding;
                     smartBtn.setAttribute('aria-pressed', smartWinding === 'cw' ? 'true' : 'false');
                     smartBtn.title = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                }
+                let smartWrapper = this.container.querySelector('#path_smart_winding_wrapper');
+                if (smartWrapper) {
+                    smartWrapper.title = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
                 }
             }
         }
@@ -801,6 +866,27 @@ export class PropertyPanel extends HTMLElement {
         if (selectedIds.length !== 1) return;
         let item = EditorModel.getTreeItem(selectedIds[0]);
         if (!item || item.type !== 'curve') return;
+
+        // Flip UI state FIRST so any synchronous re-render triggered by the
+        // server request picks up the correct winding from _manualDirWinding
+        // instead of the stale skeletonWinding. (The server request can trigger
+        // a synchronous render that would otherwise overwrite the manual flip.)
+        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const dirEl = this.container.querySelector('#path_direction_text');
+        const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
+        if (revBtn && dirEl) {
+            const isCw = revBtn.getAttribute('aria-pressed') === 'true';
+            const newWinding = isCw ? 'ccw' : 'cw';
+            revBtn.setAttribute('aria-pressed', newWinding === 'cw' ? 'true' : 'false');
+            revBtn.dataset.winding = newWinding;
+            dirEl.value = newWinding === 'cw'
+                ? t('prop.dir_cw', 'Clockwise')
+                : t('prop.dir_ccw', 'Counter-clockwise');
+            // Persist in JS so it survives buildDOM (dock/undock)
+            if (!this._manualDirWinding) this._manualDirWinding = {};
+            this._manualDirWinding[item.curveId] = newWinding;
+        }
+
         CanvasDispatcher.requestSetSingleObjectProperties(
             [{ id: item.id, props: { reverse_direction: true } }],
             { recordHistory: true }

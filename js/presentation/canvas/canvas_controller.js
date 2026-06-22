@@ -355,6 +355,13 @@ export class CanvasController {
                         { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
                         { source: "restore-state" }
                     );
+                } else {
+                    // No data at all (e.g. cache cleared) — initialize empty sequence editor state
+                    this.dispatchAction(
+                        CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                        { payload: { text: '', activeIndices: [] }, options: { recordHistory: false } },
+                        { source: "restore-state" }
+                    );
                 }
             }
 

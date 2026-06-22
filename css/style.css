@@ -557,6 +557,7 @@ glyph-sequence-bar {
 .dock-tab {
     font-size: 13px;
     font-weight: 600;
+    line-height: 16px;
     padding: 4px 10px 5px 10px;
     cursor: pointer;
     color: var(--ui-text-muted);
@@ -569,8 +570,17 @@ glyph-sequence-bar {
 .dock-tab.active {
     color: var(--ui-text-main);
     background: transparent;
-    border-bottom: 3px solid #60a5fa;
-    margin-bottom: -3px;
+    position: relative;
+}
+.dock-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #60a5fa;
+    border-radius: 0 0 2px 2px;
 }
 .dock-tab:hover:not(.active) {
     color: var(--ui-text-main);
@@ -651,10 +661,6 @@ glyph-sequence-bar {
 .dock-preview.visible {
     opacity: 1;
 }
-.dock-tab-bar.drag-over {
-    background: rgba(96, 165, 250, 0.15) !important;
-    border-radius: 6px;
-}
 .dock-drag-ghost {
     position: fixed;
     z-index: 10000;
@@ -682,7 +688,7 @@ glyph-sequence-bar {
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    background: var(--ui-bg-panel, #fff);
+    background: var(--ui-bg-placeholder);
     border: 1px solid var(--ui-border-light, #cbd5e1);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
@@ -789,6 +795,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar,
 .right::-webkit-scrollbar,
 #property_container::-webkit-scrollbar,
+.dock-content::-webkit-scrollbar,
 .tree_panel::-webkit-scrollbar,
 .logger-scroll::-webkit-scrollbar {
     width: 6px;
@@ -797,6 +804,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar-button,
 .right::-webkit-scrollbar-button,
 #property_container::-webkit-scrollbar-button,
+.dock-content::-webkit-scrollbar-button,
 .tree_panel::-webkit-scrollbar-button,
 .logger-scroll::-webkit-scrollbar-button {
     display: none;
@@ -806,6 +814,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar-corner,
 .right::-webkit-scrollbar-corner,
 #property_container::-webkit-scrollbar-corner,
+.dock-content::-webkit-scrollbar-corner,
 .tree_panel::-webkit-scrollbar-corner,
 .logger-scroll::-webkit-scrollbar-corner {
     background: transparent;
@@ -813,6 +822,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar-thumb,
 .right::-webkit-scrollbar-thumb,
 #property_container::-webkit-scrollbar-thumb,
+.dock-content::-webkit-scrollbar-thumb,
 .tree_panel::-webkit-scrollbar-thumb,
 .logger-scroll::-webkit-scrollbar-thumb {
     background: transparent;
@@ -822,6 +832,7 @@ logger-panel {
 .placeholder:hover::-webkit-scrollbar-thumb,
 .right:hover::-webkit-scrollbar-thumb,
 #property_container:hover::-webkit-scrollbar-thumb,
+.dock-content:hover::-webkit-scrollbar-thumb,
 .tree_panel:hover::-webkit-scrollbar-thumb,
 .logger-scroll:hover::-webkit-scrollbar-thumb,
 .logger-scroll.show-scrollbar::-webkit-scrollbar-thumb {
@@ -831,6 +842,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar-thumb:hover,
 .right::-webkit-scrollbar-thumb:hover,
 #property_container::-webkit-scrollbar-thumb:hover,
+.dock-content::-webkit-scrollbar-thumb:hover,
 .tree_panel::-webkit-scrollbar-thumb:hover,
 .logger-scroll::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
@@ -839,6 +851,7 @@ logger-panel {
 .placeholder::-webkit-scrollbar-track,
 .right::-webkit-scrollbar-track,
 #property_container::-webkit-scrollbar-track,
+.dock-content::-webkit-scrollbar-track,
 .tree_panel::-webkit-scrollbar-track,
 .logger-scroll::-webkit-scrollbar-track {
     background: transparent;
@@ -1004,6 +1017,67 @@ logger-panel {
     opacity: 0.45;
     cursor: not-allowed;
 }
+/* ── Direction text toggle (text-box + embedded toggle switch) ── */
+/* Self-contained — does NOT rely on base .prop_toggle_btn for any dimension. */
+.prop_direction_text_toggle {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+/* High specificity to beat .ppp-row input[type="text"] on padding-right */
+.ppp-row .prop_direction_text_toggle input.prop_direction_input {
+    padding-right: 30px;
+    pointer-events: none;
+}
+/* Self-contained toggle button — all styles explicit, no cascade from base .prop_toggle_btn. */
+.prop_direction_text_toggle .prop_toggle_btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    flex: none;
+    min-width: 26px;
+    width: 26px;
+    height: 14px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--ui-border-light);
+    border-radius: 999px;
+    background: var(--ui-border);
+    pointer-events: none;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    line-height: 0;
+    outline: none;
+}
+.prop_direction_text_toggle .prop_toggle_btn::before {
+    content: "";
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    left: 2px;
+    top: 50%;
+    border-radius: 50%;
+    background: #ffffff;
+    border: none;
+    transform: translateY(-50%);
+    transition: transform 0.15s ease;
+}
+.prop_direction_text_toggle .prop_toggle_btn[aria-pressed="true"] {
+    background: var(--ui-accent);
+    border-color: var(--ui-accent);
+}
+.prop_direction_text_toggle .prop_toggle_btn[aria-pressed="true"]::before {
+    transform: translate(12px, -50%);
+}
+.prop_direction_text_toggle .prop_toggle_btn:disabled {
+    opacity: 0.35;
+}
 .property_group_content::after {
     display: none;
 }
@@ -1042,7 +1116,7 @@ object-tree {
     color: var(--ui-text-main);
 }
 .property_panel input {
-    height: 18px;
+    height: 22px;
     font-family: inherit;
     font-size: 11px;
     padding: 2px 4px;
@@ -1071,13 +1145,22 @@ object-tree {
     color: var(--ui-text-muted);
 }
 .property_panel input[type="number"]::-webkit-outer-spin-button,
-.property_panel input[type="number"]::-webkit-inner-spin-button {
+.property_panel input[type="number"]::-webkit-inner-spin-button,
+.npp-row input[type="number"]::-webkit-outer-spin-button,
+.npp-row input[type="number"]::-webkit-inner-spin-button,
+.ppp-row input[type="number"]::-webkit-outer-spin-button,
+.ppp-row input[type="number"]::-webkit-inner-spin-button,
+.npp-docked-fields input[type="number"]::-webkit-outer-spin-button,
+.npp-docked-fields input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-.property_panel input[type="number"] {
+.property_panel input[type="number"],
+.npp-row input[type="number"],
+.ppp-row input[type="number"],
+.npp-docked-fields input[type="number"] {
     -moz-appearance: textfield;
-    appearance: none;
+    appearance: textfield;
 }
 /* =========================================
    Canvas & Rulers
@@ -1445,12 +1528,14 @@ font-popup.visible {
 }
 .ppp-row input[type="text"] {
     flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
     border-radius: 3px;
     background: var(--ui-bg-base);
     color: var(--ui-text-main);
+    font-family: inherit;
     font-size: 11px;
     box-sizing: border-box;
     outline: none;
@@ -1478,14 +1563,11 @@ font-popup.visible {
 .ppp-drop-target::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 6px;
-    right: 6px;
-    height: 2px;
-    background: var(--ui-accent);
-    border-radius: 1px;
-    z-index: 10;
+    inset: 4px;
+    border: 2px dashed rgba(96, 165, 250, 0.6);
+    border-radius: 8px;
     pointer-events: none;
+    z-index: 1;
 }
 .npp-drag-ghost {
     background: var(--ui-bg-panel);
@@ -1627,12 +1709,14 @@ font-popup.visible {
 }
 .npp-docked-fields .ppp-row input[type="text"] {
     flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
     border-radius: 3px;
     background: var(--ui-bg-base);
     color: var(--ui-text-main);
+    font-family: inherit;
     font-size: 11px;
     box-sizing: border-box;
     outline: none;

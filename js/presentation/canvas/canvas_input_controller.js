@@ -58,7 +58,7 @@ export class CanvasInputController {
             if (e.button === 1 && isTextInputActive) {
                 if (typeof activeEl.blur === 'function') activeEl.blur();
                 e.preventDefault();
-                return;
+                // Don't return — fall through to panning handler below
             }
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);

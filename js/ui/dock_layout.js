@@ -8,6 +8,8 @@ function createNode(type, data = {}) {
     return { type, ...data };
 }
 
+const STORAGE_KEY = 'inkshader_dock_layout';
+
 export class DockLayout {
     constructor(container) {
         this.container = container;
@@ -23,6 +25,7 @@ export class DockLayout {
         this._panelToGroup = new Map();
         this._floatGroupCounter = 0;
         this._floatZCounter = 1000;
+        this._restoring = false;
     }
 
     initialize(panelIds) {
@@ -30,19 +33,23 @@ export class DockLayout {
         for (const [id, def] of Object.entries(PANEL_DEFS)) {
             this._componentRefs[id] = document.querySelector(def.compSelector);
         }
+        if (this._restoreFromStorage()) return;
         this.root = createNode("split", {
             direction: "v",
             children: panelIds.map(id => createNode("leaf", { id, component: null })),
             sizes: panelIds.map(() => 100 / panelIds.length)
         });
         this._buildDOM();
+        this._saveStateToStorage();
     }
 
     serialize() {
+        if (!this.root) return null;
         const walk = (n) => {
+            if (!n) return null;
             if (n.type === "leaf") return { type: "leaf", id: n.id };
-            if (n.type === "tabs") return { type: "tabs", activeIndex: n.activeIndex, children: n.children.map(c => walk(c)) };
-            if (n.type === "split") return { type: "split", direction: n.direction, sizes: n.sizes, children: n.children.map(c => walk(c)) };
+            if (n.type === "tabs") return { type: "tabs", activeIndex: n.activeIndex, children: n.children.map(c => walk(c)).filter(Boolean) };
+            if (n.type === "split") return { type: "split", direction: n.direction, sizes: n.sizes, children: n.children.map(c => walk(c)).filter(Boolean) };
             return null;
         };
         return walk(this.root);
@@ -56,8 +63,81 @@ export class DockLayout {
         this._initDragHandles();
     }
 
+    _saveStateToStorage() {
+        if (this._restoring) return;
+        if (!this.root) return;
+        try {
+            const floatState = Array.from(this._floatedPanels.entries()).map(([pid, info]) => {
+                const groupId = this._panelToGroup.get(pid);
+                const floatEl = info.floatEl;
+                return {
+                    panelId: pid,
+                    groupId,
+                    left: floatEl.style.left,
+                    top: floatEl.style.top,
+                    width: floatEl.style.width,
+                    height: floatEl.style.height,
+                };
+            });
+            const data = {
+                tree: this.serialize(),
+                floats: floatState,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            // localStorage unavailable
+        }
+    }
+
+    _restoreFromStorage() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return false;
+            const data = JSON.parse(raw);
+            if (!data || !data.tree) return false;
+            this._restoring = true;
+            // Assign tree root BEFORE building DOM so all tree operations work
+            this.root = data.tree;
+            this._buildDOM();
+            if (Array.isArray(data.floats)) {
+                data.floats.forEach((f) => {
+                    const comp = this._componentRefs?.[f.panelId];
+                    if (!comp) return;
+                    this._floatedPanels.delete(f.panelId);
+                    this._floatPanel(f.panelId, {
+                        left: parseInt(f.left) || 100,
+                        top: parseInt(f.top) || 100,
+                    });
+                    const floatEl = this._floatedPanels.get(f.panelId)?.floatEl;
+                    if (floatEl) {
+                        // Override position set by _floatPanel() — that method applies
+                        // a -180/-30 offset for drag UX which is wrong during restore.
+                        if (f.left) floatEl.style.left = f.left;
+                        if (f.top) floatEl.style.top = f.top;
+                        if (f.width) floatEl.style.width = f.width;
+                        if (f.height) floatEl.style.height = f.height;
+                        // Clamp restored position so the tab bar stays within the viewport.
+                        const curLeft = parseFloat(floatEl.style.left) || 100;
+                        const curTop = parseFloat(floatEl.style.top) || 100;
+                        const clamped = this._clampFloatPosition(floatEl, curLeft, curTop);
+                        floatEl.style.left = clamped.left + 'px';
+                        floatEl.style.top = clamped.top + 'px';
+                    }
+                });
+            }
+            // Rebuild DOM to remove empty dock leaves left by float restoration
+            this._buildDOM();
+            this._restoring = false;
+            return true;
+        } catch (e) {
+            this._restoring = false;
+            return false;
+        }
+    }
+
     _buildDOM() {
         this.container.textContent = "";
+        if (!this.root) return;
         const el = this._buildNodeDOM(this.root);
         this.container.appendChild(el);
         this._attachComponentElements();
@@ -76,6 +156,7 @@ export class DockLayout {
         const el = document.createElement("div");
         el.className = "dock-tabs";
         el.dataset.activeIndex = n.activeIndex || 0;
+        el._treeNode = n;
         const tabBar = document.createElement("div");
         tabBar.className = "dock-tab-bar";
         n.children.forEach((c, i) => {
@@ -229,6 +310,7 @@ export class DockLayout {
                 const onUp = () => {
                     document.removeEventListener("mousemove", onMove);
                     document.removeEventListener("mouseup", onUp);
+                    this._saveStateToStorage();
                 };
                 document.addEventListener("mousemove", onMove);
                 document.addEventListener("mouseup", onUp);
@@ -248,7 +330,15 @@ export class DockLayout {
                     const idx = tabs.indexOf(tab);
                     if (idx >= 0) this._activateFloatTab(gid, idx);
                 }
-                this._startFloatLabelDrag(e, floatEl, false);
+                const gid = floatEl.dataset.floatGroup;
+                const group = this._floatGroups.get(gid);
+                if (group && group.panelIds.length > 1) {
+                    // Multi-tab float: dragging a tab detaches it from the group.
+                    this._startFloatTabDrag(e, floatEl, pid);
+                } else {
+                    // Single tab: drag moves the whole window.
+                    this._startFloatLabelDrag(e, floatEl, false);
+                }
                 return;
             }
             e.preventDefault();
@@ -258,17 +348,14 @@ export class DockLayout {
             const onMove = (ev) => {
                 let nl = sl + ev.clientX - sx;
                 let nt = st + ev.clientY - sy;
-                const vw = window.innerWidth, vh = window.innerHeight;
-                const fw = parseFloat(floatEl.style.width) || floatEl.offsetWidth;
-                const fh = floatEl.offsetHeight;
-                nl = Math.max(0, Math.min(nl, vw - fw));
-                nt = Math.max(0, Math.min(nt, vh - fh));
-                floatEl.style.left = nl + "px";
-                floatEl.style.top = nt + "px";
+                const clamped = this._clampFloatPosition(floatEl, nl, nt);
+                floatEl.style.left = clamped.left + "px";
+                floatEl.style.top = clamped.top + "px";
             };
             const onUp = () => {
                 document.removeEventListener("mousemove", onMove);
                 document.removeEventListener("mouseup", onUp);
+                this._saveStateToStorage();
             };
             document.addEventListener("mousemove", onMove);
             document.addEventListener("mouseup", onUp);
@@ -282,7 +369,7 @@ export class DockLayout {
         this._panelToGroup.set(panelId, groupId);
         this._floatedPanels.set(panelId, { floatEl, comp });
         this._bringToFront(floatEl);
-        this._rebuild();
+        if (!this._restoring) this._rebuild();
     }
 
     _startFloatLabelDrag(e, floatEl, bypassThreshold = false) {
@@ -296,17 +383,13 @@ export class DockLayout {
         const onMove = (ev2) => {
             let nl = sl + ev2.clientX - sx;
             let nt = st + ev2.clientY - sy;
-            const vw = window.innerWidth, vh = window.innerHeight;
-            const fw = parseFloat(floatEl.style.width) || floatEl.offsetWidth;
-            const fh = floatEl.offsetHeight;
-            nl = Math.max(0, Math.min(nl, vw - fw));
-            nt = Math.max(0, Math.min(nt, vh - fh));
-            floatEl.style.left = nl + "px";
-            floatEl.style.top = nt + "px";
+            const clamped = this._clampFloatPosition(floatEl, nl, nt);
+            floatEl.style.left = clamped.left + "px";
+            floatEl.style.top = clamped.top + "px";
 
             this._dragInfo = { panelId };
-            const target = this._findDropTarget(ev2.clientX, ev2.clientY) ||
-                           this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl);
+            const target = this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl) ||
+                           this._findDropTarget(ev2.clientX, ev2.clientY);
             this._dragInfo = null;
             this._updateDragPreview(target, ev2.clientX, ev2.clientY);
         };
@@ -317,13 +400,18 @@ export class DockLayout {
             this._cleanupDragPreview();
 
             this._dragInfo = { panelId };
-            const target = this._findDropTarget(ev2.clientX, ev2.clientY) ||
-                           this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl);
+            const target = this._findFloatDropTarget(ev2.clientX, ev2.clientY, floatEl) ||
+                           this._findDropTarget(ev2.clientX, ev2.clientY);
             this._dragInfo = null;
 
             if (target) {
                 if (target.zone === "float-merge" && target.groupId) {
                     this._addPanelToFloat(target.groupId, panelId);
+                } else if (target.zone === "empty-dock") {
+                    // Dock is empty; add this panel back as the root.
+                    this._removePanelFromFloat(panelId);
+                    this.root = createNode("leaf", { id: panelId });
+                    this._rebuild();
                 } else {
                     this._removePanelFromFloat(panelId);
                     if (target.zone === "merge" && target.panelId) {
@@ -332,6 +420,9 @@ export class DockLayout {
                         this._insertAtPanel(panelId, target.panelId, target.edge);
                     }
                 }
+            } else {
+                // Dropped in empty space — save the new float position.
+                this._saveStateToStorage();
             }
         };
 
@@ -358,6 +449,63 @@ export class DockLayout {
             document.addEventListener("mousemove", onThreshold);
             document.addEventListener("mouseup", onCancel);
         }
+    }
+
+    _startFloatTabDrag(e, floatEl, tabPanelId) {
+        e.preventDefault();
+        this._bringToFront(floatEl);
+        const sx = e.clientX, sy = e.clientY;
+
+        // Capture cursor position within the CLICKED TAB, not the tab bar or float.
+        // This is essential: when dragging a non-first tab, the new float will have
+        // the tab as its only child (at the left edge of the tab bar), so the offset
+        // must be relative to the tab element itself, not the tab bar or window.
+        const clickedTab = e.target.closest('.dock-tab');
+        const tabRect = clickedTab ? clickedTab.getBoundingClientRect() : null;
+        const fwRect = floatEl.getBoundingClientRect();
+        const origTabBar = floatEl.querySelector('.dock-tab-bar');
+        const floatCs = getComputedStyle(floatEl);
+        const floatBorder = parseFloat(floatCs.borderLeftWidth) || 0;
+        const tabBarCs = origTabBar ? getComputedStyle(origTabBar) : null;
+        const padLeft = tabBarCs ? parseFloat(tabBarCs.paddingLeft) || 0 : 0;
+        const padTop = tabBarCs ? parseFloat(tabBarCs.paddingTop) || 0 : 0;
+
+        const onThreshold = (ev) => {
+            if (Math.abs(ev.clientX - sx) < 5 && Math.abs(ev.clientY - sy) < 5) return;
+            document.removeEventListener("mousemove", onThreshold);
+            document.removeEventListener("mouseup", onCancel);
+
+            // Detach this panel into its own float window.
+            this._removePanelFromFloat(tabPanelId);
+            this._floatPanel(tabPanelId, { left: ev.clientX, top: ev.clientY });
+
+            const newGroup = Array.from(this._floatGroups.values()).find(g => g.panelIds.includes(tabPanelId));
+            if (newGroup) {
+                // Position the new float so the cursor stays at the same position
+                // within the dragged tab.  In the new float the tab is the first
+                // (only) child, so it starts at floatBorder + tabBarPadLeft from
+                // the float window's left edge.
+                const nf = newGroup.floatEl;
+                if (tabRect) {
+                    const tabOffX = sx - tabRect.left;
+                    const tabOffY = sy - tabRect.top;
+                    nf.style.left = (ev.clientX - tabOffX - floatBorder - padLeft) + "px";
+                    nf.style.top = (ev.clientY - tabOffY - floatBorder - padTop) + "px";
+                } else {
+                    nf.style.left = (ev.clientX - sx + fwRect.left) + "px";
+                    nf.style.top = (ev.clientY - sy + fwRect.top) + "px";
+                }
+                this._startFloatLabelDrag(ev, nf, true);
+            }
+        };
+
+        const onCancel = () => {
+            document.removeEventListener("mousemove", onThreshold);
+            document.removeEventListener("mouseup", onCancel);
+        };
+
+        document.addEventListener("mousemove", onThreshold);
+        document.addEventListener("mouseup", onCancel);
     }
 
     _unfloatPanel(panelId) {
@@ -409,6 +557,7 @@ export class DockLayout {
                 this._activateFloatTab(groupId, group.panelIds.length - 1);
             }
         }
+        this._saveStateToStorage();
     }
 
     _unfloatGroup(groupId) {
@@ -476,7 +625,11 @@ export class DockLayout {
 
         this._updateFloatTabBar(targetGroupId);
         this._activateFloatTab(targetGroupId, targetGroup.panelIds.length - 1);
-        if (!oldGroupId) this._rebuild();
+        if (!oldGroupId) {
+            this._rebuild();
+        } else {
+            this._saveStateToStorage();
+        }
     }
 
     _updateFloatTabBar(groupId) {
@@ -543,6 +696,23 @@ export class DockLayout {
         return null;
     }
 
+    _getTabBarHeight(floatEl) {
+        const tabBar = floatEl.querySelector('.dock-tab-bar');
+        return tabBar ? tabBar.offsetHeight : 30;
+    }
+
+    _clampFloatPosition(floatEl, left, top) {
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const fw = parseFloat(floatEl.style.width) || floatEl.offsetWidth;
+        const tabH = this._getTabBarHeight(floatEl);
+        // Keep the tab bar (draggable area) fully within the viewport.
+        // Body content below the tab bar is allowed to extend off-screen at the bottom.
+        top = Math.max(0, Math.min(top, vh - tabH));
+        // Keep at least 200px of the window visible horizontally so the tab bar is reachable.
+        left = Math.max(-(fw - 200), Math.min(left, vw - 200));
+        return { left, top };
+    }
+
     _bringToFront(floatEl) {
         this._floatZCounter++;
         floatEl.style.zIndex = this._floatZCounter;
@@ -557,6 +727,7 @@ export class DockLayout {
             panelId: handle._dragPid,
             startMouseX: e.clientX,
             startMouseY: e.clientY,
+            startTime: Date.now(),
             handle
         };
         document.addEventListener('mousemove', this._onPanelDragThreshold);
@@ -570,6 +741,7 @@ export class DockLayout {
         const dx = e.clientX - info.startMouseX;
         const dy = e.clientY - info.startMouseY;
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        if (Date.now() - info.startTime < 200) return;
         document.removeEventListener('mousemove', this._onPanelDragThreshold);
         document.removeEventListener('mouseup', this._onPanelDragCancel);
 
@@ -577,6 +749,15 @@ export class DockLayout {
         const startX = info.startMouseX;
         const startY = info.startMouseY;
         const handleRect = info.handle?.getBoundingClientRect();
+        // Capture tab bar rect BEFORE _floatPanel rebuilds the DOM.
+        const isTabHandle = !!(info.handle && info.handle.closest('.dock-tab'));
+        let tabBarRect, tabRect;
+        if (isTabHandle) {
+            const tab = info.handle.closest('.dock-tab');
+            if (tab) tabRect = tab.getBoundingClientRect();
+            const tabBar = info.handle.closest('.dock-tab-bar');
+            if (tabBar) tabBarRect = tabBar.getBoundingClientRect();
+        }
         this._dragInfo = null;
 
         this._floatPanel(panelId, { left: e.clientX, top: e.clientY });
@@ -584,11 +765,41 @@ export class DockLayout {
         const floatGroup = Array.from(this._floatGroups.values()).find(g => g.panelIds.includes(panelId));
         if (floatGroup) {
             const floatEl = floatGroup.floatEl;
-            if (handleRect) {
-                const offsetX = startX - handleRect.left;
-                const offsetY = startY - handleRect.top;
-                floatEl.style.left = (e.clientX - offsetX) + "px";
-                floatEl.style.top = (e.clientY - offsetY) + "px";
+            if (handleRect && info.handle) {
+                if (!isTabHandle) {
+                    // Non-tab handles (e.g. title bar inside the panel body):
+                    // keep the cursor at the same relative position within the handle.
+                    // The handle was inside the dock content; in the new float it sits
+                    // inside .dock-float-body which starts below the tab bar + border.
+                    const offsetX = startX - handleRect.left;
+                    const offsetY = startY - handleRect.top;
+                    const fCs = getComputedStyle(floatEl);
+                    const fBorder = parseFloat(fCs.borderLeftWidth) || 0;
+                    const tabBarH = this._getTabBarHeight(floatEl);
+                    floatEl.style.left = (e.clientX - offsetX - fBorder) + "px";
+                    floatEl.style.top = (e.clientY - offsetY - fBorder - tabBarH) + "px";
+                } else if (tabRect) {
+                    // Tab handle: offset relative to the CLICKED TAB, so cursor stays
+                    // at the same position within the tab regardless of its index.
+                    // The new float has the tab as its only child, starting at
+                    // (floatBorder + tabBarPadLeft) from the window edge.
+                    const offsetX = startX - tabRect.left;
+                    const offsetY = startY - tabRect.top;
+                    const fCs = getComputedStyle(floatEl);
+                    const fBorder = parseFloat(fCs.borderLeftWidth) || 0;
+                    const tBar = floatEl.querySelector('.dock-tab-bar');
+                    const tCs = tBar ? getComputedStyle(tBar) : null;
+                    const pL = tCs ? parseFloat(tCs.paddingLeft) || 0 : 0;
+                    const pT = tCs ? parseFloat(tCs.paddingTop) || 0 : 0;
+                    floatEl.style.left = (e.clientX - offsetX - fBorder - pL) + "px";
+                    floatEl.style.top = (e.clientY - offsetY - fBorder - pT) + "px";
+                } else if (tabBarRect) {
+                    // Fallback: offset relative to the dock tab bar.
+                    const offsetX = startX - tabBarRect.left;
+                    const offsetY = startY - tabBarRect.top;
+                    floatEl.style.left = (e.clientX - offsetX) + "px";
+                    floatEl.style.top = (e.clientY - offsetY) + "px";
+                }
             }
             this._startFloatLabelDrag(e, floatEl, true);
         }
@@ -647,6 +858,7 @@ export class DockLayout {
         leaves.forEach((l, i) => l.classList.toggle("dock-hidden", i !== idx));
         tabs.forEach((t, i) => t.classList.toggle("active", i === idx));
         tabsEl.dataset.activeIndex = idx;
+        if (tabsEl._treeNode) tabsEl._treeNode.activeIndex = idx;
         const activeLeaf = leaves[idx];
         if (activeLeaf) {
             const pid = activeLeaf.dataset.panelId;
@@ -656,6 +868,7 @@ export class DockLayout {
                 content.appendChild(comp);
             }
         }
+        this._saveStateToStorage();
     }
 
     _startResize(e, resizer) {
@@ -742,6 +955,7 @@ export class DockLayout {
         document.body.style.cursor = "";
         document.removeEventListener("mousemove", this._onResizeMove);
         document.removeEventListener("mouseup", this._onResizeUp);
+        this._saveStateToStorage();
     };
 
     _findTabGroup(panelId) {
@@ -757,7 +971,11 @@ export class DockLayout {
 
     _cleanupDragPreview() {
         this._previewEl.classList.remove("visible");
-        document.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
+        this._previewEl.style.background = "";
+        this._previewEl.style.boxShadow = "";
+        this._previewEl.style.borderRadius = "";
+        this._previewEl.style.border = "";
+        this._previewEl.style.zIndex = "";
         if (this._dragInfo?.origTab) {
             this._dragInfo.origTab.classList.remove("dock-tab-dragging");
             this._dragInfo.origTab = null;
@@ -769,32 +987,78 @@ export class DockLayout {
     }
 
     _updateDragPreview(target, cx, cy) {
-        document.querySelectorAll(".dock-tab-bar.drag-over").forEach(el => el.classList.remove("drag-over"));
+        if (!target) {
+            this._previewEl.classList.remove("visible");
+            return;
+        }
         this._previewEl.classList.remove("visible");
-
-        if (!target) return;
+        this._previewEl.style.background = "";
+        this._previewEl.style.boxShadow = "";
+        this._previewEl.style.borderRadius = "";
+        this._previewEl.style.border = "";
+        this._previewEl.style.zIndex = "";
 
         if (target.zone === "float-merge" && target.groupId) {
             const fw = document.querySelector(`.dock-float-window[data-float-group="${target.groupId}"]`);
             if (fw) {
                 const tabBar = fw.querySelector(".dock-tab-bar");
-                if (tabBar) tabBar.classList.add("drag-over");
+                if (tabBar) {
+                    const r = tabBar.getBoundingClientRect();
+                    this._previewEl.style.left = r.left + "px";
+                    this._previewEl.style.top = r.top + "px";
+                    this._previewEl.style.width = r.width + "px";
+                    this._previewEl.style.height = r.height + "px";
+                    this._previewEl.style.background = "rgba(96,165,250,0.2)";
+                    this._previewEl.style.boxShadow = "none";
+                    const fwZ = parseInt(fw.style.zIndex) || 1000;
+                    this._previewEl.style.zIndex = (fwZ + 1).toString();
+                    this._previewEl.classList.add("visible");
+                }
             }
             return;
         }
 
+        if (target.zone === "empty-dock") {
+            const cr = this.container.getBoundingClientRect();
+            this._previewEl.style.left = cr.left + "px";
+            this._previewEl.style.top = cr.top + "px";
+            this._previewEl.style.width = "4px";
+            this._previewEl.style.height = cr.height + "px";
+            this._previewEl.style.background = "#60a5fa";
+            this._previewEl.style.boxShadow = "none";
+            this._previewEl.style.borderRadius = "0";
+            this._previewEl.classList.add("visible");
+            return;
+        }
+
         if (target.zone === "merge" && target.panelId) {
-            const tabBar = this.container.querySelector(`.dock-tabs [data-panel-id="${target.panelId}"]`)?.closest(".dock-tabs")?.querySelector(".dock-tab-bar");
-            if (tabBar) tabBar.classList.add("drag-over");
+            const tabsEl = this.container.querySelector(`.dock-tabs [data-panel-id="${target.panelId}"]`)?.closest(".dock-tabs");
+            if (tabsEl) {
+                const tabBar = tabsEl.querySelector(".dock-tab-bar");
+                if (tabBar) {
+                    const r = tabBar.getBoundingClientRect();
+                    this._previewEl.style.left = r.left + "px";
+                    this._previewEl.style.top = r.top + "px";
+                    this._previewEl.style.width = r.width + "px";
+                    this._previewEl.style.height = r.height + "px";
+                    this._previewEl.style.background = "rgba(96,165,250,0.2)";
+                    this._previewEl.style.boxShadow = "none";
+                    this._previewEl.style.zIndex = "2";
+                    this._previewEl.classList.add("visible");
+                }
+            }
             return;
         }
 
         if (target.zone === "insert" && target.tabsEl) {
-            this._previewEl.classList.add("visible");
             const r = target.tabsEl.getBoundingClientRect();
-            const gap = 1;
+            const gap = 2;
             const parentSplit = target.tabsEl.parentElement;
             const isH = parentSplit?.classList.contains("dock-split-h");
+            this._previewEl.style.background = "#60a5fa";
+            this._previewEl.style.boxShadow = "none";
+            this._previewEl.style.borderRadius = "0";
+            this._previewEl.classList.add("visible");
             if (target.edge === "top" || target.edge === "bottom") {
                 let cy;
                 if (!isH) {
@@ -952,6 +1216,16 @@ export class DockLayout {
             best = { panelId: pid, zone: "insert", edge, tabsEl, dist };
             bestDist = dist;
         }
+        // Fallback: if the dock container is empty (all panels floated), allow dropping
+        // anywhere over the container to re-dock the dragged panel.
+        const hasDockChildren = this.container.querySelector('.dock-tabs, .dock-leaf, .dock-split');
+        if (!hasDockChildren) {
+            const cr = this.container.getBoundingClientRect();
+            if (cr.width > 0 && cr.height > 0 &&
+                cx >= cr.left && cx <= cr.right && cy >= cr.top && cy <= cr.bottom) {
+                return { panelId: draggedId, zone: "empty-dock" };
+            }
+        }
         return best;
     }
 
@@ -1103,6 +1377,7 @@ export class DockLayout {
     }
 
     _removeLeaf(id) {
+        if (!this.root) return;
         const walk = (n, parent) => {
             if (n.type === "split") {
                 for (let i = n.children.length - 1; i >= 0; i--) {
@@ -1128,8 +1403,12 @@ export class DockLayout {
                 for (let i = n.children.length - 1; i >= 0; i--) {
                     if (n.children[i].id === id) {
                         n.children.splice(i, 1);
-                        if (n.activeIndex >= n.children.length)
-                            n.activeIndex = Math.max(0, n.children.length - 1);
+                        if (i === n.activeIndex) {
+                            // Removed tab was active: go to previous tab
+                            n.activeIndex = Math.max(0, i - 1);
+                        } else if (n.activeIndex >= n.children.length) {
+                            n.activeIndex = n.children.length - 1;
+                        }
                         if (n.children.length === 1 && parent) {
                             const idx = parent.children.indexOf(n);
                             parent.children[idx] = n.children[0];
@@ -1164,6 +1443,7 @@ export class DockLayout {
 
     _rebuild() {
         this._buildDOM();
+        this._saveStateToStorage();
     }
 }
 

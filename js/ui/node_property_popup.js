@@ -244,12 +244,15 @@ export class NodePropertyPopup extends HTMLElement {
     _restoreDockedState() {
         try {
             const v = localStorage.getItem(DOCK_KEY);
-            if (v === '1') this._docked = true;
+            if (v === '1') {
+                this._docked = true;
+                appEventBus.emit(NODE_PROPS_DOCKED, { anchorId: this._anchorNodeId });
+            }
         } catch (_) {}
     }
 
     _onUndocked(e) {
-        this._docked = false;
+        this._setDocked(false);
         if (e?.detail) {
             const vw = window.innerWidth, vh = window.innerHeight;
             const pw = this.offsetWidth || 220, ph = this.offsetHeight || 120;

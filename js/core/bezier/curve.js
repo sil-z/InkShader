@@ -606,80 +606,62 @@ export class Curve {
         return pts;
     }
 
+    /**
+     * Determine direction (cw/ccw) via Green's theorem (signed area).
+     * Integrates x·dy − y·dx over every cubic Bézier segment exactly using
+     * 3-point Gauss–Legendre quadrature (exact for degree‑5 integrand).
+     *
+     * For open paths the implicit closing edge is a straight line from the
+     * end node back to the start node — its contribution is added analytically.
+     *
+     * In screen coordinates (y‑down): positive area → CW, negative → CCW.
+     */
     getSkeletonWinding() {
-        if (!this.startNode || !this.endNode) return null;
+        const segments = this.getSkeletonBezierSegments();
+        if (segments.length === 0) return 'ccw'; // degenerate → default
 
-        const evalBezier = (t, p0, p1, p2, p3) => {
+        // 3‑point Gauss–Legendre on [0,1] — exact for polynomials up to degree 5.
+        // The cubic Bézier integrand Bx·By' − By·Bx' is degree ≤ 5, so this is exact.
+        const GL3 = [
+            { t: 0.1127016653792583, w: 0.2777777777777778 },
+            { t: 0.5,               w: 0.4444444444444444 },
+            { t: 0.8872983346207417, w: 0.2777777777777778 }
+        ];
+
+        // Evaluate the integrand x·dy − y·dx of a cubic Bézier at parameter t
+        const integrand = (p0, p1, p2, p3, t) => {
             const mt = 1 - t;
-            return {
-                x: mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
-                y: mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y
-            };
+            // Bernstein basis (cubic)
+            const b0 = mt * mt * mt;
+            const b1 = 3 * mt * mt * t;
+            const b2 = 3 * mt * t * t;
+            const b3 = t * t * t;
+            // Derivative Bernstein basis (3·(1−t)², 6·(1−t)·t, 3·t²)
+            const db0 = 3 * mt * mt;
+            const db1 = 6 * mt * t;
+            const db2 = 3 * t * t;
+
+            const Bx  = b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x;
+            const By  = b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y;
+            const dBx = db0 * (p1.x - p0.x) + db1 * (p2.x - p1.x) + db2 * (p3.x - p2.x);
+            const dBy = db0 * (p1.y - p0.y) + db1 * (p2.y - p1.y) + db2 * (p3.y - p2.y);
+
+            return Bx * dBy - By * dBx;
         };
 
-        const sampleSegment = (startNode, nextNode, out) => {
-            if (!startNode || !nextNode) return;
-            const p0 = { x: startNode.x, y: startNode.y };
-            const p1 = startNode.control1 ? { x: startNode.control1.x, y: startNode.control1.y } : p0;
-            const p2 = nextNode.control2 ? { x: nextNode.control2.x, y: nextNode.control2.y } : { x: nextNode.x, y: nextNode.y };
-            const p3 = { x: nextNode.x, y: nextNode.y };
-
-            const sampleCount = 8;
-            for (let i = 0; i <= sampleCount; i++) {
-                if (i === 0 && out.length > 0) continue;
-                const t = i / sampleCount;
-                out.push(evalBezier(t, p0, p1, p2, p3));
-            }
-        };
-
-        const samples = [];
-        let current = this.startNode;
-        while (current && current.nextOnCurve && (current !== this.endNode || !this.closed)) {
-            const next = current.nextOnCurve;
-            sampleSegment(current, next, samples);
-            current = next;
-        }
-
-        if (this.startNode !== this.endNode) {
-            sampleSegment(this.endNode, this.startNode, samples);
-        }
-
-        if (samples.length < 3) return null;
-
-        // Compute start tangent (first segment derivative at t=0)
-        const s0 = { x: this.startNode.x, y: this.startNode.y };
-        let s1;
-        if (this.startNode.control1) {
-            s1 = { x: this.startNode.control1.x, y: this.startNode.control1.y };
-        } else {
-            const next = this.startNode.nextOnCurve || this.endNode;
-            s1 = { x: next.x, y: next.y };
-        }
-        const tangent = { x: s1.x - s0.x, y: s1.y - s0.y };
-        const len = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
-        if (len < 1e-10) return null;
-
-        // Left normal (rotate tangent 90° counter-clockwise)
-        const nx = -tangent.y / len;
-        const ny = tangent.x / len;
-
-        // Test point slightly to the left of start
-        const eps = 0.5;
-        const tx = s0.x + nx * eps;
-        const ty = s0.y + ny * eps;
-
-        // Ray casting point-in-polygon test
-        let inside = false;
-        for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
-            const xi = samples[i].x, yi = samples[i].y;
-            const xj = samples[j].x, yj = samples[j].y;
-            if ((yi > ty) !== (yj > ty) &&
-                tx < ((xj - xi) * (ty - yi) / (yj - yi) + xi)) {
-                inside = !inside;
+        let sum = 0;
+        for (const seg of segments) {
+            for (const g of GL3) {
+                sum += g.w * integrand(seg.p0, seg.p1, seg.p2, seg.p3, g.t);
             }
         }
 
-        return inside ? 'ccw' : 'cw';
+        // For open paths, add the implicit straight‑line closing edge
+        if (!this.closed && this.startNode && this.endNode && this.startNode !== this.endNode) {
+            sum += this.endNode.x * this.startNode.y - this.endNode.y * this.startNode.x;
+        }
+
+        return sum > 0 ? 'cw' : 'ccw';
     }
 
     reverseSkeletonDirection() {

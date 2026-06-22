@@ -50,7 +50,7 @@ export class SnapshotSerializer {
         this._treeStore.initTree();
         this._curveStore.curves = [];
         this._curveStore.domMap.clear();
-        if (data.editor_sequence) this._sequenceService.sequenceText = data.editor_sequence;
+        this._sequenceService.sequenceText = data.editor_sequence || '';
         if (data.editor_active_indices) {
             this._sequenceService.activeSequenceIndices = new Set(data.editor_active_indices);
         }
