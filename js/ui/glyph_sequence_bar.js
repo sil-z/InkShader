@@ -131,14 +131,15 @@ export class GlyphSequenceBar extends HTMLElement {
             const gid = tok.isChar ? EditorModel.getDefaultGroupForChar(tok.value) : tok.value;
             const gi = gid ? EditorModel.getTreeItem(gid) : null;
             const locked = !!(gi?.locked);
+            const hidden = gi?.visible === false;
             const name = gi?.name ?? (tok.display || tok.value);
             const code = gi?.charCode ?? null;
             const codeStr = code != null ? String(code) : "";
             const isMissing = code == null;
-            const lockW = locked ? 22 : 0;
-            const totMin = lockW + 2 + 20 + 2 + 20 + 2 + 20 + 2 + 20;
+            // Each action button: 20px + 2px gap. Buttons: lock, vis, minus, name(20), code(20), plus
+            const totMin = 20 + 2 + 20 + 2 + 20 + 2 + 20 + 2 + 20 + 2 + 20;
             const isLast = i === tokens.length - 1;
-            const pd = { gid, name, codeStr, isMissing, idx: i, locked, active, sx, availW };
+            const pd = { gid, name, codeStr, isMissing, idx: i, locked, hidden, active, sx, availW };
             if (availW < 20 && !isLast) {
                 deferred.push(pd);
                 continue;
@@ -146,7 +147,7 @@ export class GlyphSequenceBar extends HTMLElement {
             const pos = document.createElement("div");
             pos.className = "seq-bar-pos" + (pd.active ? " active" : "") + (pd.locked ? " locked" : "");
             pos.style.left = `${sx}px`;
-            if (deferred.length > 0 && (isLast || availW >= totMin + 22)) {
+            if (deferred.length > 0 && (isLast || availW >= totMin + 44)) {
                 const prevItems = [...deferred];
                 deferred.length = 0;
                 const eb = document.createElement("div");
@@ -158,12 +159,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 });
                 pos.appendChild(eb);
                 if (!isLast) pos.style.maxWidth = `${pd.availW}px`;
-                if (pd.locked) {
-                    const ic = document.createElement("span");
-                    ic.className = "seq-bar-lock";
-                    ic.textContent = "\u{1F512}";
-                    pos.appendChild(ic);
-                }
+                pos.appendChild(this._mkLockBtn(pd.gid));
+                pos.appendChild(this._mkVisBtn(pd.gid));
                 pos.appendChild(this._mkRemoveBtn(pd.gid));
                 const ns = document.createElement("span");
                 ns.className = "seq-bar-name";
@@ -196,12 +193,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 pos.addEventListener("click", (e) => e.stopPropagation());
             } else if (isLast || pd.availW >= totMin) {
                 if (!isLast) pos.style.maxWidth = `${pd.availW}px`;
-                if (pd.locked) {
-                    const ic = document.createElement("span");
-                    ic.className = "seq-bar-lock";
-                    ic.textContent = "\u{1F512}";
-                    pos.appendChild(ic);
-                }
+                pos.appendChild(this._mkLockBtn(pd.gid));
+                pos.appendChild(this._mkVisBtn(pd.gid));
                 pos.appendChild(this._mkRemoveBtn(pd.gid));
                 const ns = document.createElement("span");
                 ns.className = "seq-bar-name";
@@ -315,6 +308,36 @@ export class GlyphSequenceBar extends HTMLElement {
             e.stopPropagation();
             const r = b.getBoundingClientRect();
             this._addMenu(r.left, r.bottom + 4, idx + 1, b);
+        });
+        return b;
+    }
+    _mkLockBtn(gid) {
+        const gi = gid ? EditorModel.getTreeItem(gid) : null;
+        const locked = !!(gi?.locked);
+        const b = document.createElement("div");
+        b.className = "seq-bar-action-btn" + (locked ? " is-active" : "");
+        b.title = locked ? "Unlock" : "Lock";
+        const img = document.createElement("img");
+        img.src = locked ? "./assets/icons/unlock.svg" : "./assets/icons/lock.svg";
+        b.appendChild(img);
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            CanvasDispatcher.requestToggleSelectedObjectsLock([gid], !locked);
+        });
+        return b;
+    }
+    _mkVisBtn(gid) {
+        const gi = gid ? EditorModel.getTreeItem(gid) : null;
+        const hidden = gi?.visible === false;
+        const b = document.createElement("div");
+        b.className = "seq-bar-action-btn" + (hidden ? " is-active" : "");
+        b.title = hidden ? "Show" : "Hide";
+        const img = document.createElement("img");
+        img.src = hidden ? "./assets/icons/hide.svg" : "./assets/icons/show.svg";
+        b.appendChild(img);
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            CanvasDispatcher.requestToggleSelectedObjectsDisplay([gid], hidden);
         });
         return b;
     }

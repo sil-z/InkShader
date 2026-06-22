@@ -291,7 +291,8 @@ glyph-sequence-bar {
 }
 .seq-bar-rm-btn,
 .seq-bar-ins-btn,
-.seq-bar-add-btn {
+.seq-bar-add-btn,
+.seq-bar-action-btn {
     width: 20px;
     height: 20px;
     display: flex;
@@ -313,16 +314,27 @@ glyph-sequence-bar {
     color: #fff;
 }
 .seq-bar-ins-btn:hover,
-.seq-bar-add-btn:hover {
+.seq-bar-add-btn:hover,
+.seq-bar-action-btn:hover {
     background: var(--ui-hover-bg);
     color: var(--ui-text-strong);
 }
+.seq-bar-action-btn.is-active {
+    border-color: var(--ui-accent);
+    color: var(--ui-accent);
+}
 .seq-bar-rm-btn svg,
 .seq-bar-ins-btn svg,
-.seq-bar-add-btn svg {
+.seq-bar-add-btn svg,
+.seq-bar-action-btn svg {
     width: 12px;
     height: 12px;
     fill: currentColor;
+}
+.seq-bar-action-btn img {
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
 }
 .seq-bar-ellipsis {
     width: 20px;
@@ -405,14 +417,6 @@ glyph-sequence-bar {
     background: #7c3aed;
     border-color: #7c3aed;
     color: #fff;
-}
-.seq-bar-lock {
-    height: 20px;
-    display: flex;
-    align-items: center;
-    font-size: 10px;
-    line-height: 1;
-    margin-right: 2px;
 }
 .seq-bar-add-btn {
     position: absolute;
@@ -1860,6 +1864,43 @@ font-popup.visible {
 .tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; }
 .tree_label_group { font-weight: 600; }
 .group-reference .tree_label_group { font-style: italic; color: var(--ui-text-muted); }
+
+/* ---- Group row: menu-item style ---- */
+.tree_item[data-type="group"] {
+    background-color: var(--ui-hover-bg);
+    padding: 5px 0;
+    margin-top: 4px;
+    border-left: none;
+}
+.tree_item[data-type="group"]:first-child { margin-top: 0; }
+.tree_item[data-type="group"]:hover {
+    background-color: var(--ui-active-bg);
+}
+.tree_item[data-type="group"].selected {
+    background-color: var(--ui-accent-bg);
+}
+.tree_item[data-type="group"] .tree_checkbox { display: none; }
+.tree_item[data-type="group"] .tree_toggle {
+    width: 18px; height: 18px;
+}
+.tree_item[data-type="group"] .tree_toggle img { width: 14px; height: 14px; }
+.tree_item[data-type="group"] .tree_label_group {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ui-text-main);
+    line-height: 20px;
+}
+.tree_item[data-type="group"].active-group {
+    background-color: var(--ui-accent-bg);
+    box-shadow: inset 3px 0 0 0 var(--ui-accent);
+}
+/* Reference groups keep italic style */
+.tree_item[data-type="group"].group-reference {
+    border-left: none;
+}
+.tree_item[data-type="group"].group-reference .tree_label_group {
+    font-style: italic;
+}
 .tree_icon_left_container {
     position: absolute;
     left: 0; top: 50%;
@@ -2197,76 +2238,16 @@ dropdown-menu {
 }
 
 /* =========================================
-   Tree Item Actions (Show/Hide, Lock/Unlock)
+   Preferences Modal 专属样式 & 暗色图标过滤
    ========================================= */
-.tree_item_actions {
-    display: flex;
-    position: sticky;
-    right: 0;
-    gap: 0px;             
-    padding: 0 0 0 16px;  
-    margin-left: auto;
-    background-color: var(--ui-bg-placeholder);
-    z-index: 2;
-    background-color: inherit;
-}
-
-.tree_item_actions::before {
-    content: "";
-    position: absolute;
-    left: 0; 
-    top: 0; bottom: 0; width: 16px;
-    
-    /* 1. 继承父级正在平滑过渡的背景色 */
-    background-color: inherit;
-    
-    /* 2. 使用 mask-image 制作透明渐变遮罩，代替写死颜色的 linear-gradient */
-    -webkit-mask-image: linear-gradient(to right, transparent, black);
-    mask-image: linear-gradient(to right, transparent, black);
-    
-    pointer-events: none;
-    transform: translateX(-100%);
-}
-.tree_action_btn {
-    width: 22px; height: 22px;
-    background: transparent; border: none; padding: 3px;
-    cursor: pointer; border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s ease, opacity 0.15s ease;
-}
-.tree_action_btn:hover { background: rgba(0,0,0,0.08); }
-[data-theme="dark"] .tree_action_btn:hover { background: rgba(255,255,255,0.08); }
-.tree_action_btn img { width: 14px; height: 14px; pointer-events: none; }
 .tree_content {
     min-width: 100%;
     width: max-content;
 }
-.tree_action_btn.is-default {
-    opacity: 0;
-    pointer-events: none;
-}
-.tree_item:hover .tree_action_btn.is-default {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.tree_item:not(:hover) .tree_item_actions.all-default {
-    opacity: 0;
-    pointer-events: none;
-}
-.tree_item:not(:hover) .tree_item_actions.all-default::before {
-    display: none;
-}
-.tree_item_actions.all-default {
-    transition: opacity 0.15s ease;
-}
-/* =========================================
-   Preferences Modal 专属样式 & 暗色图标过滤
-   ========================================= */
 [data-theme="dark"] .tool_button img,
-[data-theme="dark"] .tree_action_btn img,
 [data-theme="dark"] .lock_guideline_icon,
-[data-theme="dark"] .lock_guideline_icon_unlocked {
+[data-theme="dark"] .lock_guideline_icon_unlocked,
+[data-theme="dark"] .seq-bar-action-btn img {
     filter: invert(0.8);
 }
 .pref_modal_overlay {

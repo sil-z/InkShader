@@ -58,7 +58,7 @@ export class ObjectTree extends HTMLElement {
             // draggable 项会先触发 dragstart 并置 dragPreventClick，click 无法选中；用 pointerdown 在拖拽前选中
             this.tree.addEventListener("pointerdown", (e) => {
                 if (e.button !== 0) return;
-                if (e.target.closest(".tree_action_btn") || e.target.closest(".tree_toggle")) return;
+                if (e.target.closest(".tree_toggle")) return;
                 if (e.target.classList.contains("tree_checkbox")) return;
                 const itemDiv = e.target.closest(".tree_item");
                 if (!itemDiv) return;
@@ -175,29 +175,6 @@ export class ObjectTree extends HTMLElement {
         this._skipTreeScroll = false;
     }
     handleLeftClick(e) {
-        const actionBtn = e.target.closest('.tree_action_btn');
-        if (actionBtn) {
-            e.stopPropagation();
-            const itemDiv = actionBtn.closest('.tree_item');
-            const clickedId = itemDiv.dataset.id;
-            const clickedItem = EditorModel.getTreeItem(clickedId);
-            
-            if (!clickedItem) return;
-            const isVisAction = actionBtn.dataset.action === 'vis';
-            const isLockAction = actionBtn.dataset.action === 'lock';
-            const visState = EditorModel.getTreeItemVisibilityState(clickedItem);
-            let currentState = isVisAction ? visState.isVis : visState.isLocked;
-            let newState = !currentState;
-            let targetIds = this.interaction.hasTreeSelection(clickedId)
-                ? [...this.interaction.selectedTreeIds]
-                : [clickedId];
-            if (isLockAction) {
-                CanvasDispatcher.requestToggleSelectedObjectsLock(targetIds, newState);
-            } else if (isVisAction) {
-                CanvasDispatcher.requestToggleSelectedObjectsDisplay(targetIds, newState);
-            }
-            return;
-        }
         const toggle = e.target.closest(".tree_toggle");
         if (toggle && toggle.querySelector("img")) {
             const itemDiv = toggle.closest(".tree_item");
@@ -228,6 +205,8 @@ export class ObjectTree extends HTMLElement {
         if (!itemDiv) return;
         let id = itemDiv.dataset.id;
         let type = itemDiv.dataset.type;
+        // Temporarily disable context menu for groups
+        if (type === "group") return;
         const itemObj = EditorModel.getTreeItem(id);
         let isRef = itemObj ? itemObj.isRef : false;
         const allItems = Array.from(this.tree.querySelectorAll(".tree_item"));
@@ -311,10 +290,6 @@ export class ObjectTree extends HTMLElement {
         }
         return displayName;
     }
-    _getTreeItemVisibility(item) {
-        const { isVis, isLocked } = EditorModel.getTreeItemVisibilityState(item);
-        return { isVis, isLoc: isLocked };
-    }
     _createTreeItemElement(id) {
         const el = document.createElement("div");
         el.className = "tree_item";
@@ -333,25 +308,8 @@ export class ObjectTree extends HTMLElement {
         const label = document.createElement("div");
         label.className = "tree_label";
         left.append(indent, toggle, checkbox, label);
-        const actions = document.createElement("div");
-        actions.className = "tree_item_actions";
-        const lockBtn = document.createElement("button");
-        lockBtn.className = "tree_action_btn";
-        lockBtn.dataset.action = "lock";
-        lockBtn.title = "Lock/Unlock";
-        lockBtn.type = "button";
-        const lockImg = document.createElement("img");
-        lockBtn.appendChild(lockImg);
-        const visBtn = document.createElement("button");
-        visBtn.className = "tree_action_btn";
-        visBtn.dataset.action = "vis";
-        visBtn.title = "Show/Hide";
-        visBtn.type = "button";
-        const visImg = document.createElement("img");
-        visBtn.appendChild(visImg);
-        actions.append(lockBtn, visBtn);
-        el.append(left, actions);
-        el._treeParts = { indent, toggle, checkbox, label, actions, lockBtn, visBtn, lockImg, visImg };
+        el.append(left);
+        el._treeParts = { indent, toggle, checkbox, label };
         return el;
     }
     _ensureGroupToggleSvg(toggle, collapsed) {
@@ -369,7 +327,6 @@ export class ObjectTree extends HTMLElement {
     _treeItemSignature({ id, depth, item, focusedId }) {
         const isActive = this.interaction.activeGroupId === id;
         const isSelected = this.interaction.hasTreeSelection(id);
-        const { isVis, isLoc } = this._getTreeItemVisibility(item);
         return [
             depth,
             this._getTreeItemDisplayName(item),
@@ -378,8 +335,6 @@ export class ObjectTree extends HTMLElement {
             item.collapsed ? 1 : 0,
             isActive ? 1 : 0,
             isSelected ? 1 : 0,
-            isVis ? 1 : 0,
-            isLoc ? 1 : 0,
             focusedId === id ? 1 : 0
         ].join("|");
     }
@@ -400,7 +355,7 @@ export class ObjectTree extends HTMLElement {
         el.dataset.depth = String(depth);
         if (focusedId === id) el.tabIndex = -1;
         else el.removeAttribute("tabindex");
-        const indentWidth = `${depth * 14}px`;
+        const indentWidth = depth > 0 ? `${(depth - 1) * 14}px` : '0px';
         if (parts.indent.style.width !== indentWidth) parts.indent.style.width = indentWidth;
         const showToggle = item.type === "group" && !item.isRef;
         if (showToggle) {
@@ -414,14 +369,6 @@ export class ObjectTree extends HTMLElement {
         if (parts.label.className !== labelClass) parts.label.className = labelClass;
         const labelText = this._getTreeItemDisplayName(item);
         if (parts.label.textContent !== labelText) parts.label.textContent = labelText;
-        const { isVis, isLoc } = this._getTreeItemVisibility(item);
-        parts.actions.classList.toggle("all-default", isVis && !isLoc);
-        parts.lockBtn.classList.toggle("is-default", !isLoc);
-        parts.visBtn.classList.toggle("is-default", isVis);
-        const lockSrc = isLoc ? "./assets/icons/lock.svg" : "./assets/icons/unlock.svg";
-        const visSrc = isVis ? "./assets/icons/show.svg" : "./assets/icons/hide.svg";
-        if (parts.lockImg.getAttribute("src") !== lockSrc) parts.lockImg.src = lockSrc;
-        if (parts.visImg.getAttribute("src") !== visSrc) parts.visImg.src = visSrc;
     }
     _removeStaleTreeElements(visibleIds) {
         for (const id of [...this._treeElById.keys()]) {
