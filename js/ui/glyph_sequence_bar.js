@@ -309,7 +309,7 @@ export class GlyphSequenceBar extends HTMLElement {
         b.className = "seq-bar-action-btn" + (locked ? " is-active" : "");
         b.title = locked ? "Unlock" : "Lock";
         const img = document.createElement("img");
-        img.src = locked ? "./assets/icons/unlock.svg" : "./assets/icons/lock.svg";
+        img.src = locked ? "./assets/icons/lock.svg" : "./assets/icons/unlock.svg";
         b.appendChild(img);
         b.addEventListener("click", (e) => {
             e.stopPropagation();

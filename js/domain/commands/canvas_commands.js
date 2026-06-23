@@ -501,6 +501,7 @@ export class CanvasCommands {
         cm.setActiveIndices(nextActive);
         refreshStoreSequence(this);
 
+        this.curve_manager.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;

@@ -60,6 +60,7 @@ export class ObjectTree extends HTMLElement {
                 if (e.button !== 0) return;
                 if (e.target.closest(".tree_toggle")) return;
                 if (e.target.classList.contains("tree_checkbox")) return;
+                if (e.target.closest(".tree_right")) return;
                 const itemDiv = e.target.closest(".tree_item");
                 if (!itemDiv) return;
                 this.applyTreeItemSelection(e, itemDiv);
@@ -175,6 +176,7 @@ export class ObjectTree extends HTMLElement {
         this._skipTreeScroll = false;
     }
     handleLeftClick(e) {
+        if (e.target.closest(".tree_right")) return;
         const toggle = e.target.closest(".tree_toggle");
         if (toggle && toggle.querySelector("img")) {
             const itemDiv = toggle.closest(".tree_item");
@@ -309,7 +311,45 @@ export class ObjectTree extends HTMLElement {
         label.className = "tree_label";
         left.append(indent, toggle, checkbox, label);
         el.append(left);
-        el._treeParts = { indent, toggle, checkbox, label };
+        const right = document.createElement("div");
+        right.className = "tree_right";
+        const lockBtn = document.createElement("button");
+        lockBtn.className = "tree_lock_btn";
+        lockBtn.type = "button";
+        lockBtn.title = "Lock";
+        const lockImg = document.createElement("img");
+        lockImg.src = "./assets/icons/lock.svg";
+        lockBtn.appendChild(lockImg);
+        lockBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const itemDiv = lockBtn.closest(".tree_item");
+            if (!itemDiv) return;
+            const gid = itemDiv.dataset.id;
+            const gi = EditorModel.getTreeItem(gid);
+            if (!gi) return;
+            const locked = !!gi.locked;
+            CanvasDispatcher.requestToggleSelectedObjectsLock([gid], !locked);
+        });
+        const hideBtn = document.createElement("button");
+        hideBtn.className = "tree_hide_btn";
+        hideBtn.type = "button";
+        hideBtn.title = "Hide";
+        const hideImg = document.createElement("img");
+        hideImg.src = "./assets/icons/show.svg";
+        hideBtn.appendChild(hideImg);
+        hideBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const itemDiv = hideBtn.closest(".tree_item");
+            if (!itemDiv) return;
+            const gid = itemDiv.dataset.id;
+            const gi = EditorModel.getTreeItem(gid);
+            if (!gi) return;
+            const hidden = gi.visible === false;
+            CanvasDispatcher.requestToggleSelectedObjectsDisplay([gid], hidden);
+        });
+        right.append(lockBtn, hideBtn);
+        el.append(right);
+        el._treeParts = { indent, toggle, checkbox, label, lockBtn, hideBtn, lockImg, hideImg, right };
         return el;
     }
     _ensureGroupToggleSvg(toggle, collapsed) {
@@ -335,7 +375,9 @@ export class ObjectTree extends HTMLElement {
             item.collapsed ? 1 : 0,
             isActive ? 1 : 0,
             isSelected ? 1 : 0,
-            focusedId === id ? 1 : 0
+            focusedId === id ? 1 : 0,
+            item.locked === true ? 1 : 0,
+            item.visible === false ? 0 : 1
         ].join("|");
     }
     _patchTreeItemElement(el, { id, depth, item, focusedId }) {
@@ -357,7 +399,13 @@ export class ObjectTree extends HTMLElement {
         else el.removeAttribute("tabindex");
         const indentWidth = depth > 0 ? `${(depth - 1) * 14}px` : '0px';
         if (parts.indent.style.width !== indentWidth) parts.indent.style.width = indentWidth;
-        const showToggle = item.type === "group" && !item.isRef;
+        const isGroup = item.type === "group";
+        if (isGroup) {
+            parts.right.style.display = "none";
+        } else {
+            parts.right.style.removeProperty("display");
+        }
+        const showToggle = isGroup && !item.isRef;
         if (showToggle) {
             this._ensureGroupToggleSvg(parts.toggle, item.collapsed);
             parts.toggle.style.removeProperty("display");
@@ -365,6 +413,22 @@ export class ObjectTree extends HTMLElement {
             parts.toggle.style.display = "none";
         }
         if (parts.checkbox.checked !== isSelected) parts.checkbox.checked = isSelected;
+        const isLocked = item.locked === true;
+        const isHidden = item.visible === false;
+        parts.lockBtn.classList.toggle("is-active", isLocked);
+        parts.hideBtn.classList.toggle("is-active", isHidden);
+        parts.lockBtn.title = isLocked ? "Unlock" : "Lock";
+        parts.hideBtn.title = isHidden ? "Show" : "Hide";
+        if (isLocked) {
+            if (parts.lockImg.getAttribute("src") !== "./assets/icons/lock.svg") parts.lockImg.src = "./assets/icons/lock.svg";
+        } else {
+            if (parts.lockImg.getAttribute("src") !== "./assets/icons/unlock.svg") parts.lockImg.src = "./assets/icons/unlock.svg";
+        }
+        if (isHidden) {
+            if (parts.hideImg.getAttribute("src") !== "./assets/icons/hide.svg") parts.hideImg.src = "./assets/icons/hide.svg";
+        } else {
+            if (parts.hideImg.getAttribute("src") !== "./assets/icons/show.svg") parts.hideImg.src = "./assets/icons/show.svg";
+        }
         const labelClass = item.type === "group" ? "tree_label_group" : "tree_label";
         if (parts.label.className !== labelClass) parts.label.className = labelClass;
         const labelText = this._getTreeItemDisplayName(item);

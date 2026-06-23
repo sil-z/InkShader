@@ -1843,6 +1843,53 @@ font-popup.visible {
     gap: 4px; 
     pointer-events: none; 
 }
+.tree_right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding-right: 4px;
+    pointer-events: auto;
+    flex-shrink: 0;
+}
+.tree_lock_btn,
+.tree_hide_btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 0;
+    color: var(--ui-text-muted);
+    opacity: 0;
+    transition: opacity 0.15s, background-color 0.15s, color 0.15s;
+    pointer-events: auto;
+}
+.tree_item:hover .tree_lock_btn,
+.tree_item:hover .tree_hide_btn {
+    opacity: 1;
+}
+.tree_lock_btn.is-active,
+.tree_hide_btn.is-active {
+    opacity: 1;
+    color: var(--ui-accent);
+    border-color: var(--ui-accent);
+}
+.tree_lock_btn:hover,
+.tree_hide_btn:hover {
+    background: var(--ui-hover-bg);
+    color: var(--ui-text-strong);
+}
+.tree_lock_btn img,
+.tree_hide_btn img {
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+}
 .tree_indent { width: 0px; flex-shrink: 0; }
 .tree_toggle {
     width: 14px; height: 14px;
@@ -2246,7 +2293,9 @@ dropdown-menu {
 [data-theme="dark"] .tool_button img,
 [data-theme="dark"] .lock_guideline_icon,
 [data-theme="dark"] .lock_guideline_icon_unlocked,
-[data-theme="dark"] .seq-bar-action-btn img {
+[data-theme="dark"] .seq-bar-action-btn img,
+[data-theme="dark"] .tree_lock_btn img,
+[data-theme="dark"] .tree_hide_btn img {
     filter: invert(0.8);
 }
 .pref_modal_overlay {
