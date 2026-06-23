@@ -171,14 +171,9 @@ export class GlyphSequenceBar extends HTMLElement {
                     cs.className = "seq-bar-code";
                     cs.textContent = pd.codeStr;
                     pos.appendChild(cs);
-                } else {
-                    const cs = document.createElement("span");
-                    cs.className = "seq-bar-code seq-bar-code-missing";
-                    cs.title = "No char code";
-                    pos.appendChild(cs);
                 }
                 pos.appendChild(this._mkInsertBtn(pd.idx));
-                pos.addEventListener("click", (e) => e.stopPropagation());
+                pos.addEventListener("click", (e) => { e.stopPropagation(); this._focusInTree(pd.gid); });
             } else if (deferred.length > 0) {
                 const all = [...deferred, pd];
                 deferred.length = 0;
@@ -205,14 +200,9 @@ export class GlyphSequenceBar extends HTMLElement {
                     cs.className = "seq-bar-code";
                     cs.textContent = pd.codeStr;
                     pos.appendChild(cs);
-                } else {
-                    const cs = document.createElement("span");
-                    cs.className = "seq-bar-code seq-bar-code-missing";
-                    cs.title = "No char code";
-                    pos.appendChild(cs);
                 }
                 pos.appendChild(this._mkInsertBtn(pd.idx));
-                pos.addEventListener("click", (e) => e.stopPropagation());
+                pos.addEventListener("click", (e) => { e.stopPropagation(); this._focusInTree(pd.gid); });
             } else {
                 const eb = document.createElement("div");
                 eb.className = "seq-bar-ellipsis";
@@ -222,7 +212,7 @@ export class GlyphSequenceBar extends HTMLElement {
                     this._showMergedPopup(e, [pd]);
                 });
                 pos.appendChild(eb);
-                pos.addEventListener("click", (e) => e.stopPropagation());
+                pos.addEventListener("click", (e) => { e.stopPropagation(); this._focusInTree(pd.gid); });
             }
             tr.appendChild(pos);
         }
@@ -258,11 +248,12 @@ export class GlyphSequenceBar extends HTMLElement {
             ns.className = "seq-bar-name";
             ns.textContent = it.name;
             parts.push(ns);
-            const cs = document.createElement("span");
-            cs.className = "seq-bar-code" + (it.isMissing ? " seq-bar-code-missing" : "");
-            cs.textContent = it.codeStr;
-            if (it.isMissing) cs.title = "No char code";
-            parts.push(cs);
+            if (!it.isMissing) {
+                const cs = document.createElement("span");
+                cs.className = "seq-bar-code";
+                cs.textContent = it.codeStr;
+                parts.push(cs);
+            }
             parts.push(this._mkInsertBtn(it.idx));
             if (it.locked) parts.forEach((el) => el.style.opacity = "0.4");
             parts.forEach((el) => p.appendChild(el));

@@ -313,7 +313,12 @@ export class CanvasCommands {
             if (!update || !update.id || !update.props) continue;
             if (this.curve_manager.setSingleObjectProperties(update.id, update.props)) changed = true;
         }
-        if (!changed) return false;
+        // If recordHistory is requested (e.g. change/blur event), do NOT return false
+        // when no model change is detected: the value may have already been applied
+        // by a prior input event (realtimeIds path) — we still need the dispatch
+        // chain to reach editorStore.commitCommand so the snapshot change delta
+        // (currentStateObj → current model) is captured into history.
+        if (!changed && !options.recordHistory) return false;
 
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
@@ -341,7 +346,10 @@ export class CanvasCommands {
         const geometryBounds = (prop === 'w' || prop === 'h') ? this.utils.getSelectionBounds('geometry') : null;
 
         const changed = this.curve_manager.changeSelectedObjectsBounds(prop, value, bounds, geometryBounds, options);
-        if (!changed) return false;
+        // Same input-event race as setSingleObjectProperties: input events via realtimeIds
+        // pre-apply the value, so the change event finds nothing to do. Always proceed when
+        // recordHistory is requested so the snapshot delta is captured.
+        if (!changed && !options.recordHistory) return false;
 
         this.notifyPropertiesUpdate();
         this.is_dirty = true;

@@ -474,8 +474,10 @@ export class CanvasInputController {
             dlg.className = "user-guide-edit-dialog";
             dlg.style.left = `${clientX}px`;
             dlg.style.top = `${clientY}px`;
+            const H = c.canvas_size_height;
+            const viewY = H - guide.y;
             dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${guide.x.toFixed(1)}" data-field="x"></div>
-                <div class="field-row"><label>Y</label><input type="number" step="1" value="${guide.y.toFixed(1)}" data-field="y"></div>
+                <div class="field-row"><label>Y</label><input type="number" step="1" value="${viewY.toFixed(1)}" data-field="y"></div>
                 <div class="field-row"><label>Angle</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>
                 <div class="btn-row"><button class="btn-cancel">Cancel</button><button class="btn-ok">OK</button></div>`;
             overlay.appendChild(dlg);
@@ -487,7 +489,8 @@ export class CanvasInputController {
             inputs[0].focus(); inputs[0].select();
             const apply = () => {
                 guide.x = parseFloat(dlg.querySelector('[data-field="x"]').value) || 0;
-                guide.y = parseFloat(dlg.querySelector('[data-field="y"]').value) || 0;
+                const rawY = parseFloat(dlg.querySelector('[data-field="y"]').value) || 0;
+                guide.y = H - rawY;
                 guide.angle = parseFloat(dlg.querySelector('[data-field="angle"]').value) || 0;
                 overlay.remove();
                 c.is_dirty = true;

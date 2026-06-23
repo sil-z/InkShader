@@ -371,7 +371,6 @@ glyph-sequence-bar {
 }
 .seq-bar-pos.locked {
     opacity: 0.4;
-    cursor: not-allowed;
 }
 .seq-bar-name, .seq-bar-code {
     height: 20px;
@@ -380,12 +379,12 @@ glyph-sequence-bar {
     align-items: center;
     justify-content: center;
     padding: 0 4px;
-    border: 1px solid var(--ui-border-light);
     border-radius: 4px;
     font-size: 10px;
     font-family: ui-monospace, monospace;
     white-space: nowrap;
     box-sizing: border-box;
+    pointer-events: none;
 }
 .seq-bar-name {
     font-weight: 500;
@@ -1858,7 +1857,8 @@ font-popup.visible {
     transition: background-color 0.2s;
 }
 .tree_toggle:hover { background-color: var(--ui-active-bg); color: var(--ui-text-strong); }
-.tree_toggle:empty { cursor: default; background-color: transparent; }
+.tree_toggle:empty { display: none; }
+.tree_item:not([data-type="group"]) .tree_checkbox { margin-left: 10px; margin-right: 1px; }
 .tree_toggle img { width: 12px; height: 12px; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 .tree_checkbox { margin: 5px 2px; position: relative; top: 1px; pointer-events: auto; accent-color: var(--ui-accent); cursor: pointer; }
 .tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; }
@@ -1867,12 +1867,11 @@ font-popup.visible {
 
 /* ---- Group row: menu-item style ---- */
 .tree_item[data-type="group"] {
-    background-color: var(--ui-hover-bg);
+    background-color: var(--ui-active-bg);
     padding: 5px 0;
-    margin-top: 4px;
+    margin-top: 0;
     border-left: none;
 }
-.tree_item[data-type="group"]:first-child { margin-top: 0; }
 .tree_item[data-type="group"]:hover {
     background-color: var(--ui-active-bg);
 }
@@ -1883,7 +1882,7 @@ font-popup.visible {
 .tree_item[data-type="group"] .tree_toggle {
     width: 18px; height: 18px;
 }
-.tree_item[data-type="group"] .tree_toggle img { width: 14px; height: 14px; }
+.tree_item[data-type="group"] .tree_toggle img { width: 16px; height: 16px; }
 .tree_item[data-type="group"] .tree_label_group {
     font-size: 13px;
     font-weight: 700;
