@@ -1877,7 +1877,7 @@ font-popup.visible {
 .tree_hide_btn.is-active {
     opacity: 1;
     color: var(--ui-accent);
-    border-color: var(--ui-accent);
+    border-color: transparent;
 }
 .tree_lock_btn:hover,
 .tree_hide_btn:hover {
@@ -1914,13 +1914,13 @@ font-popup.visible {
 
 /* ---- Group row: menu-item style ---- */
 .tree_item[data-type="group"] {
-    background-color: var(--ui-active-bg);
+    background-color: var(--ui-accent-bg);
     padding: 5px 0;
     margin-top: 0;
     border-left: none;
 }
 .tree_item[data-type="group"]:hover {
-    background-color: var(--ui-active-bg);
+    background-color: var(--ui-accent-bg);
 }
 .tree_item[data-type="group"].selected {
     background-color: var(--ui-accent-bg);

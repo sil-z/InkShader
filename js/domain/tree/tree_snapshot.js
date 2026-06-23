@@ -42,6 +42,8 @@ export function buildTreeSnapshot(curveManager) {
             if (curve) {
                 dto.curveVisible = curve.visible !== false;
                 dto.curveLocked = curve.locked === true;
+                dto.locked = dto.locked || dto.curveLocked;
+                dto.visible = dto.visible && dto.curveVisible;
             }
         }
         if (item.type === "group" && !item.isRef && item.advance !== undefined) {

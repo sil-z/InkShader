@@ -96,6 +96,8 @@ export class SnapshotSerializer {
         this._treeStore.treeItems.set(gid, {
             id: gid, type: 'group', name: gData.name || gid, charCode: charCode, parentId: parentId,
             children: [], isRef: false, advance: gData.advance !== undefined ? gData.advance : 1000,
+            locked: gData.locked === true,
+            visible: gData.visible !== false,
             is_modified: true
         });
         if (!parentId) this._treeStore.rootChildren.push(gid);
@@ -112,7 +114,9 @@ export class SnapshotSerializer {
                     this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, pData, gid);
                     const itemId = uniqueCurveId;
                     this._treeStore.treeItems.set(itemId, {
-                        id: itemId, type: 'curve', curveId: uniqueCurveId, name: uniqueCurveId, parentId: gid
+                        id: itemId, type: 'curve', curveId: uniqueCurveId, name: uniqueCurveId, parentId: gid,
+                        locked: pData.locked === true,
+                        visible: pData.visible !== false
                     });
                     this._treeStore.treeItems.get(gid).children.push(itemId);
                 } catch (e) { /* skip corrupted path */ }
@@ -126,7 +130,9 @@ export class SnapshotSerializer {
                     const uniqueRefName = this._treeStore.ensureUniqueName(refName);
                     this._treeStore.treeItems.set(uniqueRefName, {
                         id: uniqueRefName, type: 'group', name: uniqueRefName, parentId: gid,
-                        children: [], isRef: true, refId: rData.component_id, transform: matrix
+                        children: [], isRef: true, refId: rData.component_id, transform: matrix,
+                        locked: rData.locked === true,
+                        visible: rData.visible !== false
                     });
                     this._treeStore.treeItems.get(gid).children.push(uniqueRefName);
                 } catch (e) { /* skip corrupted ref */ }
@@ -152,7 +158,9 @@ export class SnapshotSerializer {
             this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, pData, gid);
             const itemId = uniqueCurveId;
             this._treeStore.treeItems.set(itemId, {
-                id: itemId, type: "curve", curveId: uniqueCurveId, name: pathName, parentId: gid
+                id: itemId, type: "curve", curveId: uniqueCurveId, name: pathName, parentId: gid,
+                locked: pData.locked === true,
+                visible: pData.visible !== false
             });
             group.children.push(itemId);
             this._treeStore.groupFlatCache.clear();
@@ -201,6 +209,8 @@ export class SnapshotSerializer {
             let result = {
                 "original_id": groupItem.name, "name": groupItem.name, "char_code": groupItem.charCode,
                 "advance": groupItem.advance !== undefined ? groupItem.advance : 1000, "paths": {}, "components": {},
+                "locked": groupItem.locked === true,
+                "visible": groupItem.visible !== false,
                 "tree_child_order": groupItem.children
                     .map((cid) => this._treeStore.treeItems.get(cid)?.name || cid)
                     .filter(Boolean)

@@ -297,6 +297,12 @@ function applySinglePatch(cm, canvas, patch, direction, snapshotObj) {
         const prop = path[4];
         if (prop in curve) {
             curve[prop] = value;
+            if (prop === "locked" || prop === "visible") {
+                const treeItem = Array.from(cm.treeItems.values()).find(
+                    (item) => item.type === "curve" && item.curveId === curve.id
+                );
+                if (treeItem) treeItem[prop] = value;
+            }
             if (curve.groupId) cm.invalidateGroupCache?.(curve.groupId);
             return true;
         }
