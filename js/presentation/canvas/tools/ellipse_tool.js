@@ -11,6 +11,13 @@ export class EllipseTool {
         const c = this.canvas;
         if (c.curve_manager.activeSequenceIndices.size === 0) return;
 
+        // Read from Store first (source of truth); CM projection may lag behind async event bus
+        const activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId
+            ?? c.curve_manager.ensureActiveGroup();
+        if (!activeGroupId) return;
+        const activeGroup = c.curve_manager.treeItems.get(activeGroupId);
+        if (activeGroup && activeGroup.locked) return;
+
         c._ellipseWorldStartX = worldX;
         c._ellipseWorldStartY = worldY;
         c._ellipseIsCtrl = isCtrl;
@@ -87,7 +94,7 @@ export class EllipseTool {
 
         if (rx < 0.25 || ry < 0.25) return;
 
-        if (!c.commands.startAddingPath(activeGroupId, 0)) return;
+        if (!c.commands.startAddingPath(activeGroupId, seqOffsetX)) return;
 
         const k = 0.5522847498;
         const kx = k * rx, ky = k * ry;

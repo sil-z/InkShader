@@ -6,6 +6,7 @@ import { DockLayout } from "./dock_layout.js";
 import "./node_property_popup.js";
 import "./path_property_popup.js";
 import "./bounding_box_popup.js";
+import "./group_settings_popup.js";
 import "./pen_tool_popup.js";
 import "./ellipse_tool_popup.js";
 import "./dropdown_menu.js";
@@ -37,7 +38,7 @@ export function initializeLayoutShell() {
             e.preventDefault();
             const popup = document.querySelector('pen-tool-popup');
             if (popup) {
-                popup.show(e.clientX, e.clientY);
+                popup.show(penBtn);
             }
         });
     }
@@ -50,12 +51,15 @@ export function initializeLayoutShell() {
             e.preventDefault();
             const popup = document.querySelector('ellipse-tool-popup');
             if (popup) {
-                popup.show(e.clientX, e.clientY);
+                popup.show(ellipseBtn);
             }
         });
     }
     if (!document.querySelector('bounding-box-popup')) {
         document.body.appendChild(document.createElement('bounding-box-popup'));
+    }
+    if (!document.querySelector('group-settings-popup')) {
+        document.body.appendChild(document.createElement('group-settings-popup'));
     }
 
     const middleContainer = document.querySelector(".middle");
@@ -80,13 +84,13 @@ export function initializeLayoutShell() {
             if (!isHResizing) return;
             const dx = e.clientX - startHX;
             const newWidth = Math.max(150, startRightWidth + dx);
-            rightContainer.style.flex = `0 0 ${newWidth}px`;
+            if (rightContainer) rightContainer.style.flex = `0 0 ${newWidth}px`;
         });
         document.addEventListener("mouseup", () => {
             if (isHResizing) {
-                isHResizing = false;
-                hResizer.classList.remove("is-h-resizing");
-                document.body.style.cursor = "";
+            isHResizing = false;
+            hResizer.classList.remove("is-h-resizing");
+            document.body.style.cursor = "";
                 CanvasDispatcher.requestSaveViewState(true);
             }
         });

@@ -308,8 +308,8 @@ export class CanvasRendererService {
                 let token = seqTokens[i]; let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
                 let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
                 let ex = (seqOffsetX + advance) * c.scale + offsetX;
-                let rightId = gid + "-r";
-                let isHov = !c.guideline_lock && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.groupId === gid));
+                let rightId = gid + "-" + i + "-r";
+                let isHov = !c.guideline_lock && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
                 if (isHov) {
                     hoveredScreenX = ex;
                 } else {
@@ -332,7 +332,7 @@ export class CanvasRendererService {
             }
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis || cd.effectiveLock) continue;
-                if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE") continue;
+                if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE" || c.getActiveTool() === "ELLIPSE") continue;
                 if (c.getActiveTool() === "DRAW" && cd.curve !== c.current_curve) continue;
                 let start_node = cd.curve.startNode;
                 while (start_node !== null) {
@@ -522,11 +522,54 @@ export class CanvasRendererService {
     }
 
     _drawEllipsePreview(c, p) {
+        const rawSx = c._ellipseWorldStartX, rawSy = c._ellipseWorldStartY;
+        const rawEx = c._ellipseWorldEndX, rawEy = c._ellipseWorldEndY;
+        if (rawSx === undefined || rawEx === undefined) return;
+
+        // Collect all sequence offsets for the active group's instances
+        const offsets = this._getGroupSeqOffsets(c);
+        if (!offsets || offsets.length === 0) return;
+        const masterOff = offsets[0];
+
+        for (const instOff of offsets) {
+            const dx = instOff - masterOff;
+            this._drawOneEllipseAt(c, p,
+                (rawSx + dx) * c.scale,
+                rawSy * c.scale,
+                (rawEx + dx) * c.scale,
+                rawEy * c.scale);
+        }
+    }
+
+    _getGroupSeqOffsets(c) {
+        const activeGroupId = c.curve_manager.ensureActiveGroup();
+        if (!activeGroupId) return null;
+        const seqTokens = c.curve_manager.sequenceTokens || [];
+        const offsets = [];
+        let foundActive = false;
+        for (let i = 0; i < seqTokens.length; i++) {
+            const t = seqTokens[i];
+            const gid = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+            if (gid === activeGroupId) {
+                const off = c.curve_manager.getSeqOffset(i);
+                offsets.push(off);
+                if (c.curve_manager.activeSequenceIndices?.has(i) && !foundActive) {
+                    foundActive = true;
+                    // Swap so the active instance is first (master)
+                    if (offsets.length > 1) {
+                        const tmp = offsets[0];
+                        offsets[0] = off;
+                        offsets[offsets.length - 1] = tmp;
+                    }
+                }
+            }
+        }
+        return offsets;
+    }
+
+    _drawOneEllipseAt(c, p, sx, sy, ex, ey) {
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
-        const sx = c._ellipseWorldStartX * c.scale + offsetX;
-        const sy = c._ellipseWorldStartY * c.scale + offsetY;
-        const ex = c._ellipseWorldEndX * c.scale + offsetX;
-        const ey = c._ellipseWorldEndY * c.scale + offsetY;
+        sx += offsetX; sy += offsetY; ex += offsetX; ey += offsetY;
 
         const minSX = Math.min(sx, ex), minSY = Math.min(sy, ey);
         const maxSX = Math.max(sx, ex), maxSY = Math.max(sy, ey);

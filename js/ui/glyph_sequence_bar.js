@@ -145,7 +145,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 continue;
             }
             const pos = document.createElement("div");
-            pos.className = "seq-bar-pos" + (pd.active ? " active" : "") + (pd.locked ? " locked" : "");
+            pos.className = "seq-bar-pos" + (pd.active ? " active" : "");
             pos.style.left = `${sx}px`;
             if (deferred.length > 0 && (isLast || availW >= totMin + 44)) {
                 const prevItems = [...deferred];
@@ -161,7 +161,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 if (!isLast) pos.style.maxWidth = `${pd.availW}px`;
                 pos.appendChild(this._mkLockBtn(pd.gid));
                 pos.appendChild(this._mkVisBtn(pd.gid));
-                pos.appendChild(this._mkRemoveBtn(pd.gid));
+                pos.appendChild(this._mkRemoveBtn(pd.gid, pd.idx));
                 const ns = document.createElement("span");
                 ns.className = "seq-bar-name";
                 ns.textContent = pd.name;
@@ -190,7 +190,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 if (!isLast) pos.style.maxWidth = `${pd.availW}px`;
                 pos.appendChild(this._mkLockBtn(pd.gid));
                 pos.appendChild(this._mkVisBtn(pd.gid));
-                pos.appendChild(this._mkRemoveBtn(pd.gid));
+                pos.appendChild(this._mkRemoveBtn(pd.gid, pd.idx));
                 const ns = document.createElement("span");
                 ns.className = "seq-bar-name";
                 ns.textContent = pd.name;
@@ -243,7 +243,7 @@ export class GlyphSequenceBar extends HTMLElement {
         p.style.alignItems = "center";
         for (const it of items) {
             const parts = [];
-            parts.push(this._mkRemoveBtn(it.gid));
+            parts.push(this._mkRemoveBtn(it.gid, it.idx));
             const ns = document.createElement("span");
             ns.className = "seq-bar-name";
             ns.textContent = it.name;
@@ -281,13 +281,13 @@ export class GlyphSequenceBar extends HTMLElement {
         svg.appendChild(p);
         return svg;
     }
-    _mkRemoveBtn(gid) {
+    _mkRemoveBtn(gid, idx) {
         const b = document.createElement("div");
         b.className = "seq-bar-rm-btn";
         b.appendChild(this._mkSvg("M5 11h14v2H5z"));
         b.addEventListener("click", (e) => {
             e.stopPropagation();
-            this._removeFromSeq(gid);
+            this._removeFromSeq(gid, idx);
         });
         return b;
     }
@@ -387,7 +387,7 @@ export class GlyphSequenceBar extends HTMLElement {
             if (gid) this._focusInTree(gid);
         }
     }
-    _removeFromSeq(gid) {
+    _removeFromSeq(gid, idx) {
         const gi = gid ? EditorModel.getTreeItem(gid) : null;
         const charCode = gi?.charCode ?? null;
         const r = EditorModel.removeGroupTokensFromSequence({
@@ -395,6 +395,7 @@ export class GlyphSequenceBar extends HTMLElement {
             activeIndices: this.activeIndices,
             groupId: gid,
             charCode,
+            index: idx,
             resolveGroupByName: (name) => EditorModel.getGroupByName(name)
         });
         this.text = r.text;

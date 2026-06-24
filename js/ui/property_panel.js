@@ -7,6 +7,7 @@ import * as EditorModel from "../app/editor_read_facade.js";
 import { NODE_PROPS_DOCKED, NODE_PROPS_UNDOCKED } from "./node_property_popup.js";
 import { PATH_PROPS_DOCKED, PATH_PROPS_UNDOCKED } from "./path_property_popup.js";
 import { BBOX_DOCKED, BBOX_UNDOCKED } from "./bounding_box_popup.js";
+import { GRP_DOCKED } from "./group_settings_popup.js";
 
 const TEMPLATE_HTML = `
     <div class="prop_panel_title_wrapper">
@@ -29,6 +30,7 @@ export class PropertyPanel extends HTMLElement {
         this._nodePropsDocked = true;
         this._pathPropsDocked = true;
         this._bboxDocked = true;
+        this._grpDocked = true;
         this._loadSectionDockState();
         this._focusedInput = null;
         this._sectionOrder = [];
@@ -45,6 +47,11 @@ export class PropertyPanel extends HTMLElement {
                 if (typeof data.ppp === 'boolean') this._pathPropsDocked = data.ppp;
                 if (typeof data.bbox === 'boolean') this._bboxDocked = data.bbox;
             }
+        } catch (e) { /* ignore */ }
+        // grp docked state lives in its own key (set by the popup)
+        try {
+            const v = localStorage.getItem('grp_docked');
+            if (v === '0') this._grpDocked = false;
         } catch (e) { /* ignore */ }
     }
 
@@ -175,6 +182,11 @@ export class PropertyPanel extends HTMLElement {
             this._saveSectionDockState();
             this.render();
         });
+        this.addGlobalListener(appEventBus, GRP_DOCKED, (e) => {
+            this._grpDocked = true;
+            this.lastSignature = "";
+            this.render();
+        });
     }
 
     disconnectedCallback() {
@@ -292,7 +304,8 @@ export class PropertyPanel extends HTMLElement {
             }
         }
 
-        let sig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}`;
+        const activeGroupId = this.interaction.activeGroupId;
+        let sig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}_${activeGroupId || ''}`;
 
         if (this.lastSignature !== sig) {
             if (this._focusedInput) {
@@ -308,6 +321,7 @@ export class PropertyPanel extends HTMLElement {
 
     buildDOM(hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const activeGroupId = this.interaction.activeGroupId;
 
         const sections = {};
         if (nodeCount > 0 || this._nodePropsDocked) {
@@ -319,9 +333,14 @@ export class PropertyPanel extends HTMLElement {
             const html = this._buildPathProps(pathCount, t);
             if (html) sections.ppp = html;
         }
+        // Show group section when active group exists and section is docked
+        if (activeGroupId && this._grpDocked) {
+            const html = this._buildGroupSection(activeGroupId, t);
+            if (html) sections.grp = html;
+        }
 
         const sectionKeys = Object.keys(sections);
-        if (sectionKeys.length === 0 && !hasRef && !(hasGroup && !hasPath)) {
+        if (sectionKeys.length === 0 && !hasRef) {
             this.container.replaceChildren();
             this.container.classList.add("is_empty");
             return;
@@ -343,11 +362,6 @@ export class PropertyPanel extends HTMLElement {
             const holder = document.createElement('div');
             holder.innerHTML = html;
             while (holder.firstChild) frag.appendChild(holder.firstChild);
-        } else if (hasGroup && !hasPath) {
-            const html = this._buildGroupProps(t);
-            const holder = document.createElement('div');
-            holder.innerHTML = html;
-            while (holder.firstChild) frag.appendChild(holder.firstChild);
         }
 
         this.container.classList.remove("is_empty");
@@ -359,7 +373,7 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _ensureSectionOrder(availableKeys) {
-        const allKeys = ['npp', 'bbox', 'ppp'];
+        const allKeys = ['npp', 'bbox', 'ppp', 'grp'];
         const existing = this._sectionOrder.filter(k => allKeys.includes(k));
         allKeys.forEach(k => {
             if (!existing.includes(k)) existing.push(k);
@@ -381,7 +395,7 @@ export class PropertyPanel extends HTMLElement {
                 if (!section) return;
 
                 const sectionId = section.dataset.section;
-                let popup = null;
+                const popup = this._getPopupForSection(sectionId);
                 let extracted = false;
                 // Capture where within the handle the user clicked — this is the
                 // drag anchor offset (like dragging a tab: the click position on
@@ -401,17 +415,11 @@ export class PropertyPanel extends HTMLElement {
                     if (!extracted && dist >= 3) {
                         extracted = true;
                         section.classList.add('is-dragging');
-                        popup = this._getPopupForSection(sectionId);
-                        if (!popup) {
-                            section.classList.remove('is-dragging');
-                            this._dragState = null;
-                            return;
+                        if (popup) {
+                            this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY, handleOffsetX, handleOffsetY);
                         }
-                        this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY, handleOffsetX, handleOffsetY);
                         return;
                     }
-
-
                 };
 
                 const onUp = (ev) => {
@@ -437,6 +445,7 @@ export class PropertyPanel extends HTMLElement {
         if (sectionId === 'npp') return document.querySelector('node-property-popup');
         if (sectionId === 'bbox') return document.querySelector('bounding-box-popup');
         if (sectionId === 'ppp') return document.querySelector('path-property-popup');
+        if (sectionId === 'grp') return document.querySelector('group-settings-popup');
         return null;
     }
 
@@ -486,6 +495,14 @@ export class PropertyPanel extends HTMLElement {
             });
             popup._selectedTreeIds = [...selIds];
             popup._patchValues(curves);
+        } else if (sectionId === 'grp') {
+            this._grpDocked = false;
+            this.lastSignature = '';
+            this.render();
+
+            popup._groupId = this.interaction.activeGroupId;
+            popup._setDocked(false);
+            popup._patchValues();
         }
 
         // Position the popup so the cursor is at the same relative position
@@ -502,6 +519,8 @@ export class PropertyPanel extends HTMLElement {
         // Clamp to viewport
         popup.style.left = Math.max(0, Math.min(parseFloat(popup.style.left), window.innerWidth - initPw)) + 'px';
         popup.style.top = Math.max(0, Math.min(parseFloat(popup.style.top), window.innerHeight - initPh)) + 'px';
+        // Persist position so it survives page refresh
+        if (typeof popup._savePosition === 'function') popup._savePosition();
         // The offset captures the actual cursor-to-popup-left-edge distance after clamping
         const offX = startX - parseFloat(popup.style.left);
         const offY = startY - parseFloat(popup.style.top);
@@ -553,11 +572,15 @@ export class PropertyPanel extends HTMLElement {
         } else if (sectionId === 'ppp') {
             popup._docked = true;
             this._pathPropsDocked = true;
+        } else if (sectionId === 'grp') {
+            popup._docked = true;
+            this._grpDocked = true;
         }
         // Sync popup's localStorage so a page refresh preserves the docked state
         try {
             const key = sectionId === 'npp' ? 'npp_docked'
                       : sectionId === 'bbox' ? 'bbox_docked'
+                      : sectionId === 'grp' ? 'grp_docked'
                       : 'ppp_docked';
             localStorage.setItem(key, '1');
         } catch (_) {}
@@ -727,6 +750,20 @@ export class PropertyPanel extends HTMLElement {
             </div>`;
     }
 
+    _buildGroupSection(groupId, t) {
+        const item = EditorModel.getTreeItem(groupId);
+        if (!item || item.type !== 'group' || item.isRef) return '';
+        return `
+            <div class="npp-section" data-section="grp">
+                <div class="npp-section-handle" data-section="grp" data-i18n="prop.group_settings">Group Settings</div>
+                <div class="npp-docked-fields">
+                    <div class="npp-row"><label>${t('prop.name', 'Name')}</label><input type="text" id="g_name"></div>
+                    <div class="npp-row"><label>${t('prop.char', 'Char')}</label><input type="text" id="g_char"></div>
+                    <div class="npp-row"><label>${t('prop.advance', 'Advance')}</label><input type="number" id="g_advance"></div>
+                </div>
+            </div>`;
+    }
+
     patchValues(item, selectedCurves, bounds, nodeCount, selectedIds) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
         const patch = (id, val, disable = false) => {
@@ -825,6 +862,17 @@ export class PropertyPanel extends HTMLElement {
                 patch('g_name', item.name);
                 patch('g_char', item.charCode || '');
                 patch('g_advance', item.advance !== undefined ? item.advance : 1000);
+            }
+        }
+
+        // Also patch group fields when active group exists (even if not selected)
+        const activeGroupId = this.interaction.activeGroupId;
+        if (activeGroupId && (!item || item.id !== activeGroupId)) {
+            const activeItem = EditorModel.getTreeItem(activeGroupId);
+            if (activeItem && activeItem.type === 'group' && !activeItem.isRef) {
+                patch('g_name', activeItem.name);
+                patch('g_char', activeItem.charCode || '');
+                patch('g_advance', activeItem.advance !== undefined ? activeItem.advance : 1000);
             }
         }
 
@@ -935,7 +983,12 @@ export class PropertyPanel extends HTMLElement {
         if (['ref_name', 'g_name', 'c_name'].includes(id)) {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
-            if (item.name === val) return;
+            // For g_name, fallback to active group if selected item is not a group
+            if (id === 'g_name' && (!item || item.type !== 'group')) {
+                selId = this.interaction.activeGroupId;
+                item = selId ? EditorModel.getTreeItem(selId) : null;
+            }
+            if (!item || item.name === val) return;
 
             const reqDetail = CanvasDispatcher.requestRenameTreeItem(selId, val);
             if (!reqDetail.result) {
@@ -947,6 +1000,11 @@ export class PropertyPanel extends HTMLElement {
         if (id === 'g_char') {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
+            // Fallback to active group if selected item is not a group
+            if (!item || item.type !== 'group') {
+                selId = this.interaction.activeGroupId;
+                item = selId ? EditorModel.getTreeItem(selId) : null;
+            }
             if (item) {
                 let newVal = val === "" ? null : val;
                 if (item.charCode === newVal) return;
@@ -976,6 +1034,11 @@ export class PropertyPanel extends HTMLElement {
         if (id === 'g_advance' && !isNaN(numVal)) {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
+            // Fallback to active group if selected item is not a group
+            if (!item || item.type !== 'group') {
+                selId = this.interaction.activeGroupId;
+                item = selId ? EditorModel.getTreeItem(selId) : null;
+            }
             if (item) {
                 CanvasDispatcher.requestSetGroupAdvance(selId, numVal, { recordHistory: e.type === 'change' });
             }

@@ -86,9 +86,9 @@ export class CanvasInputController {
                 const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
-                if (guideHit) { e.preventDefault(); return; }
+                if (guideHit && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                if (divHit) { e.preventDefault(); return; }
+                if (divHit && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
@@ -198,8 +198,12 @@ export class CanvasInputController {
                     c.canvasObj.style.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'crosshair';
                 }
             } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE') {
-                const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                c.canvasObj.style.cursor = divHit ? "ew-resize" : "crosshair";
+                if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
+                    const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
+                    c.canvasObj.style.cursor = divHit ? "ew-resize" : "crosshair";
+                } else {
+                    c.canvasObj.style.cursor = "crosshair";
+                }
             }
             if (c.current_state === 'IDLE') {
                 c.renderer.update_previewData(mouseX, mouseY); if (c.last_on_curve_node_marker !== null) c.is_dirty = true;
@@ -345,6 +349,15 @@ export class CanvasInputController {
         c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
             if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
+            // During pen / ellipse drawing, suppress all guide and divider interactions
+            if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') {
+                if (c._hoveredUserGuideId !== null || c._hoveredDividerId !== null) {
+                    c._hoveredUserGuideId = null;
+                    c._hoveredDividerId = null;
+                    c.is_dirty = true;
+                }
+                return;
+            }
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
@@ -355,7 +368,7 @@ export class CanvasInputController {
                 c.is_dirty = true;
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
-            const divId = divHit ? divHit.groupId + "-r" : null;
+            const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + "-r" : null;
             if (c._hoveredDividerId !== divId) {
                 c._hoveredDividerId = divId;
                 c.is_dirty = true;
@@ -398,6 +411,7 @@ export class CanvasInputController {
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;
+                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
                 e.preventDefault();
                 e.stopPropagation();
                 c._showUserGuideEditDialog(hit.guide, e.clientX, e.clientY);
@@ -406,6 +420,7 @@ export class CanvasInputController {
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
                 if (c.guideline_lock) return;
+                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
                 const group = c.curve_manager.treeItems.get(divHit.groupId);
                 if (group && group.locked) return;
                 e.preventDefault();
@@ -421,6 +436,7 @@ export class CanvasInputController {
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;
+                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
                 e.preventDefault();
                 e.stopPropagation();
                 c.current_state = 'DRAGGING_USER_GUIDE';
@@ -437,6 +453,7 @@ export class CanvasInputController {
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
                 if (c.guideline_lock) return;
+                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
                 const group = c.curve_manager.treeItems.get(divHit.groupId);
                 if (group && group.locked) return;
                 e.preventDefault();
@@ -444,6 +461,7 @@ export class CanvasInputController {
                 c.current_state = 'DRAGGING_DIVIDER';
                 c._draggingDivider = {
                     groupId: divHit.groupId,
+                    dividerId: divHit.groupId + "-" + divHit.seqIndex + "-r",
                     startScreenX: divHit.screenX,
                     startAdvance: group ? group.advance : 1000,
                     _clientX: e.clientX,

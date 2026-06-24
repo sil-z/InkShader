@@ -21,6 +21,10 @@ const POPUP_HTML = `
         <label data-i18n="prop.skel">Skeleton</label>
         <input type="checkbox" id="ellipse_popup_show_skel">
     </div>
+    <div class="pen-tool-actions">
+        <button type="button" id="ellipse_popup_cancel" class="btn-cancel">Cancel</button>
+        <button type="button" id="ellipse_popup_ok" class="btn-ok">OK</button>
+    </div>
 </div>`;
 
 export class EllipseToolPopup extends HTMLElement {
@@ -61,6 +65,14 @@ export class EllipseToolPopup extends HTMLElement {
             }
         });
 
+        this.addEventListener('click', (e) => {
+            if (e.target.id === 'ellipse_popup_ok') {
+                this.hide();
+            } else if (e.target.id === 'ellipse_popup_cancel') {
+                this.hide();
+            }
+        });
+
         this.addEventListener('mousedown', (e) => {
             e.stopPropagation();
         });
@@ -69,7 +81,6 @@ export class EllipseToolPopup extends HTMLElement {
 
         document.addEventListener('mousedown', (e) => {
             if (!this._visible) return;
-            if (e.button !== 0) return;
             if (!this.contains(e.target)) {
                 this.hide();
             }
@@ -126,19 +137,27 @@ export class EllipseToolPopup extends HTMLElement {
         }
     }
 
-    show(clientX, clientY) {
+    show(anchorEl) {
         this._patchValues();
-        this.style.left = clientX + 'px';
-        this.style.top = clientY + 'px';
         this.classList.add('visible');
 
-        const rect = this.getBoundingClientRect();
-        if (rect.right > window.innerWidth) {
-            this.style.left = (clientX - rect.width) + 'px';
-        }
-        if (rect.bottom > window.innerHeight) {
-            this.style.top = (clientY - rect.height) + 'px';
-        }
+        requestAnimationFrame(() => {
+            const rect = anchorEl.getBoundingClientRect();
+            let left = rect.right + 2;
+            let top = rect.top;
+            const popupRect = this.getBoundingClientRect();
+
+            if (left + popupRect.width > window.innerWidth - 4) {
+                left = rect.left - popupRect.width - 2;
+            }
+            if (top + popupRect.height > window.innerHeight - 4) {
+                top = window.innerHeight - popupRect.height - 4;
+            }
+            if (top < 4) top = 4;
+
+            this.style.left = left + 'px';
+            this.style.top = top + 'px';
+        });
         this._visible = true;
     }
 

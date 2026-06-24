@@ -14,7 +14,9 @@ export function removeGroupTokensFromSequence({
     activeIndices,
     groupId,
     charCode,
-    resolveGroupByName = () => null
+    resolveGroupByName = () => null,
+    /** If >= 0, only remove the token at this specific index instead of matching by groupId/charCode */
+    index = -1
 }) {
     const tokens = parseSequenceTokens(text, { resolveGroupByName });
     let newText = "";
@@ -24,8 +26,12 @@ export function removeGroupTokensFromSequence({
     for (let i = 0; i < tokens.length; i++) {
         const t = tokens[i];
         let isMatch = false;
-        if (t.isChar && charCode != null && t.value === charCode) isMatch = true;
-        if (!t.isChar && groupId != null && t.value === groupId) isMatch = true;
+        if (index >= 0) {
+            if (i === index) isMatch = true;
+        } else {
+            if (t.isChar && charCode != null && t.value === charCode) isMatch = true;
+            if (!t.isChar && groupId != null && t.value === groupId) isMatch = true;
+        }
 
         if (!isMatch) {
             newText += t.raw;

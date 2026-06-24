@@ -337,12 +337,12 @@ export class CanvasUtilsService {
                     let prevToken = seqTokens[i - 1];
                     let prevGid = prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value;
                     bestDist = dl;
-                    best = { groupId: prevGid, isRight: true, screenX: sx };
+                    best = { groupId: prevGid, isRight: true, screenX: sx, seqIndex: i - 1 };
                 }
             }
             if (dr < HIT_THRESHOLD && dr < bestDist) {
                 bestDist = dr;
-                best = { groupId: gid, isRight: true, screenX: ex };
+                best = { groupId: gid, isRight: true, screenX: ex, seqIndex: i };
             }
         }
         return best;

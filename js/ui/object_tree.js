@@ -59,10 +59,12 @@ export class ObjectTree extends HTMLElement {
             this.tree.addEventListener("pointerdown", (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest(".tree_toggle")) return;
-                if (e.target.classList.contains("tree_checkbox")) return;
+                if (e.target.classList.contains("tree_select_btn")) return;
                 if (e.target.closest(".tree_right")) return;
                 const itemDiv = e.target.closest(".tree_item");
                 if (!itemDiv) return;
+                // Regular groups do not participate in selection; references do
+                if (itemDiv.dataset.type === "group" && itemDiv.dataset.isref !== "true") return;
                 this.applyTreeItemSelection(e, itemDiv);
             });
             this.tree.addEventListener("click", (e) => {
@@ -104,7 +106,7 @@ export class ObjectTree extends HTMLElement {
                 actionType === "CHANGE_NODE_SELECTION" ||
                 actionType === "CHANGE_OBJECT_SELECTION"
             ) {
-                this._patchTreeSelectionOnly();
+                this._patchTreeSelectionOnly(actionType);
             }
         });
         this.addGlobalListener(window, CANVAS_EVENTS.REQUEST_EDITOR_ACTION, (e) => {
@@ -149,7 +151,7 @@ export class ObjectTree extends HTMLElement {
         } else if (item.parentId) {
             activeGroupId = item.parentId;
         }
-        const isCheckbox = e.target.classList.contains("tree_checkbox");
+        const isCheckbox = e.target.classList.contains("tree_select_btn");
         const allItems = Array.from(this.tree.querySelectorAll(".tree_item"));
         const currentIndex = allItems.findIndex((el) => el.dataset.id === id);
         let newSelection = new Set(this.interaction.selectedTreeIds);
@@ -173,7 +175,7 @@ export class ObjectTree extends HTMLElement {
         }
         this._skipTreeScroll = true;
         CanvasDispatcher.requestSetTreeSelection(Array.from(newSelection), activeGroupId);
-        this._skipTreeScroll = false;
+        queueMicrotask(() => { this._skipTreeScroll = false; });
     }
     handleLeftClick(e) {
         if (e.target.closest(".tree_right")) return;
@@ -186,12 +188,23 @@ export class ObjectTree extends HTMLElement {
         }
         const itemDiv = e.target.closest(".tree_item");
         if (!itemDiv) return;
-        if (e.target.classList.contains("tree_checkbox")) {
+        // Groups: clicking non-toggle area toggles collapse, switches active group, and clears object selection
+        if (itemDiv.dataset.type === "group" && itemDiv.dataset.isref !== "true") {
+            this._skipTreeScroll = true;
+            CanvasDispatcher.requestToggleGroupCollapsed(itemDiv.dataset.id);
+            if (this.interaction.activeGroupId !== itemDiv.dataset.id) {
+                CanvasDispatcher.requestSetActiveGroup(itemDiv.dataset.id);
+                CanvasDispatcher.requestSetTreeSelection([], itemDiv.dataset.id);
+            }
+            queueMicrotask(() => { this._skipTreeScroll = false; });
+            return;
+        }
+        if (e.target.classList.contains("tree_select_btn")) {
             const id = itemDiv.dataset.id;
             const allItems = Array.from(this.tree.querySelectorAll(".tree_item"));
             const currentIndex = allItems.findIndex((el) => el.dataset.id === id);
             let newSelection = new Set(this.interaction.selectedTreeIds);
-            if (!e.target.checked) newSelection.delete(id);
+            if (newSelection.has(id)) newSelection.delete(id);
             else newSelection.add(id);
             this.lastSelectedIndex = currentIndex;
             let activeGroupId = null;
@@ -207,8 +220,6 @@ export class ObjectTree extends HTMLElement {
         if (!itemDiv) return;
         let id = itemDiv.dataset.id;
         let type = itemDiv.dataset.type;
-        // Temporarily disable context menu for groups
-        if (type === "group") return;
         const itemObj = EditorModel.getTreeItem(id);
         let isRef = itemObj ? itemObj.isRef : false;
         const allItems = Array.from(this.tree.querySelectorAll(".tree_item"));
@@ -259,12 +270,10 @@ export class ObjectTree extends HTMLElement {
                 menu.appendChild(createItem(t('tree.menu.copy', 'Copy'), 'Ctrl+C', 'copy'));
                 menu.appendChild(createItem(t('tree.menu.duplicate', 'Duplicate'), 'Ctrl+D', 'duplicate'));
             } else {
-                menu.appendChild(createItem(t('tree.menu.delete', 'Delete'), 'Del', 'delete'));
                 menu.appendChild(createItem(t('tree.menu.copy_ref', 'Copy Reference'), 'Ctrl+C', 'copy'));
                 menu.appendChild(createItem(pasteText, 'Ctrl+V', 'paste', id, !canPaste));
-                menu.appendChild(createItem(t('tree.menu.duplicate', 'Duplicate'), 'Ctrl+D', 'duplicate'));
             }
-        } 
+        }
         document.body.appendChild(menu);
         document.addEventListener("mousedown", (ev) => { if(!menu.contains(ev.target)) this.removeMenu(); }, { once: true });
     }
@@ -304,12 +313,12 @@ export class ObjectTree extends HTMLElement {
         const toggle = document.createElement("button");
         toggle.className = "tree_toggle";
         toggle.type = "button";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.className = "tree_checkbox";
+        const selectBtn = document.createElement("button");
+        selectBtn.className = "tree_select_btn";
+        selectBtn.type = "button";
         const label = document.createElement("div");
         label.className = "tree_label";
-        left.append(indent, toggle, checkbox, label);
+        left.append(indent, toggle, selectBtn, label);
         el.append(left);
         const right = document.createElement("div");
         right.className = "tree_right";
@@ -349,7 +358,7 @@ export class ObjectTree extends HTMLElement {
         });
         right.append(lockBtn, hideBtn);
         el.append(right);
-        el._treeParts = { indent, toggle, checkbox, label, lockBtn, hideBtn, lockImg, hideImg, right };
+        el._treeParts = { indent, toggle, selectBtn, label, lockBtn, hideBtn, lockImg, hideImg, right };
         return el;
     }
     _ensureGroupToggleSvg(toggle, collapsed) {
@@ -399,7 +408,7 @@ export class ObjectTree extends HTMLElement {
         else el.removeAttribute("tabindex");
         const indentWidth = depth > 0 ? `${(depth - 1) * 14}px` : '0px';
         if (parts.indent.style.width !== indentWidth) parts.indent.style.width = indentWidth;
-        const isGroup = item.type === "group";
+        const isGroup = item.type === "group" && !item.isRef;
         if (isGroup) {
             parts.right.style.display = "none";
         } else {
@@ -412,7 +421,7 @@ export class ObjectTree extends HTMLElement {
         } else {
             parts.toggle.style.display = "none";
         }
-        if (parts.checkbox.checked !== isSelected) parts.checkbox.checked = isSelected;
+        parts.selectBtn.classList.toggle("is-active", isSelected);
         const isLocked = item.locked === true;
         const isHidden = item.visible === false;
         parts.lockBtn.classList.toggle("is-active", isLocked);
@@ -429,7 +438,8 @@ export class ObjectTree extends HTMLElement {
         } else {
             if (parts.hideImg.getAttribute("src") !== "./assets/icons/show.svg") parts.hideImg.src = "./assets/icons/show.svg";
         }
-        const labelClass = item.type === "group" ? "tree_label_group" : "tree_label";
+        const isGroupRef = item.type === "group" && item.isRef;
+        const labelClass = (item.type === "group" && !isGroupRef) ? "tree_label_group" : "tree_label";
         if (parts.label.className !== labelClass) parts.label.className = labelClass;
         const labelText = this._getTreeItemDisplayName(item);
         if (parts.label.textContent !== labelText) parts.label.textContent = labelText;
@@ -478,7 +488,11 @@ export class ObjectTree extends HTMLElement {
             }
         }
     }
-    _patchTreeSelectionOnly() {
+    /**
+     * 更新选中/活动组的 CSS 类，并在需要时滚动到目标元素。
+     * @param {string} [actionType] - 触发来源的 action type，用于区分树内操作和外部操作
+     */
+    _patchTreeSelectionOnly(actionType) {
         if (!this.treeContent) return;
         const activeId = this.interaction.activeGroupId;
         let target = null;
@@ -488,14 +502,14 @@ export class ObjectTree extends HTMLElement {
             const isActive = activeId === id;
             el.classList.toggle("selected", isSelected);
             el.classList.toggle("active-group", isActive);
-            const cb = el._treeParts?.checkbox ?? el.querySelector(".tree_checkbox");
-            if (cb) cb.checked = isSelected;
+            const sb = el._treeParts?.selectBtn ?? el.querySelector(".tree_select_btn");
+            if (sb) sb.classList.toggle("is-active", isSelected);
             if (isSelected && !target) target = el;
         }
         if (!target) {
             target = this.treeContent.querySelector(".tree_item.active-group");
         }
-        if (target && !this._skipTreeScroll) {
+        if (target && !this._skipTreeScroll && actionType !== "SET_TREE_SELECTION") {
             target.scrollIntoView({ block: "center", behavior: "auto" });
         }
     }
@@ -557,13 +571,13 @@ export class ObjectTree extends HTMLElement {
                 CanvasDispatcher.requestSetTreeSelection([id]);
                 this.tree.querySelectorAll('.tree_item.selected').forEach(el => {
                     el.classList.remove('selected');
-                    const cb = el.querySelector('.tree_checkbox');
-                    if (cb) cb.checked = false;
+                    const sb = el.querySelector('.tree_select_btn');
+                    if (sb) sb.classList.remove('is-active');
                 });
                 
                 item.classList.add('selected');
-                const currentCb = item.querySelector('.tree_checkbox');
-                if (currentCb) currentCb.checked = true;
+                const currentSb = item.querySelector('.tree_select_btn');
+                if (currentSb) currentSb.classList.add('is-active');
             }
             this.dragItems = [];
             this.interaction.selectedTreeIds.forEach(selId => {

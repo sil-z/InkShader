@@ -369,9 +369,7 @@ glyph-sequence-bar {
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     z-index: 1000;
 }
-.seq-bar-pos.locked {
-    opacity: 0.4;
-}
+
 .seq-bar-name, .seq-bar-code {
     height: 20px;
     min-width: 20px;
@@ -963,7 +961,7 @@ logger-panel {
 .prop_inputs input {
     flex: 1;
     min-width: 0;
-    text-align: center;
+    text-align: left;
 }
 .prop_direction_controls {
     display: flex;
@@ -1306,6 +1304,12 @@ object-tree {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
+    -moz-appearance: textfield;
+}
+.user-guide-edit-dialog .field-row input::-webkit-inner-spin-button,
+.user-guide-edit-dialog .field-row input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 .user-guide-edit-dialog .field-row input:focus {
     border-color: var(--ui-accent);
@@ -1362,7 +1366,8 @@ object-tree {
 }
 node-property-popup,
 path-property-popup,
-bounding-box-popup {
+bounding-box-popup,
+group-settings-popup {
     position: fixed;
     z-index: 2000;
     background: var(--ui-bg-panel);
@@ -1376,7 +1381,8 @@ bounding-box-popup {
 }
 node-property-popup.visible,
 path-property-popup.visible,
-bounding-box-popup.visible {
+bounding-box-popup.visible,
+group-settings-popup.visible {
     display: block;
 }
 .npp-drag-handle {
@@ -1446,7 +1452,13 @@ font-popup.visible {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
-    text-align: center;
+    text-align: left;
+    -moz-appearance: textfield;
+}
+.pen-tool-row input[type="number"]::-webkit-inner-spin-button,
+.pen-tool-row input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 .pen-tool-row input[type="number"]:focus {
     border-color: var(--ui-accent);
@@ -1457,24 +1469,43 @@ font-popup.visible {
     cursor: pointer;
     accent-color: var(--ui-accent);
 }
-.pen-tool-separator {
-    height: 1px;
-    background: var(--ui-border);
-    margin: 6px 0;
+.pen-tool-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 10px;
 }
-.pen-tool-finish-btn {
-    width: 100%;
-    padding: 5px 0;
-    border: none;
-    border-radius: 4px;
-    background: var(--ui-accent);
-    color: #fff;
+.pen-tool-actions .btn-cancel {
+    flex: 1;
+    height: 28px;
+    border-radius: 5px;
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    text-align: center;
+    font-family: inherit;
+    transition: all 0.15s ease;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    border: 1px solid var(--ui-border);
 }
-.pen-tool-finish-btn:hover {
+.pen-tool-actions .btn-cancel:hover {
+    background: var(--ui-hover-bg);
+    border-color: var(--ui-border-light);
+}
+.pen-tool-actions .btn-ok {
+    flex: 1;
+    height: 28px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+    background: var(--ui-accent);
+    color: #fff;
+    border: none;
+}
+.pen-tool-actions .btn-ok:hover {
     background: var(--ui-accent-hover);
 }
 
@@ -1518,7 +1549,7 @@ font-popup.visible {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
-    text-align: center;
+    text-align: left;
 }
 .ppp-row input[type="number"]:focus {
     border-color: var(--ui-accent);
@@ -1558,12 +1589,14 @@ font-popup.visible {
 
 .npp-drop-target,
 .bbox-drop-target,
-.ppp-drop-target {
+.ppp-drop-target,
+.grp-drop-target {
     position: relative;
 }
 .npp-drop-target::after,
 .bbox-drop-target::after,
-.ppp-drop-target::after {
+.ppp-drop-target::after,
+.grp-drop-target::after {
     content: '';
     position: absolute;
     inset: 4px;
@@ -1654,7 +1687,7 @@ font-popup.visible {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
-    text-align: center;
+    text-align: left;
     cursor: text;
     user-select: auto;
 }
@@ -1699,7 +1732,7 @@ font-popup.visible {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
-    text-align: center;
+    text-align: left;
 }
 .npp-docked-fields .ppp-row input[type="number"]:focus {
     border-color: var(--ui-accent);
@@ -1785,7 +1818,7 @@ font-popup.visible {
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
-    text-align: center;
+    text-align: left;
     cursor: text;
     user-select: auto;
 }
@@ -1840,7 +1873,7 @@ font-popup.visible {
 .tree_left { 
     display: flex; 
     align-items: center; 
-    gap: 4px; 
+    gap: 2px; 
     pointer-events: none; 
 }
 .tree_right {
@@ -1905,9 +1938,49 @@ font-popup.visible {
 }
 .tree_toggle:hover { background-color: var(--ui-active-bg); color: var(--ui-text-strong); }
 .tree_toggle:empty { display: none; }
-.tree_item:not([data-type="group"]) .tree_checkbox { margin-left: 10px; margin-right: 1px; }
+.tree_select_btn {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+    margin: 4px 3px 4px 6px;
+    color: var(--ui-text-muted);
+    opacity: 0;
+    transition: opacity 0.15s, background-color 0.15s, color 0.15s;
+    pointer-events: auto;
+    flex-shrink: 0;
+}
+.tree_select_btn::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+.tree_item:hover .tree_select_btn {
+    opacity: 1;
+}
+.tree_select_btn.is-active {
+    opacity: 1;
+    color: var(--ui-accent);
+}
+.tree_select_btn:hover {
+    background: var(--ui-hover-bg);
+}
+.tree_select_btn.is-active:hover {
+    background: transparent;
+}
+.tree_item[data-type="group"] .tree_select_btn {
+    display: none;
+}
 .tree_toggle img { width: 12px; height: 12px; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-.tree_checkbox { margin: 5px 2px; position: relative; top: 1px; pointer-events: auto; accent-color: var(--ui-accent); cursor: pointer; }
 .tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; }
 .tree_label_group { font-weight: 600; }
 .group-reference .tree_label_group { font-style: italic; color: var(--ui-text-muted); }
@@ -1915,7 +1988,6 @@ font-popup.visible {
 /* ---- Group row: menu-item style ---- */
 .tree_item[data-type="group"] {
     background-color: var(--ui-accent-bg);
-    padding: 5px 0;
     margin-top: 0;
     border-left: none;
 }
@@ -1925,26 +1997,46 @@ font-popup.visible {
 .tree_item[data-type="group"].selected {
     background-color: var(--ui-accent-bg);
 }
-.tree_item[data-type="group"] .tree_checkbox { display: none; }
 .tree_item[data-type="group"] .tree_toggle {
     width: 18px; height: 18px;
+    margin: 4px 3px 4px 6px;
 }
 .tree_item[data-type="group"] .tree_toggle img { width: 16px; height: 16px; }
 .tree_item[data-type="group"] .tree_label_group {
     font-size: 13px;
     font-weight: 700;
     color: var(--ui-text-main);
-    line-height: 20px;
+    line-height: normal;
 }
 .tree_item[data-type="group"].active-group {
     background-color: var(--ui-accent-bg);
     box-shadow: inset 3px 0 0 0 var(--ui-accent);
 }
-/* Reference groups keep italic style */
+/* Reference groups: normal object styling (override group-specific rules) */
 .tree_item[data-type="group"].group-reference {
+    background-color: var(--ui-bg-placeholder);
     border-left: none;
 }
-.tree_item[data-type="group"].group-reference .tree_label_group {
+.tree_item[data-type="group"].group-reference:hover {
+    background-color: var(--ui-hover-bg);
+}
+.tree_item[data-type="group"].group-reference.selected {
+    background-color: var(--ui-active-bg);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+}
+.tree_item[data-type="group"].group-reference.active-group {
+    background-color: var(--ui-accent-bg);
+    box-shadow: inset 3px 0 0 0 var(--ui-accent);
+}
+.tree_item[data-type="group"].group-reference .tree_select_btn {
+    display: flex;
+}
+.tree_item[data-type="group"].group-reference .tree_toggle {
+    width: 14px; height: 14px;
+    margin: 0;
+}
+.tree_item[data-type="group"].group-reference .tree_toggle img { width: 12px; height: 12px; }
+.tree_item[data-type="group"].group-reference .tree_label {
     font-style: italic;
 }
 .tree_icon_left_container {
@@ -2031,7 +2123,7 @@ font-popup.visible {
     padding: 0 2px;
     width: 100%;
     box-sizing: border-box;
-    text-align: center;
+    text-align: left;
     outline: none;
     height: 16px;
 }

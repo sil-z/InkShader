@@ -35,8 +35,8 @@ const POPUP_HTML = `
         <input type="text" id="font_popup_version" class="font-popup-input" placeholder="e.g. 1.0">
     </div>
     <div class="pen-tool-separator"></div>
-    <div class="pen-tool-row">
-        <button type="button" id="font_popup_save" class="pen-tool-finish-btn" data-i18n="common.save">Save</button>
+    <div class="pen-tool-actions">
+        <button type="button" id="font_popup_save" class="pref_button_primary" data-i18n="common.save">Save</button>
     </div>
 </div>`;
 
