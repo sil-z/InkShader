@@ -1,4 +1,5 @@
 const PANEL_DEFS = {
+    canvas: { label: "Canvas", compSelector: ".canvas-wrap" },
     objects: { label: "Objects", compSelector: "object-tree" },
     properties: { label: "Properties", compSelector: ".property_panel" },
     terminal: { label: "Terminal", compSelector: "logger-panel" }
@@ -8,7 +9,7 @@ function createNode(type, data = {}) {
     return { type, ...data };
 }
 
-const STORAGE_KEY = 'inkshader_dock_layout';
+const STORAGE_KEY = 'inkshader_dock_layout_v2';
 
 export class DockLayout {
     constructor(container) {
@@ -34,11 +35,29 @@ export class DockLayout {
             this._componentRefs[id] = document.querySelector(def.compSelector);
         }
         if (this._restoreFromStorage()) return;
-        this.root = createNode("split", {
-            direction: "v",
-            children: panelIds.map(id => createNode("leaf", { id, component: null })),
-            sizes: panelIds.map(() => 100 / panelIds.length)
-        });
+        const canvasIdx = panelIds.indexOf("canvas");
+        if (canvasIdx >= 0 && panelIds.length > 1) {
+            const otherIds = panelIds.filter(id => id !== "canvas");
+            // H-split: canvas on the left (75%), other panels stacked vertically on the right (25%)
+            this.root = createNode("split", {
+                direction: "h",
+                children: [
+                    createNode("leaf", { id: "canvas" }),
+                    createNode("split", {
+                        direction: "v",
+                        children: otherIds.map(id => createNode("leaf", { id })),
+                        sizes: otherIds.map(() => 100 / otherIds.length)
+                    })
+                ],
+                sizes: [75, 25]
+            });
+        } else {
+            this.root = createNode("split", {
+                direction: "v",
+                children: panelIds.map(id => createNode("leaf", { id, component: null })),
+                sizes: panelIds.map(() => 100 / panelIds.length)
+            });
+        }
         this._buildDOM();
         this._saveStateToStorage();
     }
@@ -157,18 +176,22 @@ export class DockLayout {
         el.className = "dock-tabs";
         el.dataset.activeIndex = n.activeIndex || 0;
         el._treeNode = n;
-        const tabBar = document.createElement("div");
-        tabBar.className = "dock-tab-bar";
-        n.children.forEach((c, i) => {
-            if (typeof c === "string") c = { id: c, type: "leaf" };
-            const tb = document.createElement("span");
-            tb.className = "dock-tab" + (i === (n.activeIndex || 0) ? " active" : "");
-            tb.textContent = PANEL_DEFS[c.id].label;
-            tb.dataset.panelId = c.id;
-            tb.addEventListener("click", () => this._activateTab(el, i));
-            tabBar.appendChild(tb);
-        });
-        el.appendChild(tabBar);
+        // Skip tab bar when the only child is the canvas panel (avoids extra "Canvas" tab above canvas content)
+        const skipTabBar = n.children.length === 1 && n.children[0].id === "canvas";
+        if (!skipTabBar) {
+            const tabBar = document.createElement("div");
+            tabBar.className = "dock-tab-bar";
+            n.children.forEach((c, i) => {
+                if (typeof c === "string") c = { id: c, type: "leaf" };
+                const tb = document.createElement("span");
+                tb.className = "dock-tab" + (i === (n.activeIndex || 0) ? " active" : "");
+                tb.textContent = PANEL_DEFS[c.id].label;
+                tb.dataset.panelId = c.id;
+                tb.addEventListener("click", () => this._activateTab(el, i));
+                tabBar.appendChild(tb);
+            });
+            el.appendChild(tabBar);
+        }
         n.children.forEach((c, i) => {
             if (typeof c === "string") c = { id: c, type: "leaf" };
             const leafEl = document.createElement("div");
@@ -824,6 +847,8 @@ export class DockLayout {
         }
         const titleEl = comp.querySelector('.prop_panel_title_wrapper') || comp.querySelector('.panel_title');
         if (titleEl) return titleEl;
+        // Do not inject a drag strip into .canvas-wrap — it disrupts the glyph-sequence-bar layout
+        if (comp.classList?.contains('canvas-wrap')) return null;
         let strip = comp.querySelector('.dock-drag-strip');
         if (!strip) {
             strip = document.createElement('div');

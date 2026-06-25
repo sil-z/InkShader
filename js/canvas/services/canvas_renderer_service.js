@@ -487,9 +487,15 @@ export class CanvasRendererService {
         } else if (fixed) {
             x = c.canvas_size_width / 2 * c.scale; y = c.canvas_size_height / 2 * c.scale;
         }
-        let wheel_delta = dy < 0 ? 1.1 : 0.9;
-        let new_scale = Math.min(Math.max(c.scale * wheel_delta, c.scale_min), c.scale_max);
-        if (new_scale === c.scale) return;
+        // Geometric zoom via zoomTicks: scale = scaleBase * factor^zoomTicks
+        const oldTicks = c.zoomTicks;
+        c.zoomTicks += dy < 0 ? 1 : -1;
+        let new_scale = c.zoomTicksToScale(c.zoomTicks);
+        // If clamping hit the boundary, revert zoomTicks
+        if (new_scale === c.scale && c.zoomTicks !== oldTicks) {
+            c.zoomTicks = oldTicks;
+            return;
+        }
         const x_new = x / c.scale * new_scale; const y_new = y / c.scale * new_scale;
         c.scale = new_scale;
         c.offset = { x: (c.offset.x + x - x_new), y: (c.offset.y + y - y_new) };

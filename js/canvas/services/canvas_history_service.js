@@ -315,6 +315,7 @@ export class CanvasHistoryService {
             const interaction = mergeInteractionFromStoreState(storeState);
             const viewState = {
                 scale: c.scale,
+                zoom_ticks: c.zoomTicks,
                 offset_x: c.offset.x,
                 offset_y: c.offset.y,
                 right_width: layoutState.rightWidth,

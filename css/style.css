@@ -437,6 +437,7 @@ glyph-sequence-bar {
     flex-shrink: 0;
     border-right: 1px solid var(--ui-border);
     border-radius: 0 0 0 8px;
+    background: var(--ui-bg-panel);
 }
 .toolbar .tool_button {
     width: 28px;
@@ -473,9 +474,7 @@ glyph-sequence-bar {
     overflow: hidden;
 }
 .right {
-    background-color: var(--ui-bg-panel);
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
+    /* border removed — dock panels provide their own visual boundaries */
 }
 .left {
     flex: 1;
@@ -484,11 +483,10 @@ glyph-sequence-bar {
     border-radius: 0 0 8px 0;
 }
 .right.dock-container {
-    width: 20%;
+    flex: 1;
     min-width: 200px;
-    max-width: 80%;
     overflow: hidden;
-    padding: 6px;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -539,6 +537,7 @@ glyph-sequence-bar {
 .dock-content > object-tree,
 .dock-content > .placeholder,
 .dock-content > logger-panel,
+.dock-content > .canvas-wrap,
 .dock-content .placeholder {
     border: none !important;
     border-radius: 0 !important;
@@ -718,6 +717,7 @@ glyph-sequence-bar {
 .dock-float-body > object-tree,
 .dock-float-body > .placeholder,
 .dock-float-body > logger-panel,
+.dock-float-body > .canvas-wrap,
 .dock-float-body .placeholder {
     border: none !important;
     border-radius: 0 !important;
@@ -2097,13 +2097,6 @@ font-popup.visible {
 /* =========================================
    Resizers
    ========================================= */
-.horizontal-resizer { flex: 0 0 8px; background-color: transparent; cursor: ew-resize; margin: 0 -6px; position: relative; z-index: 10; }
-/* 给 resizer 加一条细线，细线不要太长以免难看，小尺寸合适 */
-.horizontal-resizer::after {
-    content: ""; position: absolute; border-radius: 2px; opacity: 0;
-}
-.horizontal-resizer::after { left: 50%; top: 10%; bottom: 10%; width: 2px; transform: translateX(-50%); transition: opacity 0.2s ease, width 0.2s; }
-.horizontal-resizer:hover::after, .horizontal-resizer.is-resizing::after { opacity: 0.6; width: 4px; }
 .sequence-add-menu {
     display: flex;
     flex-direction: column;

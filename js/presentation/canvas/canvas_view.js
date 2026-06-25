@@ -12,6 +12,7 @@ const TEMPLATE_HTML = `
     </div>
 `;
 export function setupCanvasView(canvas) {
+    if (canvas.painting_area) return; // Already set up (e.g., after dock-initiated reconnect)
     const template = canvas.env.createDOMElement("template");
     template.innerHTML = TEMPLATE_HTML;
     canvas.appendChild(template.content.cloneNode(true));

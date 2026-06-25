@@ -47,6 +47,9 @@ class MainCanvasBase extends HTMLElement {
         this.new_curve_handle = null; this.dragging_node_marker = null; this.last_on_curve_node_marker = null;
         this.hovered_node_marker = null; this.hovered_curve_segment = null;
         this.scale_min = 0.02; this.scale_max = 50; this.scale = 0.4;
+        this.zoomFactor = 1.1;         // Geometric zoom factor per tick
+        this.zoomTicks = 0;            // Tick counter (incremented on zoom-in, decremented on zoom-out)
+        this.scaleBase = this.scale;   // Scale at zoomTicks = 0 (initially 0.4, matched to current default)
         this.offset = { x: 0, y: 0 }; this.offset_start = { x: 0, y: 0 };
         this.guideline_lock = false;
         this.viewportConfig = {
@@ -176,6 +179,13 @@ class MainCanvasBase extends HTMLElement {
     getActiveTool() {
         return resolveActiveCanvasTool(this);
     }
+    /** Compute canvas scale from zoomTicks using geometric formula. */
+    zoomTicksToScale(ticks) {
+        let s = this.scaleBase * Math.pow(this.zoomFactor, ticks);
+        // Snap to 100% when within 0.5%
+        if (Math.abs(s - 1.0) < 0.005) s = 1.0;
+        return Math.min(Math.max(s, this.scale_min), this.scale_max);
+    }
     getInteractionSnapshot() {
         const storeState = this.editorStore?.getState?.();
         if (storeState) {
@@ -192,6 +202,30 @@ class MainCanvasBase extends HTMLElement {
         return this.editorStore?.commitCommand?.(detail) ?? false;
     }
     async connectedCallback() {
+        this._initGen = (this._initGen || 0) + 1;
+        const gen = this._initGen;
+
+        if (gen > 1) {
+            // Reconnect path (dock system moved the element).
+            // disconnectedCallback already cleaned up globalEventTrackers,
+            // disconnected the ResizeObserver, and stopped the render loop.
+            // Re-establish everything that was destroyed.
+            this.globalEventTrackers = [];
+            wireCanvasHost(this);
+            setupCanvasView(this);
+            this.resizeCanvas();
+            this.is_dirty = true;
+            this.refreshViewportConfig();
+            setupCanvasResizeBehavior(this);
+            attachCanvasCommands(this);
+            if (this.canvasInputController) this.canvasInputController.bind();
+            // Re-register event-bus listeners that disconnectedCallback cleaned up
+            if (this.canvasController) this.canvasController.reconnect();
+            this.renderRuntimeService.startLoop();
+            return;
+        }
+
+        // First-time initialization
         this.services = attachCanvasServices(this);
         this.utils = this.services.utils;
         this.renderer = this.services.renderer;
@@ -211,10 +245,11 @@ class MainCanvasBase extends HTMLElement {
         attachCanvasCommands(this);
         this.interactionController = new CanvasInteractionController(this);
         this.canvasController = new CanvasController(this);
-        await this.canvasController.initialize();
-        this.editorStore.seedFromCanvas({ emit: true, applyToRuntime: false });
         this.canvasInputController = new CanvasInputController(this);
         this.canvasInputController.bind();
+        await this.canvasController.initialize();
+        if (gen !== this._initGen) return; // Stale continuation — reconnect happened during await
+        this.editorStore.seedFromCanvas({ emit: true, applyToRuntime: false });
         this.renderRuntimeService.startLoop();
     }
     disconnectedCallback() {

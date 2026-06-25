@@ -10,6 +10,15 @@ import {
     resolveMarkersFromStore
 } from "../../app/editor_interaction_state.js";
 
+/** Check if a dock-layout tree contains a leaf with the given panel id. */
+function _treeHasLeaf(node, panelId) {
+    if (!node) return false;
+    if (node.type === 'leaf') return node.id === panelId;
+    if (node.type === 'tabs') return node.children?.some(c => _treeHasLeaf(c, panelId));
+    if (node.type === 'split') return node.children?.some(c => _treeHasLeaf(c, panelId));
+    return false;
+}
+
 export class CanvasController {
     constructor(canvas) {
         this.canvas = canvas;
@@ -244,6 +253,8 @@ export class CanvasController {
     }
 
     setupGuidelineToggle() {
+        if (this._guidelineToggleSetup) return;
+        this._guidelineToggleSetup = true;
         const c = this.canvas;
         const base = c.env.getLocationHref();
         if(c.lock_guideline_icon) c.lock_guideline_icon.src = new URL(c.lock_guideline_icon.dataset.src, base).href;
@@ -263,7 +274,14 @@ export class CanvasController {
         try {
             const viewState = await StorageUtils.loadViewState();
             if (viewState) {
-                c.scale = viewState.scale || c.scale;
+                // Restore zoomTicks (modern) or compute from stored scale (legacy)
+                if (viewState.zoom_ticks !== undefined) {
+                    c.zoomTicks = viewState.zoom_ticks;
+                    c.scale = c.zoomTicksToScale(c.zoomTicks);
+                } else {
+                    c.scale = viewState.scale || c.scale;
+                    c.zoomTicks = Math.round(Math.log(c.scale / c.scaleBase) / Math.log(c.zoomFactor));
+                }
                 c.offset = { x: viewState.offset_x || 0, y: viewState.offset_y || 0 };
                 if (viewState.draw_tool_settings) {
                     c.drawToolSettings = viewState.draw_tool_settings;
@@ -279,7 +297,9 @@ export class CanvasController {
 
                 const rightContainer = c.env.queryDOM('.right');
                 if (rightContainer && viewState.right_width) rightContainer.style.flex = `0 0 ${viewState.right_width}px`;
-                if (viewState.dock_layout && window.__dock) {
+                // Guard: only deserialize if the saved tree includes the canvas panel.
+                // Old cached data (pre-dock-integration) may lack canvas, causing it to disappear.
+                if (viewState.dock_layout && window.__dock && _treeHasLeaf(viewState.dock_layout, 'canvas')) {
                     window.__dock.deserialize(viewState.dock_layout);
                 }
                 c.is_dirty = true;
@@ -386,6 +406,17 @@ export class CanvasController {
             c.editorStore?.mergeViewFromCanvas?.();
             c.editorStore?.bumpTreeRevision?.();
         } catch (err) { console.error(" [Storage] 恢复状态失败:", err); }
+    }
+
+    /** Re-register event bus listeners after the dock system removed/re-attached
+     *  the <main-canvas> element, which triggered disconnectedCallback → cleanup.
+     *  Does NOT call setupGuidelineToggle() — those are direct DOM listeners on
+     *  elements that survive re-attach, so calling it again would register duplicates. */
+    reconnect() {
+        this.registerModelSyncListeners();
+        this.registerToolListeners();
+        this.registerCommandBridgeListeners();
+        this.registerThemeListener();
     }
 
     async initialize() {

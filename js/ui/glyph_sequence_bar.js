@@ -47,11 +47,16 @@ export class GlyphSequenceBar extends HTMLElement {
         this._lastTriggerBtn = null;
     }
     connectedCallback() {
-        this._canvas = document.querySelector("main-canvas");
-        this._track = document.createElement("div");
-        this._track.className = "seq-bar-track";
-        this._track.addEventListener("click", (e) => this._onTrackClick(e));
-        this.appendChild(this._track);
+        // Ensure DOM is created once (survives dock reconnect)
+        if (!this._track) {
+            this._canvas = document.querySelector("main-canvas");
+            this._track = document.createElement("div");
+            this._track.className = "seq-bar-track";
+            this._track.addEventListener("click", (e) => this._onTrackClick(e));
+            this.appendChild(this._track);
+        }
+        // Always re-register listeners (disconnectedCallback cleans them up)
+        this._cleanups = [];
         const onState = (e) => {
             const s = e?.detail?.afterState;
             if (!s) return;
@@ -59,7 +64,10 @@ export class GlyphSequenceBar extends HTMLElement {
             const text = s.sequenceText ?? "";
             const activeKey = JSON.stringify(s.activeSequenceIndices);
             const offKey = s.offset ? `${s.offset.x},${s.scale}` : "";
-            if (actionType !== "TREE_REVISION" && text === this._textSig && activeKey === this._activeSig && offKey === this._offSig) return;
+            // Always re-render for display-affecting actions (lock, vis).
+            // For other actions, skip if nothing changed.
+            const isDisplayAction = actionType === "TOGGLE_SELECTED_OBJECTS_LOCK" || actionType === "TOGGLE_SELECTED_OBJECTS_DISPLAY";
+            if (!isDisplayAction && actionType !== "TREE_REVISION" && text === this._textSig && activeKey === this._activeSig && offKey === this._offSig) return;
             this._textSig = this.text = text;
             this._activeSig = activeKey;
             this._offSig = offKey;

@@ -1,7 +1,6 @@
 import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
-import { readRightPanelLayout } from "../app/layout_metrics_service.js";
 import { DockLayout } from "./dock_layout.js";
 import "./node_property_popup.js";
 import "./path_property_popup.js";
@@ -20,7 +19,7 @@ export function initializeLayoutShell() {
     if (!dockContainer || !objectTree || !propertyPanel) return;
 
     const dock = new DockLayout(dockContainer);
-    dock.initialize(["objects", "properties", "terminal"]);
+    dock.initialize(["canvas", "objects", "properties", "terminal"]);
     window.__dock = dock;
 
     if (!document.querySelector('node-property-popup')) {
@@ -60,40 +59,6 @@ export function initializeLayoutShell() {
     }
     if (!document.querySelector('group-settings-popup')) {
         document.body.appendChild(document.createElement('group-settings-popup'));
-    }
-
-    const middleContainer = document.querySelector(".middle");
-    const canvasWrap = document.querySelector(".canvas-wrap");
-    if (middleContainer && canvasWrap) {
-        const hResizer = document.createElement("div");
-        hResizer.className = "horizontal-resizer";
-        middleContainer.insertBefore(hResizer, canvasWrap);
-        let isHResizing = false;
-        let startHX = 0;
-        let startRightWidth = 0;
-        const rightContainer = dockContainer;
-        hResizer.addEventListener("mousedown", (e) => {
-            isHResizing = true;
-            startHX = e.clientX;
-            startRightWidth = readRightPanelLayout({ rightContainer }).rightWidth;
-            hResizer.classList.add("is-h-resizing");
-            document.body.style.cursor = "ew-resize";
-            e.preventDefault();
-        });
-        document.addEventListener("mousemove", (e) => {
-            if (!isHResizing) return;
-            const dx = e.clientX - startHX;
-            const newWidth = Math.max(150, startRightWidth + dx);
-            if (rightContainer) rightContainer.style.flex = `0 0 ${newWidth}px`;
-        });
-        document.addEventListener("mouseup", () => {
-            if (isHResizing) {
-            isHResizing = false;
-            hResizer.classList.remove("is-h-resizing");
-            document.body.style.cursor = "";
-                CanvasDispatcher.requestSaveViewState(true);
-            }
-        });
     }
 
     const dispatchMode = (modeVal) => CanvasDispatcher.requestSetNodeMode(modeVal);
