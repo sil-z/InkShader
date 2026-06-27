@@ -61,6 +61,7 @@ export class PathPropertyPopup extends HTMLElement {
         this._dragST = 0;
         this._docked = false;
         this._positionReady = false;
+        this._togglingDirection = false;
     }
 
     get docked() { return this._docked; }
@@ -156,6 +157,8 @@ export class PathPropertyPopup extends HTMLElement {
 
     _handleStoreStateChanged(e) {
         const nextState = e?.detail?.afterState;
+        const actionType = e?.detail?.action?.type;
+        console.log('[PPP] _handleStoreStateChanged', { actionType, ts: e?.detail?.timestamp, curveIds: this._selectedCurveIds, hasManual: !!this._manualDirWinding, manualKeys: this._manualDirWinding ? Object.keys(this._manualDirWinding) : [] });
         if (!nextState || typeof nextState !== 'object') {
             this._hide();
             return;
@@ -167,7 +170,10 @@ export class PathPropertyPopup extends HTMLElement {
             const it = EditorModel.getTreeItem(id);
             if (it && it.type === 'curve') {
                 const curve = EditorModel.getCurveById(it.curveId);
-                if (curve) curves.push(curve);
+                if (curve) {
+                    curves.push(curve);
+                    console.log('[PPP] curve from store', { id: curve.id, skeletonWinding: curve.skeletonWinding, manualForCurve: this._manualDirWinding?.[curve.id] });
+                }
             }
         });
 
@@ -195,13 +201,31 @@ export class PathPropertyPopup extends HTMLElement {
             pathFieldEls.forEach(el => el.style.display = '');
         }
 
+        // Always call _patchValues even when docked, so the guard flag
+        // (_togglingDirection) works the same way regardless of dock state.
+        // The popup is the single authority for direction toggle logic.
+        if (!this._focusedInput) this._patchValues(curves);
+
         if (this._docked) {
             this._hide();
-            appEventBus.emit(PATH_PROPS_DOCKED, { curveIds: this._selectedCurveIds, treeIds: this._selectedTreeIds });
+            // Read current direction state from our DOM (which has either the
+            // optimistic value if a toggle is in-flight, or the model value).
+            // This ensures the property panel stays in sync with the popup.
+            const curve = curves.length > 0 ? curves[0] : null;
+            const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
+            const winding = revBtn ? revBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
+            const smartBtn = this.container.querySelector('#ppp_smart_winding_toggle');
+            const smartWinding = smartBtn ? smartBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
+            appEventBus.emit(PATH_PROPS_DOCKED, {
+                curveIds: this._selectedCurveIds,
+                treeIds: this._selectedTreeIds,
+                curves: curves,
+                winding: winding,
+                smartWinding: smartWinding
+            });
             return;
         }
 
-        if (!this._focusedInput) this._patchValues(curves);
         this._show();
     }
 
@@ -236,32 +260,13 @@ export class PathPropertyPopup extends HTMLElement {
             const item = getTreeItem();
             patch('ppp_name', item?.name ?? '');
 
-            const dirEl = this.container.querySelector('#ppp_direction_text');
-            const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
-            if (revBtn) {
-                revBtn.disabled = false;
-                // If the curve changed, clear stale dataset from previous curve
-                if (this._lastDirCurveId !== curve.id) {
-                    this._lastDirCurveId = curve.id;
-                    delete revBtn.dataset.winding;
-                }
-                // Restore manual winding from JS store (survives DOM recreation)
-                if (this._manualDirWinding && this._manualDirWinding[curve.id]) {
-                    revBtn.dataset.winding = this._manualDirWinding[curve.id];
-                }
-            }
-            // Use data-winding if set (manually toggled, figure-8 workaround);
-            // fall back to skeletonWinding from the curve model.
-            const winding = (revBtn && revBtn.dataset && revBtn.dataset.winding) || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
-            if (dirEl) {
-                dirEl.value = winding === 'cw' ? 'Clockwise' : winding === 'ccw' ? 'Counter-clockwise' : 'Open';
-            }
-            if (revBtn) {
-                revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
-            }
-            const revWrapper = this.container.querySelector('#ppp_reverse_dir_wrapper');
-            if (revWrapper) {
-                revWrapper.title = 'Toggle path direction';
+            // When a direction toggle is in progress, skip overwriting the
+            // direction UI to avoid reverting the optimistic flip. The toggle
+            // handler already set correct values via _manualDirWinding.
+            if (!this._togglingDirection) {
+                this._patchDirection(curve);
+            } else {
+                console.log('[PPP] _patchValues skipping direction (toggle in progress)');
             }
 
             const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
@@ -277,6 +282,37 @@ export class PathPropertyPopup extends HTMLElement {
             if (smartWrapper) {
                 smartWrapper.title = 'Toggle smart expand direction';
             }
+        }
+    }
+
+    _patchDirection(curve) {
+        const dirEl = this.container.querySelector('#ppp_direction_text');
+        const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
+        if (revBtn) {
+            revBtn.disabled = false;
+            // If the curve changed, clear stale dataset from previous curve
+            if (this._lastDirCurveId !== curve.id) {
+                this._lastDirCurveId = curve.id;
+                delete revBtn.dataset.winding;
+            }
+            // Restore manual winding from JS store (survives DOM recreation)
+            if (this._manualDirWinding && this._manualDirWinding[curve.id]) {
+                revBtn.dataset.winding = this._manualDirWinding[curve.id];
+            }
+        }
+        // Use data-winding if set (manually toggled, figure-8 workaround);
+        // fall back to skeletonWinding from the curve model.
+        const winding = (revBtn && revBtn.dataset && revBtn.dataset.winding) || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
+        console.log('[PPP] _patchValues direction', { curveId: curve.id, skeletonWinding: curve.skeletonWinding, datasetWinding: revBtn?.dataset?.winding, manualWinding: this._manualDirWinding?.[curve.id], computedWinding: winding, lastDirCurveId: this._lastDirCurveId, manualKeys: this._manualDirWinding ? Object.keys(this._manualDirWinding) : [] });
+        if (dirEl) {
+            dirEl.value = winding === 'cw' ? 'Clockwise' : winding === 'ccw' ? 'Counter-clockwise' : 'Open';
+        }
+        if (revBtn) {
+            revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
+        }
+        const revWrapper = this.container.querySelector('#ppp_reverse_dir_wrapper');
+        if (revWrapper) {
+            revWrapper.title = 'Toggle path direction';
         }
     }
 
@@ -341,12 +377,13 @@ export class PathPropertyPopup extends HTMLElement {
         if (selIds.length !== 1) return;
         const item = EditorModel.getTreeItem(selIds[0]);
         if (!item || item.type !== 'curve') return;
-        CanvasDispatcher.requestSetSingleObjectProperties(
-            [{ id: item.id, props: { reverse_direction: true } }],
-            { recordHistory: true }
-        );
-        // skeletonWinding may not update for self-intersecting paths (figure-8),
-        // so manually flip the UI and persist winding per-curve in JS.
+
+        console.log('[PPP] _handleReverseDirection START', { curveId: item.curveId, manualBefore: this._manualDirWinding?.[item.curveId], datasetBefore: this.container.querySelector('#ppp_reverse_dir_toggle')?.dataset?.winding, elValueBefore: this.container.querySelector('#ppp_direction_text')?.value });
+
+        // Flip UI state FIRST so any synchronous re-render triggered by the
+        // server request picks up the correct winding from _manualDirWinding
+        // instead of the stale skeletonWinding. The server request can trigger
+        // a synchronous render that would otherwise overwrite the manual flip.
         const dirEl = this.container.querySelector('#ppp_direction_text');
         const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
         if (revBtn && dirEl) {
@@ -358,6 +395,33 @@ export class PathPropertyPopup extends HTMLElement {
             // Persist in JS so it survives DOM recreation
             if (!this._manualDirWinding) this._manualDirWinding = {};
             this._manualDirWinding[item.curveId] = newWinding;
+            console.log('[PPP] _handleReverseDirection AFTER optimistic', { curveId: item.curveId, newWinding, manualAfter: this._manualDirWinding[item.curveId], datasetAfter: revBtn.dataset.winding, elValueAfter: dirEl.value });
+        }
+
+        // Prevent _patchValues from overwriting the direction UI during the
+        // synchronous STATE_CHANGED events that fire inside this call.
+        this._togglingDirection = true;
+        try {
+            CanvasDispatcher.requestSetSingleObjectProperties(
+                [{ id: item.id, props: { reverse_direction: true } }],
+                { recordHistory: true }
+            );
+        } finally {
+            this._togglingDirection = false;
+        }
+        console.log('[PPP] _handleReverseDirection END');
+    }
+
+    /**
+     * Called by the property panel when the user clicks a direction toggle
+     * button in docked state. Delegates to this popup's proven handlers so the
+     * same guard-flag logic applies regardless of dock state.
+     */
+    handleDockedDirectionToggle(buttonId) {
+        if (buttonId.endsWith('reverse_dir_toggle')) {
+            this._handleReverseDirection();
+        } else if (buttonId.endsWith('smart_winding_toggle')) {
+            this._handleSmartWindingToggle();
         }
     }
 
@@ -390,6 +454,8 @@ export class PathPropertyPopup extends HTMLElement {
         if (docked) {
             this._hide();
             appEventBus.emit(PATH_PROPS_DOCKED, { curveIds: this._selectedCurveIds, treeIds: this._selectedTreeIds });
+        } else {
+            appEventBus.emit(PATH_PROPS_UNDOCKED);
         }
     }
 

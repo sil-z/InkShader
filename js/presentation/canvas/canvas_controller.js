@@ -282,7 +282,27 @@ export class CanvasController {
                     c.scale = viewState.scale || c.scale;
                     c.zoomTicks = Math.round(Math.log(c.scale / c.scaleBase) / Math.log(c.zoomFactor));
                 }
+                // 恢复偏移，但如果保存时的视口尺寸与当前不同则重新计算
+                // （偏移量依赖视口尺寸，直接恢复会导致画纸定位偏移）
                 c.offset = { x: viewState.offset_x || 0, y: viewState.offset_y || 0 };
+                if (viewState.vp_width && viewState.vp_height) {
+                    const vp = c.viewportConfig;
+                    if (vp && vp.viewportWidth > 0 &&
+                        Math.abs(vp.viewportWidth - viewState.vp_width) > 10) {
+                        const ruler = c.ruler_size;
+                        const paperW = c.canvas_size_width * c.scale;
+                        const paperH = c.canvas_size_height * c.scale;
+                        // 计算保存时的中心偏移，保留用户的平移偏移（pan）
+                        const oldCenterX = (viewState.vp_width - ruler - paperW) / 2;
+                        const oldCenterY = (viewState.vp_height - ruler - paperH) / 2;
+                        const panX = viewState.offset_x - oldCenterX;
+                        const panY = viewState.offset_y - oldCenterY;
+                        const newCenterX = (vp.viewportWidth - ruler - paperW) / 2;
+                        const newCenterY = (vp.viewportHeight - ruler - paperH) / 2;
+                        c.offset.x = newCenterX + panX;
+                        c.offset.y = newCenterY + panY;
+                    }
+                }
                 if (viewState.draw_tool_settings) {
                     c.drawToolSettings = viewState.draw_tool_settings;
                     c.editorStore?.commitInteraction?.(
@@ -295,8 +315,9 @@ export class CanvasController {
                 }
                 c.editorStore?.syncViewFromCanvas?.();
 
-                const rightContainer = c.env.queryDOM('.right');
-                if (rightContainer && viewState.right_width) rightContainer.style.flex = `0 0 ${viewState.right_width}px`;
+                // 旧的固定宽度恢复（right_width）已由 dock 布局接管，移除避免
+                // 容器被设为 `flex: 0 0 <px>` 而无法随视口缩放，导致右侧截断。
+                // 见 restoreState 中的 dock_layout 反序列化。CSS 中 .right.dock-container 已有 flex: 1。
                 // Guard: only deserialize if the saved tree includes the canvas panel.
                 // Old cached data (pre-dock-integration) may lack canvas, causing it to disappear.
                 if (viewState.dock_layout && window.__dock && _treeHasLeaf(viewState.dock_layout, 'canvas')) {

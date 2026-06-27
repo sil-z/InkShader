@@ -38,7 +38,15 @@ export function syncActiveGroupToStore(host, groupId) {
 }
 
 export function finishInteractionCommand(host) {
-    host.notifyPropertiesUpdate();
+    // During store interaction dispatch (_preDispatchInteraction has already set
+    // __storeDispatchDepth), the store's _finalizeDispatch will emit STATE_CHANGED
+    // with all updated state.  The redundant notifyPropertiesUpdate → bumpModelRevision
+    // would fire an extra STATE_CHANGED (MODEL_REVISION) milliseconds before the final
+    // STATE_CHANGED (SET_TREE_SELECTION / CHANGE_OBJECT_SELECTION etc.), causing the
+    // PropertyPanel to rebuild the DOM twice and flicker.
+    if (!host.__storeDispatchDepth) {
+        host.notifyPropertiesUpdate();
+    }
     host.is_dirty = true;
     return true;
 }

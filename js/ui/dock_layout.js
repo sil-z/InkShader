@@ -994,6 +994,41 @@ export class DockLayout {
         return walk(this.root);
     }
 
+    /**
+     * Walk up from tabsEl to find the true seam (resizer midpoint) for the given edge.
+     * Handles nested splits: e.g. a panel inside a V-split that is itself inside an H-split
+     * needs to find the H-split's resizer when edge="left"/"right".
+     *
+     * @param {Element} tabsEl - The .dock-tabs element being targeted
+     * @param {string} edge - "top"|"bottom"|"left"|"right"
+     * @returns {number} The viewport coordinate of the seam (x for left/right, y for top/bottom)
+     */
+    _calcSeam(tabsEl, edge) {
+        const wantH = (edge === "left" || edge === "right");
+        const wantNext = (edge === "right" || edge === "bottom");
+
+        let el = tabsEl;
+        while (el.parentElement) {
+            const parent = el.parentElement;
+            if (parent.classList.contains("dock-split")) {
+                const isHDir = parent.classList.contains("dock-split-h");
+                if (wantH === isHDir) {
+                    const sibling = wantNext ? el.nextElementSibling : el.previousElementSibling;
+                    if (sibling && sibling.classList.contains("dock-resizer")) {
+                        const sr = sibling.getBoundingClientRect();
+                        return wantH ? (sr.left + sr.right) / 2 : (sr.top + sr.bottom) / 2;
+                    }
+                    const er = el.getBoundingClientRect();
+                    return wantH ? (wantNext ? er.right : er.left) : (wantNext ? er.bottom : er.top);
+                }
+            }
+            el = parent;
+        }
+
+        const r = tabsEl.getBoundingClientRect();
+        return wantH ? (wantNext ? r.right : r.left) : (wantNext ? r.bottom : r.top);
+    }
+
     _cleanupDragPreview() {
         this._previewEl.classList.remove("visible");
         this._previewEl.style.background = "";
@@ -1045,12 +1080,13 @@ export class DockLayout {
 
         if (target.zone === "empty-dock") {
             const cr = this.container.getBoundingClientRect();
-            this._previewEl.style.left = cr.left + "px";
+            const PREVIEW_THICKNESS = 4;
+            this._previewEl.style.left = (cr.left - PREVIEW_THICKNESS / 2) + "px";
             this._previewEl.style.top = cr.top + "px";
-            this._previewEl.style.width = "4px";
+            this._previewEl.style.width = PREVIEW_THICKNESS + "px";
             this._previewEl.style.height = cr.height + "px";
             this._previewEl.style.background = "#60a5fa";
-            this._previewEl.style.boxShadow = "none";
+            this._previewEl.style.boxShadow = "0 0 6px rgba(96,165,250,0.5)";
             this._previewEl.style.borderRadius = "0";
             this._previewEl.classList.add("visible");
             return;
@@ -1076,46 +1112,33 @@ export class DockLayout {
         }
 
         if (target.zone === "insert" && target.tabsEl) {
+            const PREVIEW_THICKNESS = 4;
+            const half = PREVIEW_THICKNESS / 2;
             const r = target.tabsEl.getBoundingClientRect();
-            const gap = 2;
-            const parentSplit = target.tabsEl.parentElement;
-            const isH = parentSplit?.classList.contains("dock-split-h");
+            const seam = this._calcSeam(target.tabsEl, target.edge);
             this._previewEl.style.background = "#60a5fa";
-            this._previewEl.style.boxShadow = "none";
+            this._previewEl.style.boxShadow = "0 0 6px rgba(96,165,250,0.5)";
             this._previewEl.style.borderRadius = "0";
             this._previewEl.classList.add("visible");
+
             if (target.edge === "top" || target.edge === "bottom") {
-                let cy;
-                if (!isH) {
-                    const resizer = target.edge === "bottom"
-                        ? target.tabsEl.nextElementSibling
-                        : target.tabsEl.previousElementSibling;
-                    if (resizer && resizer.classList.contains("dock-resizer")) {
-                        const rr = resizer.getBoundingClientRect();
-                        cy = (rr.top + rr.bottom) / 2;
-                    }
-                }
-                if (cy == null) cy = target.edge === "bottom" ? r.bottom : r.top;
-                this._previewEl.style.left = r.left + "px";
-                this._previewEl.style.top = (cy - gap) + "px";
-                this._previewEl.style.width = r.width + "px";
-                this._previewEl.style.height = (gap * 2) + "px";
+                const left = r.left;
+                const top = seam - half;
+                const width = r.width;
+                const height = PREVIEW_THICKNESS;
+                this._previewEl.style.left = left + "px";
+                this._previewEl.style.top = top + "px";
+                this._previewEl.style.width = width + "px";
+                this._previewEl.style.height = height + "px";
             } else {
-                let cx;
-                if (isH) {
-                    const resizer = target.edge === "right"
-                        ? target.tabsEl.nextElementSibling
-                        : target.tabsEl.previousElementSibling;
-                    if (resizer && resizer.classList.contains("dock-resizer")) {
-                        const rr = resizer.getBoundingClientRect();
-                        cx = (rr.left + rr.right) / 2;
-                    }
-                }
-                if (cx == null) cx = target.edge === "right" ? r.right : r.left;
-                this._previewEl.style.left = (cx - gap) + "px";
-                this._previewEl.style.top = r.top + "px";
-                this._previewEl.style.width = (gap * 2) + "px";
-                this._previewEl.style.height = r.height + "px";
+                const left = seam - half;
+                const top = r.top;
+                const width = PREVIEW_THICKNESS;
+                const height = r.height;
+                this._previewEl.style.left = left + "px";
+                this._previewEl.style.top = top + "px";
+                this._previewEl.style.width = width + "px";
+                this._previewEl.style.height = height + "px";
             }
         }
     }

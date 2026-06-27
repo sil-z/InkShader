@@ -318,6 +318,8 @@ export class CanvasHistoryService {
                 zoom_ticks: c.zoomTicks,
                 offset_x: c.offset.x,
                 offset_y: c.offset.y,
+                vp_width: c.viewportConfig?.viewportWidth || 0,
+                vp_height: c.viewportConfig?.viewportHeight || 0,
                 right_width: layoutState.rightWidth,
                 tree_flex: layoutState.treeFlex,
                 prop_flex: layoutState.propFlex,

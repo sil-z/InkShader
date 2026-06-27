@@ -51,8 +51,6 @@ export class NodeTool extends BaseTool {
                 this.requestNodeSelection("add", [parentMarker], refId);
             } else if (!isAlreadySelected) {
                 this.requestNodeSelection("replace", [parentMarker], refId);
-            } else if (refId) {
-                this.requestNodeSelection("replace", [parentMarker], refId);
             }
             c.new_selected_temp = parentMarker;
         }

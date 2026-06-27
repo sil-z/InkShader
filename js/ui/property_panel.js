@@ -36,6 +36,7 @@ export class PropertyPanel extends HTMLElement {
         this._sectionOrder = [];
         this._loadSectionOrder();
         this._dragState = null;
+        this._renderPending = false;
     }
 
     _loadSectionDockState() {
@@ -128,23 +129,27 @@ export class PropertyPanel extends HTMLElement {
                 if (dirTextToggle) {
                     const toggleBtn = dirTextToggle.querySelector('.prop_toggle_btn');
                     if (toggleBtn && !toggleBtn.disabled) {
-                        const id = toggleBtn.id;
-                        if (id === 'path_reverse_dir_toggle') {
-                            this.handlePathReverseDirection();
-                        } else if (id === 'path_smart_winding_toggle') {
-                            this.handleSmartStrokeWindingToggle();
+                        const popup = document.querySelector('path-property-popup');
+                        if (popup) {
+                            popup.handleDockedDirectionToggle(toggleBtn.id);
                         }
                     }
                     return;
                 }
                 const reverseBtn = e.target.closest('#path_reverse_dir_toggle');
                 if (reverseBtn) {
-                    this.handlePathReverseDirection();
+                    const popup = document.querySelector('path-property-popup');
+                    if (popup) {
+                        popup.handleDockedDirectionToggle('path_reverse_dir_toggle');
+                    }
                     return;
                 }
                 const windingBtn = e.target.closest('#path_smart_winding_toggle');
                 if (windingBtn) {
-                    this.handleSmartStrokeWindingToggle();
+                    const popup = document.querySelector('path-property-popup');
+                    if (popup) {
+                        popup.handleDockedDirectionToggle('path_smart_winding_toggle');
+                    }
                 }
             });
 
@@ -171,7 +176,67 @@ export class PropertyPanel extends HTMLElement {
         this.addGlobalListener(appEventBus, PATH_PROPS_DOCKED, (e) => {
             const was = this._pathPropsDocked;
             this._pathPropsDocked = true;
-            if (!was) this.lastSignature = "";
+            if (!was) {
+                // First dock event — need render() to show the path section.
+                this.lastSignature = "";
+                this._saveSectionDockState();
+                this.render();
+            }
+            // When already docked, skip render() — the STATE_CHANGED handler's
+            // microtask already runs _executeRender → patchValues. This PATH_PROPS_DOCKED
+            // listener's only job is to provide direction state for that microtask.
+            // Apply direction/smart-winding values from the popup (the single
+            // authority for direction toggle logic). These values are set on
+            // dataset so patchValues (microtask) picks them up instead of the
+            // possibly-stale model value.
+            const detail = e?.detail;
+            const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+            if (detail?.winding) {
+                const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
+                if (revBtn) {
+                    revBtn.dataset.winding = detail.winding;
+                }
+                const dirEl = this.container.querySelector('#path_direction_text');
+                if (dirEl) {
+                    const dirText = detail.winding === 'cw' ? t('prop.dir_cw', 'Clockwise')
+                        : detail.winding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
+                        : t('prop.dir_open', 'Open');
+                    if (dirEl.value !== dirText) dirEl.value = dirText;
+                }
+                if (revBtn) {
+                    const pressed = detail.winding === 'cw' ? 'true' : 'false';
+                    if (revBtn.getAttribute('aria-pressed') !== pressed) {
+                        revBtn.setAttribute('aria-pressed', pressed);
+                    }
+                }
+                // Persist in JS so it survives buildDOM (dock/undock)
+                const curves = detail.curves;
+                if (curves && curves.length === 1) {
+                    const curveId = curves[0].id;
+                    if (curveId) {
+                        if (!this._manualDirWinding) this._manualDirWinding = {};
+                        this._manualDirWinding[curveId] = detail.winding;
+                    }
+                }
+            }
+            if (detail?.smartWinding) {
+                const smartBtn = this.container.querySelector('#path_smart_winding_toggle');
+                const smartDirEl = this.container.querySelector('#path_smart_winding_text');
+                if (smartDirEl) {
+                    const smartDirText = detail.smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
+                    if (smartDirEl.value !== smartDirText) smartDirEl.value = smartDirText;
+                }
+                if (smartBtn) {
+                    const smartPressed = detail.smartWinding === 'cw' ? 'true' : 'false';
+                    if (smartBtn.getAttribute('aria-pressed') !== smartPressed) {
+                        smartBtn.setAttribute('aria-pressed', smartPressed);
+                    }
+                }
+            }
+        });
+        this.addGlobalListener(appEventBus, PATH_PROPS_UNDOCKED, () => {
+            this._pathPropsDocked = false;
+            this.lastSignature = "";
             this._saveSectionDockState();
             this.render();
         });
@@ -276,6 +341,13 @@ export class PropertyPanel extends HTMLElement {
     render() {
         if (!this.container) return;
         if (!EditorModel.getTreeItemsMap()) return;
+        if (this._renderPending) return;
+        this._renderPending = true;
+        queueMicrotask(() => this._executeRender());
+    }
+
+    _executeRender() {
+        this._renderPending = false;
 
         let selectedIds = [...this.interaction.selectedTreeIds];
         let selectedCurves = [];
@@ -307,19 +379,26 @@ export class PropertyPanel extends HTMLElement {
         const activeGroupId = this.interaction.activeGroupId;
         let sig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}_${activeGroupId || ''}`;
 
+        // Track path section structure separately so unrelated changes
+        // (hasBounds, nodeCount) don't force a full DOM rebuild of the
+        // path section, which destroys and recreates the direction
+        // toggle button and causes a visible flash.
+        const pathSig = `${hasPath}_${this._pathPropsDocked}`;
+
         if (this.lastSignature !== sig) {
             if (this._focusedInput) {
                 this.patchValues(item, selectedCurves, bounds, nodeCount, selectedIds);
                 return;
             }
-            this.buildDOM(hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount);
+            this.buildDOM(hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount, pathSig !== this._lastPathSig);
             this.lastSignature = sig;
+            this._lastPathSig = pathSig;
         }
 
         this.patchValues(item, selectedCurves, bounds, nodeCount, selectedIds);
     }
 
-    buildDOM(hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount) {
+    buildDOM(hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount, rebuildPath = true) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
         const activeGroupId = this.interaction.activeGroupId;
 
@@ -330,8 +409,16 @@ export class PropertyPanel extends HTMLElement {
         }
         if (hasBounds && this._bboxDocked) sections.bbox = this._buildBoundsProps(t);
         if (hasPath) {
-            const html = this._buildPathProps(pathCount, t);
-            if (html) sections.ppp = html;
+            const existingPath = this.container.querySelector('.npp-section[data-section="ppp"]');
+            if (rebuildPath || !existingPath) {
+                const html = this._buildPathProps(pathCount, t);
+                if (html) sections.ppp = html;
+            } else {
+                // Preserve existing path section — prevents destroying and
+                // recreating the direction toggle button (with default
+                // aria-pressed="false" disabled) on unrelated state changes.
+                sections.ppp = null; // marker: keep existing DOM
+            }
         }
         // Show group section when active group exists and section is docked
         if (activeGroupId && this._grpDocked) {
@@ -341,8 +428,80 @@ export class PropertyPanel extends HTMLElement {
 
         const sectionKeys = Object.keys(sections);
         if (sectionKeys.length === 0 && !hasRef) {
-            this.container.replaceChildren();
-            this.container.classList.add("is_empty");
+            // If only the path section exists and we're keeping it, don't clear
+            if (!this.container.querySelector('.npp-section[data-section="ppp"]')) {
+                this.container.replaceChildren();
+                this.container.classList.add("is_empty");
+                return;
+            }
+        } else if (sectionKeys.length === 1 && sections.ppp === null && !hasRef) {
+            // Nothing changed besides preserved path — skip full rebuild
+            this.container.classList.remove("is_empty");
+            return;
+        }
+
+        // When preserving the path section, do a targeted DOM update instead of
+        // replaceChildren(frag) — moving the preserved element via document fragment
+        // briefly detaches it from the DOM, causing a visible flash.
+        const hasPreserved = sections.ppp === null;
+        if (hasPreserved) {
+            // Build and insert only the new sections; leave the existing path section untouched.
+            this._ensureSectionOrder(sectionKeys);
+            // Collect current sections in the DOM
+            const currentSections = {};
+            this.container.querySelectorAll('.npp-section').forEach(el => {
+                currentSections[el.dataset.section] = el;
+            });
+            // Build new HTML for non-preserved sections
+            const newSections = {};
+            sectionKeys.forEach(key => {
+                if (key === 'ppp') return; // preserved, don't rebuild
+                if (sections[key]) {
+                    const holder = document.createElement('div');
+                    holder.innerHTML = sections[key];
+                    newSections[key] = [...holder.children];
+                } else {
+                    newSections[key] = null; // marker: section should not exist
+                }
+            });
+            // Remove sections that should no longer exist
+            Object.keys(currentSections).forEach(key => {
+                if (key !== 'ppp' && !(key in sections)) {
+                    currentSections[key].remove();
+                    delete currentSections[key];
+                }
+            });
+            // Insert/replace sections in order
+            this._sectionOrder.forEach(key => {
+                if (key === 'ppp') return; // never touch preserved section
+                const existing = currentSections[key];
+                if (newSections[key] === null) {
+                    // Section should be removed
+                    if (existing) { existing.remove(); delete currentSections[key]; }
+                } else if (newSections[key]) {
+                    const nodes = newSections[key];
+                    if (existing) {
+                        // Replace existing section content
+                        existing.replaceChildren(...nodes);
+                    } else {
+                        // Insert at correct position
+                        const before = this._sectionOrder.slice(this._sectionOrder.indexOf(key) + 1)
+                            .find(k => currentSections[k]);
+                        const refNode = before ? currentSections[before] : null;
+                        if (refNode) {
+                            refNode.parentNode.insertBefore(nodes[0], refNode);
+                            // Move remaining nodes after the first
+                            for (let i = 1; i < nodes.length; i++) {
+                                refNode.parentNode.insertBefore(nodes[i], refNode);
+                            }
+                        } else {
+                            this.container.append(...nodes);
+                        }
+                    }
+                }
+            });
+            this.container.classList.remove("is_empty");
+            this._initSectionReorder();
             return;
         }
 
@@ -804,8 +963,9 @@ export class PropertyPanel extends HTMLElement {
                 const dirEl = this.container.querySelector('#path_direction_text');
                 const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
                 if (revBtn) {
-                    revBtn.disabled = false;
-                    revBtn.title = t('prop.toggle_path_direction', 'Toggle path direction');
+                    const revTitle = t('prop.toggle_path_direction', 'Toggle path direction');
+                    if (revBtn.title !== revTitle) revBtn.title = revTitle;
+                    if (revBtn.disabled) revBtn.disabled = false;
                     // If the curve changed, clear stale dataset from previous curve
                     if (this._lastDirCurveId !== curve.id) {
                         this._lastDirCurveId = curve.id;
@@ -816,35 +976,51 @@ export class PropertyPanel extends HTMLElement {
                         revBtn.dataset.winding = this._manualDirWinding[curve.id];
                     }
                 }
-                // Use data-winding if set (manually toggled, figure-8 workaround);
-                // fall back to skeletonWinding from the curve model.
-                const winding = (revBtn && revBtn.dataset && revBtn.dataset.winding) || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
+                // Direction values come from dataset.winding (set by
+                // handleDockedPathPropsUpdate via PATH_PROPS_DOCKED, which runs
+                // synchronously before this microtask) or the model as fallback.
+                // The popup is the single authority for direction toggling.
+                const direction = (revBtn && revBtn.dataset && revBtn.dataset.winding)
+                    || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
                 if (dirEl) {
-                    dirEl.value = winding === 'cw' ? t('prop.dir_cw', 'Clockwise')
-                        : winding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
+                    const dirText = direction === 'cw' ? t('prop.dir_cw', 'Clockwise')
+                        : direction === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
                         : t('prop.dir_open', 'Open');
+                    if (dirEl.value !== dirText) dirEl.value = dirText;
                 }
                 if (revBtn) {
-                    revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
+                    const pressed = direction === 'cw' ? 'true' : 'false';
+                    if (revBtn.getAttribute('aria-pressed') !== pressed) {
+                        revBtn.setAttribute('aria-pressed', pressed);
+                    }
                 }
                 const revWrapper = this.container.querySelector('#path_reverse_dir_wrapper');
                 if (revWrapper) {
-                    revWrapper.title = t('prop.toggle_path_direction', 'Toggle path direction');
+                    const rwTitle = t('prop.toggle_path_direction', 'Toggle path direction');
+                    if (revWrapper.title !== rwTitle) revWrapper.title = rwTitle;
                 }
 
-                const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
-                let smartDirEl = this.container.querySelector('#path_smart_winding_text');
-                if (smartDirEl) smartDirEl.value = smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
                 let smartBtn = this.container.querySelector('#path_smart_winding_toggle');
                 if (smartBtn) {
                     const enableSmartWinding = curve.smart_stroke === true;
-                    smartBtn.disabled = !enableSmartWinding;
-                    smartBtn.setAttribute('aria-pressed', smartWinding === 'cw' ? 'true' : 'false');
-                    smartBtn.title = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                    if (smartBtn.disabled !== !enableSmartWinding) smartBtn.disabled = !enableSmartWinding;
+                    const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                    if (smartBtn.title !== swTitle) smartBtn.title = swTitle;
+                }
+                let smartDirEl = this.container.querySelector('#path_smart_winding_text');
+                if (smartDirEl && smartBtn) {
+                    const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
+                    const smartDirText = smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
+                    if (smartDirEl.value !== smartDirText) smartDirEl.value = smartDirText;
+                    const smartPressed = smartWinding === 'cw' ? 'true' : 'false';
+                    if (smartBtn.getAttribute('aria-pressed') !== smartPressed) {
+                        smartBtn.setAttribute('aria-pressed', smartPressed);
+                    }
                 }
                 let smartWrapper = this.container.querySelector('#path_smart_winding_wrapper');
                 if (smartWrapper) {
-                    smartWrapper.title = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                    const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                    if (smartWrapper.title !== swTitle) smartWrapper.title = swTitle;
                 }
             }
         }
@@ -907,49 +1083,6 @@ export class PropertyPanel extends HTMLElement {
                 patch('prop_out_a', hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : '', !hasC2);
             }
         }
-    }
-
-    handlePathReverseDirection() {
-        let selectedIds = [...this.interaction.selectedTreeIds];
-        if (selectedIds.length !== 1) return;
-        let item = EditorModel.getTreeItem(selectedIds[0]);
-        if (!item || item.type !== 'curve') return;
-
-        // Flip UI state FIRST so any synchronous re-render triggered by the
-        // server request picks up the correct winding from _manualDirWinding
-        // instead of the stale skeletonWinding. (The server request can trigger
-        // a synchronous render that would otherwise overwrite the manual flip.)
-        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
-        const dirEl = this.container.querySelector('#path_direction_text');
-        const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
-        if (revBtn && dirEl) {
-            const isCw = revBtn.getAttribute('aria-pressed') === 'true';
-            const newWinding = isCw ? 'ccw' : 'cw';
-            revBtn.setAttribute('aria-pressed', newWinding === 'cw' ? 'true' : 'false');
-            revBtn.dataset.winding = newWinding;
-            dirEl.value = newWinding === 'cw'
-                ? t('prop.dir_cw', 'Clockwise')
-                : t('prop.dir_ccw', 'Counter-clockwise');
-            // Persist in JS so it survives buildDOM (dock/undock)
-            if (!this._manualDirWinding) this._manualDirWinding = {};
-            this._manualDirWinding[item.curveId] = newWinding;
-        }
-
-        CanvasDispatcher.requestSetSingleObjectProperties(
-            [{ id: item.id, props: { reverse_direction: true } }],
-            { recordHistory: true }
-        );
-    }
-
-    handleSmartStrokeWindingToggle() {
-        let selectedIds = [...this.interaction.selectedTreeIds];
-        if (selectedIds.length !== 1) return;
-        let item = EditorModel.getTreeItem(selectedIds[0]);
-        if (!item || item.type !== 'curve') return;
-        CanvasDispatcher.requestSetSingleObjectProperties(
-            [{ id: item.id, props: { toggle_smart_winding: true } }],
-            { recordHistory: true }
-        );
     }
 
     handlePropertyChange(e) {
