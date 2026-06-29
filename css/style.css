@@ -1147,16 +1147,13 @@ object-tree {
 .npp-row input[type="number"]::-webkit-outer-spin-button,
 .npp-row input[type="number"]::-webkit-inner-spin-button,
 .ppp-row input[type="number"]::-webkit-outer-spin-button,
-.ppp-row input[type="number"]::-webkit-inner-spin-button,
-.npp-docked-fields input[type="number"]::-webkit-outer-spin-button,
-.npp-docked-fields input[type="number"]::-webkit-inner-spin-button {
+.ppp-row input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
 .property_panel input[type="number"],
 .npp-row input[type="number"],
-.ppp-row input[type="number"],
-.npp-docked-fields input[type="number"] {
+.ppp-row input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
 }
@@ -1652,114 +1649,7 @@ font-popup.visible {
 .npp-section.is-dragging {
     opacity: 0.35;
 }
-.npp-docked-fields {
-    padding: 8px 10px;
-}
-.npp-docked-fields .npp-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
-    min-height: 22px;
-}
-.npp-docked-fields .npp-row:last-child {
-    margin-bottom: 0;
-}
-.npp-docked-fields .npp-axis {
-    font-size: 10px;
-    color: var(--ui-text-muted);
-    flex-shrink: 0;
-    width: 18px;
-    text-align: right;
-}
-.npp-docked-fields .npp-row input {
-    flex: 1;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    box-sizing: border-box;
-    outline: none;
-    text-align: left;
-    cursor: text;
-    user-select: auto;
-}
-.npp-docked-fields .npp-row input:focus {
-    border-color: var(--ui-accent);
-}
-.npp-docked-fields .npp-row input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    border-color: transparent;
-    background: var(--ui-hover-bg);
-    color: var(--ui-text-muted);
-}
-.npp-docked-fields .ppp-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
-    min-height: 22px;
-}
-.npp-docked-fields .ppp-row:last-child {
-    margin-bottom: 0;
-}
-.npp-docked-fields .ppp-row > label {
-    font-size: 11px;
-    color: var(--ui-text-muted);
-    flex-shrink: 0;
-    width: 100px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.npp-docked-fields .ppp-row input[type="number"] {
-    flex: 1;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    box-sizing: border-box;
-    outline: none;
-    text-align: left;
-}
-.npp-docked-fields .ppp-row input[type="number"]:focus {
-    border-color: var(--ui-accent);
-}
-.npp-docked-fields .ppp-row input[type="checkbox"] {
-    width: auto;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--ui-accent);
-}
-.npp-docked-fields .ppp-row input[type="text"] {
-    flex: 1;
-    min-width: 0;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-family: inherit;
-    font-size: 11px;
-    box-sizing: border-box;
-    outline: none;
-}
-.npp-docked-fields .ppp-row input[type="text"]:focus {
-    border-color: var(--ui-accent);
-}
-.npp-docked-fields .ppp-row .prop_direction_controls {
-    flex: 1;
-}
+
 .npp-extract-handle {
     cursor: grab;
     font-size: 11px;

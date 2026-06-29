@@ -816,7 +816,7 @@ export class PropertyPanel extends HTMLElement {
                 <div class="npp-section" data-section="npp">
                     <div class="npp-section-handle" data-section="npp">${t('prop.node_props', 'Node Properties')}</div>
                     ${countHtml}
-                    <div class="npp-docked-fields">
+                    <div class="npp-fields">
                         <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div>
                         <div class="npp-row"><label>In</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div>
                         <div class="npp-row"><label>Out</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div>
@@ -831,7 +831,7 @@ export class PropertyPanel extends HTMLElement {
         return `
             <div class="npp-section" data-section="bbox">
                 <div class="npp-section-handle" data-section="bbox">${t('prop.bbox', 'Bounding Box')}</div>
-                <div class="npp-docked-fields">
+                <div class="npp-fields">
                     <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div>
                     <div class="npp-row"><label>Size</label><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div>
                 </div>
@@ -843,7 +843,7 @@ export class PropertyPanel extends HTMLElement {
             return `
                 <div class="npp-section" data-section="ppp">
                     <div class="npp-section-handle" data-section="ppp">${t('prop.path_props', 'Path Properties')}</div>
-                    <div class="npp-docked-fields">
+                    <div class="npp-fields">
                         <div class="ppp-row ppp-path-field"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
@@ -870,7 +870,7 @@ export class PropertyPanel extends HTMLElement {
             return `
                 <div class="property_group">
                     <div class="property_group_title">${t('prop.multiple_paths', 'Multiple Paths')}</div>
-                    <div class="npp-docked-fields">
+                    <div class="npp-fields">
                         <div class="ppp-row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
                         <div class="ppp-row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
@@ -915,7 +915,7 @@ export class PropertyPanel extends HTMLElement {
         return `
             <div class="npp-section" data-section="grp">
                 <div class="npp-section-handle" data-section="grp" data-i18n="prop.group_settings">Group Settings</div>
-                <div class="npp-docked-fields">
+                <div class="npp-fields">
                     <div class="npp-row"><label>${t('prop.name', 'Name')}</label><input type="text" id="g_name"></div>
                     <div class="npp-row"><label>${t('prop.char', 'Char')}</label><input type="text" id="g_char"></div>
                     <div class="npp-row"><label>${t('prop.advance', 'Advance')}</label><input type="number" id="g_advance"></div>
