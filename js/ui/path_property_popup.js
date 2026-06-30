@@ -2,6 +2,7 @@ import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
 import * as EditorModel from "../app/editor_read_facade.js";
+import { initResizeHandles, bringToFront } from "./popup_utils.js";
 
 export const PATH_PROPS_DOCKED = 'ppp:docked';
 export const PATH_PROPS_UNDOCKED = 'ppp:undocked';
@@ -148,6 +149,8 @@ export class PathPropertyPopup extends HTMLElement {
 
         this._restoreDockedState();
         this._initDrag();
+        this._initResize();
+        this.addEventListener('mousedown', () => bringToFront(this));
     }
 
     disconnectedCallback() {
@@ -515,6 +518,10 @@ export class PathPropertyPopup extends HTMLElement {
                 top: parseFloat(this.style.top) || 0
             }));
         } catch (_) {}
+    }
+
+    _initResize() {
+        initResizeHandles(this, { minW: 320, minH: 200 });
     }
 
     _initDrag() {

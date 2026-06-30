@@ -3,6 +3,7 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
+import { initResizeHandles, bringToFront } from "./popup_utils.js";
 
 export const GRP_DOCKED = 'grp:docked';
 
@@ -87,6 +88,8 @@ export class GroupSettingsPopup extends HTMLElement {
 
         this._restoreDockedState();
         this._initDrag();
+        this._initResize();
+        this.addEventListener('mousedown', () => bringToFront(this));
     }
 
     disconnectedCallback() {
@@ -230,6 +233,10 @@ export class GroupSettingsPopup extends HTMLElement {
                 top: parseFloat(this.style.top) || 0
             }));
         } catch (_) {}
+    }
+
+    _initResize() {
+        initResizeHandles(this, { minW: 320, minH: 140 });
     }
 
     _initDrag() {

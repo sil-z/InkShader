@@ -1019,6 +1019,7 @@ logger-panel {
 /* Self-contained — does NOT rely on base .prop_toggle_btn for any dimension. */
 .prop_direction_text_toggle {
     flex: 1;
+    min-width: 100px;
     position: relative;
     display: flex;
     align-items: center;
@@ -1120,7 +1121,6 @@ object-tree {
     border: 1px solid var(--ui-border);
     border-radius: 4px;
     width: 100%;
-    min-width: 0;
     box-sizing: border-box;
     color: var(--ui-text-main);
     background-color: transparent;
@@ -1367,15 +1367,17 @@ group-settings-popup {
     border: 1px solid var(--ui-border);
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    min-width: 260px;
+    min-width: 320px;
+    min-height: 100px;
+    overflow: hidden;
     user-select: none;
     display: none;
     cursor: move;
 }
 
-/* docked sections: fill container width, no overflow */
+/* docked sections: enforce minimum content width */
 #property_container > [data-section] {
-    min-width: 260px;
+    min-width: 320px;
 }
 node-property-popup.visible,
 path-property-popup.visible,
@@ -1536,7 +1538,7 @@ font-popup.visible {
     font-size: 11px;
     color: var(--ui-text-muted);
     flex-shrink: 0;
-    width: 100px;
+    width: 120px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1566,7 +1568,6 @@ font-popup.visible {
 }
 .ppp-row input[type="text"] {
     flex: 1;
-    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
@@ -1663,7 +1664,7 @@ font-popup.visible {
     margin-bottom: 0;
 }
 .npp-row > label {
-    width: 90px;
+    width: 120px;
     font-size: 11px;
     color: var(--ui-text-muted);
     flex-shrink: 0;
