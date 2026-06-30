@@ -13,31 +13,39 @@ const POPUP_HTML = `
 <div class="npp-fields">
     <div class="npp-row">
         <label>Pos</label>
-        <span class="npp-axis">X</span>
-        <input type="number" step="0.1" id="npp_x">
-        <span class="npp-axis">Y</span>
-        <input type="number" step="0.1" id="npp_y">
+        <div class="npp-input-group">
+            <span class="npp-axis">X</span>
+            <input type="number" step="0.1" id="npp_x">
+            <span class="npp-axis">Y</span>
+            <input type="number" step="0.1" id="npp_y">
+        </div>
     </div>
     <div class="npp-row">
         <label>In</label>
-        <span class="npp-axis">X</span>
-        <input type="number" step="0.1" id="npp_in_x">
-        <span class="npp-axis">Y</span>
-        <input type="number" step="0.1" id="npp_in_y">
+        <div class="npp-input-group">
+            <span class="npp-axis">X</span>
+            <input type="number" step="0.1" id="npp_in_x">
+            <span class="npp-axis">Y</span>
+            <input type="number" step="0.1" id="npp_in_y">
+        </div>
     </div>
     <div class="npp-row">
         <label>Out</label>
-        <span class="npp-axis">X</span>
-        <input type="number" step="0.1" id="npp_out_x">
-        <span class="npp-axis">Y</span>
-        <input type="number" step="0.1" id="npp_out_y">
+        <div class="npp-input-group">
+            <span class="npp-axis">X</span>
+            <input type="number" step="0.1" id="npp_out_x">
+            <span class="npp-axis">Y</span>
+            <input type="number" step="0.1" id="npp_out_y">
+        </div>
     </div>
     <div class="npp-row">
         <label>Angle</label>
-        <span class="npp-axis">In</span>
-        <input type="number" step="1" id="npp_in_a">
-        <span class="npp-axis">Out</span>
-        <input type="number" step="1" id="npp_out_a">
+        <div class="npp-input-group">
+            <span class="npp-axis">In</span>
+            <input type="number" step="1" id="npp_in_a">
+            <span class="npp-axis">Out</span>
+            <input type="number" step="1" id="npp_out_a">
+        </div>
     </div>
 </div>`;
 

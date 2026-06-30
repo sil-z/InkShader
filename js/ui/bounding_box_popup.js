@@ -12,17 +12,21 @@ const POPUP_HTML = `
 <div class="npp-fields">
     <div class="npp-row">
         <label>Pos</label>
-        <span class="npp-axis">X</span>
-        <input type="number" step="0.1" id="bbox_x">
-        <span class="npp-axis">Y</span>
-        <input type="number" step="0.1" id="bbox_y">
+        <div class="npp-input-group">
+            <span class="npp-axis">X</span>
+            <input type="number" step="0.1" id="bbox_x">
+            <span class="npp-axis">Y</span>
+            <input type="number" step="0.1" id="bbox_y">
+        </div>
     </div>
     <div class="npp-row">
         <label>Size</label>
-        <span class="npp-axis">W</span>
-        <input type="number" step="0.1" id="bbox_w">
-        <span class="npp-axis">H</span>
-        <input type="number" step="0.1" id="bbox_h">
+        <div class="npp-input-group">
+            <span class="npp-axis">W</span>
+            <input type="number" step="0.1" id="bbox_w">
+            <span class="npp-axis">H</span>
+            <input type="number" step="0.1" id="bbox_h">
+        </div>
     </div>
 </div>`;
 

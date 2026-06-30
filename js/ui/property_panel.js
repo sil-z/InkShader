@@ -822,10 +822,10 @@ export class PropertyPanel extends HTMLElement {
                     <div class="property_group_title npp-drag-handle">${t('prop.node_props', 'Node Properties')}</div>
                     ${countHtml}
                     <div class="npp-fields">
-                        <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div>
-                        <div class="npp-row"><label>In</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div>
-                        <div class="npp-row"><label>Out</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div>
-                        <div class="npp-row"><label>Angle</label><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div>
+                        <div class="npp-row"><label>Pos</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div></div>
+                        <div class="npp-row"><label>In</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div></div>
+                        <div class="npp-row"><label>Out</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div></div>
+                        <div class="npp-row"><label>Angle</label><div class="npp-input-group"><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div></div>
                     </div>
                 </div>`;
         }
@@ -837,8 +837,8 @@ export class PropertyPanel extends HTMLElement {
             <div data-section="bbox">
                 <div class="property_group_title npp-drag-handle">${t('prop.bbox', 'Bounding Box')}</div>
                 <div class="npp-fields">
-                    <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div>
-                    <div class="npp-row"><label>Size</label><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div>
+                    <div class="npp-row"><label>Pos</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div></div>
+                    <div class="npp-row"><label>Size</label><div class="npp-input-group"><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div></div>
                 </div>
             </div>`;
     }

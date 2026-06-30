@@ -1368,16 +1368,10 @@ group-settings-popup {
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.25);
     min-width: 320px;
-    min-height: 100px;
     overflow: hidden;
     user-select: none;
     display: none;
     cursor: move;
-}
-
-/* docked sections: enforce minimum content width */
-#property_container > [data-section] {
-    min-width: 320px;
 }
 node-property-popup.visible,
 path-property-popup.visible,
@@ -1385,13 +1379,18 @@ bounding-box-popup.visible,
 group-settings-popup.visible {
     display: block;
 }
+
+/* docked sections: enforce minimum content width */
+#property_container > [data-section] {
+    min-width: 320px;
+}
 .npp-drag-handle {
     cursor: grab;
     font-size: 11px;
     font-weight: 600;
     color: var(--ui-text-muted);
     letter-spacing: 0.2px;
-    padding: 4px 6px 4px 6px;
+    padding: 4px 10px 4px 10px;
     background: var(--ui-bg-placeholder);
     user-select: none;
 }
@@ -1545,6 +1544,7 @@ font-popup.visible {
 }
 .ppp-row input[type="number"] {
     flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
@@ -1568,6 +1568,7 @@ font-popup.visible {
 }
 .ppp-row input[type="text"] {
     flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
@@ -1672,6 +1673,34 @@ font-popup.visible {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* When axis labels accompany the field label (e.g. Pos X, In X),
+   use a 2-column grid: label(96) + input-group(1fr flex).
+   The npp-input-group wraps the axis + input + axis + input in a flex row,
+   so the four right-side elements form a single cohesive block.          */
+.npp-row:has(.npp-axis) {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 4px;
+    min-height: 22px;
+}
+.npp-row:has(.npp-axis):last-child {
+    margin-bottom: 0;
+}
+.npp-row:has(.npp-axis) > label {
+    width: auto;
+}
+.npp-input-group {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+.npp-input-group input {
+    flex: 1;
+    min-width: 0;
+}
 .npp-row .npp-axis {
     font-size: 10px;
     color: var(--ui-text-muted);
@@ -1681,6 +1710,7 @@ font-popup.visible {
 }
 .npp-row input {
     flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
