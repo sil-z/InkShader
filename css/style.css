@@ -770,7 +770,6 @@ glyph-sequence-bar {
     min-height: 0; 
     overflow-y: auto;
     overflow-x: auto;
-    scrollbar-gutter: stable;
     box-sizing: border-box;
     background-color: var(--ui-bg-placeholder);
     transition: background-color 0.2s, border-color 0.2s;
@@ -1098,7 +1097,6 @@ object-tree {
     white-space: nowrap;
     overflow-y: auto;
     overflow-x: auto;
-    scrollbar-gutter: stable;
 }
 .property_panel {
     display: flex;
@@ -2413,11 +2411,7 @@ dropdown-menu {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
-.pref_modal_body,
-.pref_content_area,
-.logger-scroll {
-    scrollbar-gutter: stable;
-}
+
 /* 新增: 输入框统一及美化样式 */
 .pref_input, .logger-input, .custom-select-trigger, .color_picker_group input[type="text"] {
     font-family: inherit;
