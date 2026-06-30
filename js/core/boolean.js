@@ -1,6 +1,7 @@
 // js/core/boolean.js
 import { CurveNode } from "./bezier/node.js";
 import { getPaperScope } from "./paper_scope.js";
+import { param_set } from "../services/theme.js";
 
 export class BooleanEngine {
     constructor(curveManager) {
@@ -101,7 +102,7 @@ export class BooleanEngine {
             let InkShaderCurve = this.cm.create_temp_curve("a"); 
             InkShaderCurve.closed = pPath.closed;
             InkShaderCurve.stroke_width = 0; 
-            InkShaderCurve.fill_color = "rgba(0,0,0,1)";
+            InkShaderCurve.fill_color = param_set["1"].boolean_fill;
 
             let lastCreatedNode = null;
 

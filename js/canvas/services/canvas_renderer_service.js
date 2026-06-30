@@ -65,7 +65,7 @@ export class CanvasRendererService {
                     c.ctx.font = `${fontH}px sans-serif`;
                     c.ctx.textAlign = "center";
                     c.ctx.textBaseline = "alphabetic";
-                    c.ctx.fillStyle = "rgba(160,160,160,0.3)";
+                    c.ctx.fillStyle = p.char_preview_color;
                     c.ctx.fillText(displayChar, cx, baselineY);
                     c.ctx.restore();
                 }
@@ -190,14 +190,14 @@ export class CanvasRendererService {
                     const isDragging = !lockActive && c._draggingUserGuide && c._draggingUserGuide.id === g.id;
                     let strokeColor, fillColor;
                     if (isDragging) {
-                        strokeColor = "rgba(250, 204, 21, 0.7)";
-                        fillColor = "rgba(250, 204, 21, 0.5)";
+                        strokeColor = p.guide_drag_stroke;
+                        fillColor = p.guide_drag_fill;
                     } else if (isHovered) {
-                        strokeColor = "rgba(250, 204, 21, 0.8)";
-                        fillColor = "rgba(250, 204, 21, 0.6)";
+                        strokeColor = p.guide_hover_stroke;
+                        fillColor = p.guide_hover_fill;
                     } else {
-                        strokeColor = "rgba(2, 132, 199, 0.6)";
-                        fillColor = "rgba(2, 132, 199, 0.4)";
+                        strokeColor = p.guide_stroke;
+                        fillColor = p.guide_fill;
                     }
                     c.ctx.save();
                     c.ctx.strokeStyle = strokeColor;
@@ -318,7 +318,7 @@ export class CanvasRendererService {
             }
             c.ctx.stroke(); c.ctx.restore();
             if (hoveredScreenX !== null) {
-                c.ctx.save(); c.ctx.strokeStyle = "rgba(250, 204, 21, 0.8)"; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
+                c.ctx.save(); c.ctx.strokeStyle = p.divider_highlight; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
                 c.ctx.beginPath(); c.ctx.moveTo(hoveredScreenX, 0); c.ctx.lineTo(hoveredScreenX, logicalH); c.ctx.stroke(); c.ctx.restore();
             }
         }
@@ -510,13 +510,13 @@ export class CanvasRendererService {
         const ep = c._hoveredRulerEndpoint;
         let isStartHovered = ep?.rulerId === ruler.id && ep?.endpoint === 'start';
         let isEndHovered = ep?.rulerId === ruler.id && ep?.endpoint === 'end';
-        let lineColor = isLineHovered ? "#facc15" : p.measure_color;
+        let lineColor = isLineHovered ? p.measure_hover_color : p.measure_color;
         let lineWidth = isLineHovered ? 2 : 1;
         c.ctx.save();
         c.ctx.strokeStyle = lineColor; c.ctx.lineWidth = lineWidth;
         c.ctx.beginPath(); c.ctx.moveTo(sx, sy); c.ctx.lineTo(ex, ey); c.ctx.stroke();
-        let startColor = isStartHovered ? "#facc15" : p.measure_color;
-        let endColor = isEndHovered ? "#facc15" : p.measure_color;
+        let startColor = isStartHovered ? p.measure_hover_color : p.measure_color;
+        let endColor = isEndHovered ? p.measure_hover_color : p.measure_color;
         c.ctx.fillStyle = startColor; c.ctx.beginPath(); c.ctx.arc(sx, sy, 4, 0, Math.PI * 2); c.ctx.fill();
         c.ctx.fillStyle = endColor; c.ctx.beginPath(); c.ctx.arc(ex, ey, 4, 0, Math.PI * 2); c.ctx.fill();
         let dx = ruler.x2 - ruler.x1; let dy = ruler.y2 - ruler.y1;

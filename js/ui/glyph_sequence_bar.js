@@ -2,6 +2,7 @@ import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { appEventBus } from "../app/event_bus.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import * as EditorModel from "../app/editor_read_facade.js";
+import { getCanvasTheme } from "../canvas/rendering/canvas_theme.js";
 const TOOLBAR_W = 28;
 function _toAfdkoName(str) {
     const parts = [];
@@ -736,7 +737,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 if (!hasContent) {
                     this._previewCtx.clearRect(0, 0, 120, 120);
                     this._previewCtx.save();
-                    this._previewCtx.fillStyle = "rgba(128,128,128,0.4)";
+                    this._previewCtx.fillStyle = getCanvasTheme().preview_fallback;
                     this._previewCtx.font = "bold 80px sans-serif";
                     this._previewCtx.textAlign = "center";
                     this._previewCtx.textBaseline = "middle";
@@ -745,7 +746,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
             } else {
                 this._previewCtx.save();
-                this._previewCtx.fillStyle = "rgba(128,128,128,0.4)";
+                this._previewCtx.fillStyle = getCanvasTheme().preview_fallback;
                 this._previewCtx.font = "bold 80px sans-serif";
                 this._previewCtx.textAlign = "center";
                 this._previewCtx.textBaseline = "middle";
@@ -842,7 +843,7 @@ export class GlyphSequenceBar extends HTMLElement {
             }
             if (!hasContent && g.charCode && g.charCode.length === 1) {
                 this._previewCtx.save();
-                this._previewCtx.fillStyle = "rgba(128,128,128,0.4)";
+                this._previewCtx.fillStyle = getCanvasTheme().preview_fallback;
                 this._previewCtx.font = "bold 80px sans-serif";
                 this._previewCtx.textAlign = "center";
                 this._previewCtx.textBaseline = "middle";

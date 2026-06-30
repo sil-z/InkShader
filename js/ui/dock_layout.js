@@ -1046,11 +1046,6 @@ export class DockLayout {
 
     _cleanupDragPreview() {
         this._previewEl.classList.remove("visible", "dock-preview-merge", "dock-preview-insert");
-        this._previewEl.style.background = "";
-        this._previewEl.style.boxShadow = "";
-        this._previewEl.style.borderRadius = "";
-        this._previewEl.style.border = "";
-        this._previewEl.style.zIndex = "";
         if (this._dragInfo?.origTab) {
             this._dragInfo.origTab.classList.remove("dock-tab-dragging");
             this._dragInfo.origTab = null;

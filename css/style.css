@@ -55,6 +55,17 @@
     --cvs-marquee-fill: rgba(14, 165, 233, 0.08);
     --cvs-divider-line: rgba(0, 0, 0, 0.15);
     --cvs-grid-dot: #bcc8d8;
+    --cvs-char-preview-color: rgba(160, 160, 160, 0.3);
+    --cvs-guide-stroke: rgba(2, 132, 199, 0.6);
+    --cvs-guide-fill: rgba(2, 132, 199, 0.4);
+    --cvs-guide-hover-stroke: rgba(250, 204, 21, 0.8);
+    --cvs-guide-hover-fill: rgba(250, 204, 21, 0.6);
+    --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.7);
+    --cvs-guide-drag-fill: rgba(250, 204, 21, 0.5);
+    --cvs-divider-highlight: rgba(250, 204, 21, 0.8);
+    --cvs-measure-hover: #facc15;
+    --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
+    --cvs-boolean-fill: #000000;
 }
 /* 暗色模式 (Dark Mode) 也同步优化 */
 [data-theme="dark"] {
@@ -107,6 +118,17 @@
     --cvs-marquee-fill: rgba(13, 153, 255, 0.15);
     --cvs-divider-line: rgba(255, 255, 255, 0.2);
     --cvs-grid-dot: #52525b;
+    --cvs-char-preview-color: rgba(160, 160, 160, 0.3);
+    --cvs-guide-stroke: rgba(56, 189, 248, 0.7);
+    --cvs-guide-fill: rgba(56, 189, 248, 0.4);
+    --cvs-guide-hover-stroke: rgba(250, 204, 21, 0.9);
+    --cvs-guide-hover-fill: rgba(250, 204, 21, 0.7);
+    --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.8);
+    --cvs-guide-drag-fill: rgba(250, 204, 21, 0.6);
+    --cvs-divider-highlight: rgba(250, 204, 21, 0.9);
+    --cvs-measure-hover: #fde047;
+    --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
+    --cvs-boolean-fill: #f8fafc;
 }
 /* =========================================
    提取的基础 UI 样式类
