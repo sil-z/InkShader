@@ -409,7 +409,7 @@ export class PropertyPanel extends HTMLElement {
         }
         if (hasBounds && this._bboxDocked) sections.bbox = this._buildBoundsProps(t);
         if (hasPath) {
-            const existingPath = this.container.querySelector('.npp-section[data-section="ppp"]');
+            const existingPath = this.container.querySelector('[data-section="ppp"]');
             if (rebuildPath || !existingPath) {
                 const html = this._buildPathProps(pathCount, t);
                 if (html) sections.ppp = html;
@@ -429,7 +429,7 @@ export class PropertyPanel extends HTMLElement {
         const sectionKeys = Object.keys(sections);
         if (sectionKeys.length === 0 && !hasRef) {
             // If only the path section exists and we're keeping it, don't clear
-            if (!this.container.querySelector('.npp-section[data-section="ppp"]')) {
+            if (!this.container.querySelector('[data-section="ppp"]')) {
                 this.container.replaceChildren();
                 this.container.classList.add("is_empty");
                 return;
@@ -449,7 +449,7 @@ export class PropertyPanel extends HTMLElement {
             this._ensureSectionOrder(sectionKeys);
             // Collect current sections in the DOM
             const currentSections = {};
-            this.container.querySelectorAll('.npp-section').forEach(el => {
+            this.container.querySelectorAll('[data-section]').forEach(el => {
                 currentSections[el.dataset.section] = el;
             });
             // Build new HTML for non-preserved sections
@@ -481,8 +481,13 @@ export class PropertyPanel extends HTMLElement {
                 } else if (newSections[key]) {
                     const nodes = newSections[key];
                     if (existing) {
-                        // Replace existing section content
-                        existing.replaceChildren(...nodes);
+                        // Extract inner content (title + fields) from the new section wrapper
+                        // instead of nesting a new wrapper inside the existing one — the new
+                        // sections[key] contains the full <div data-section="..."> wrapper, but
+                        // existing is already a [data-section] div; replacing existing's children
+                        // with the new wrapper nests sections infinitely on repeated renders.
+                        const innerContent = nodes[0] ? [...nodes[0].children] : nodes;
+                        existing.replaceChildren(...innerContent);
                     } else {
                         // Insert at correct position
                         const before = this._sectionOrder.slice(this._sectionOrder.indexOf(key) + 1)
@@ -542,7 +547,7 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _initSectionReorder() {
-        const handles = this.container.querySelectorAll('.npp-section-handle');
+        const handles = this.container.querySelectorAll('.npp-drag-handle');
         if (handles.length < 1) return;
 
         handles.forEach(handle => {
@@ -550,7 +555,7 @@ export class PropertyPanel extends HTMLElement {
                 if (e.button !== 0) return;
                 if (this._dragState) return;
 
-                const section = handle.closest('.npp-section');
+                const section = handle.closest('[data-section]');
                 if (!section) return;
 
                 const sectionId = section.dataset.section;
@@ -751,7 +756,7 @@ export class PropertyPanel extends HTMLElement {
     _updateReorderPreview(mouseY) {
         this._clearReorderPreview();
 
-        const sections = [...this.container.querySelectorAll('.npp-section')];
+        const sections = [...this.container.querySelectorAll('[data-section]')];
         const dragged = this._dragState.section;
         const siblings = sections.filter(s => s !== dragged);
 
@@ -782,7 +787,7 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _commitReorder(mouseY) {
-        const sections = [...this.container.querySelectorAll('.npp-section')];
+        const sections = [...this.container.querySelectorAll('[data-section]')];
         const dragged = this._dragState.section;
         const siblings = sections.filter(s => s !== dragged);
 
@@ -802,7 +807,7 @@ export class PropertyPanel extends HTMLElement {
             siblings[insertIdx].parentNode.insertBefore(dragged, siblings[insertIdx]);
         }
 
-        const newOrder = [...this.container.querySelectorAll('.npp-section')].map(
+        const newOrder = [...this.container.querySelectorAll('[data-section]')].map(
             el => el.dataset.section
         );
         this._sectionOrder = newOrder;
@@ -813,8 +818,8 @@ export class PropertyPanel extends HTMLElement {
         if (nodeCount > 0 && this._nodePropsDocked) {
             const countHtml = nodeCount > 1 ? `<div class="prop_node_count">${nodeCount} ${t('prop.nodes_selected', 'nodes selected')}</div>` : '';
             return `
-                <div class="npp-section" data-section="npp">
-                    <div class="npp-section-handle" data-section="npp">${t('prop.node_props', 'Node Properties')}</div>
+                <div data-section="npp">
+                    <div class="property_group_title npp-drag-handle">${t('prop.node_props', 'Node Properties')}</div>
                     ${countHtml}
                     <div class="npp-fields">
                         <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div>
@@ -829,8 +834,8 @@ export class PropertyPanel extends HTMLElement {
 
     _buildBoundsProps(t) {
         return `
-            <div class="npp-section" data-section="bbox">
-                <div class="npp-section-handle" data-section="bbox">${t('prop.bbox', 'Bounding Box')}</div>
+            <div data-section="bbox">
+                <div class="property_group_title npp-drag-handle">${t('prop.bbox', 'Bounding Box')}</div>
                 <div class="npp-fields">
                     <div class="npp-row"><label>Pos</label><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div>
                     <div class="npp-row"><label>Size</label><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div>
@@ -841,8 +846,8 @@ export class PropertyPanel extends HTMLElement {
     _buildPathProps(pathCount, t) {
         if (pathCount > 0 && this._pathPropsDocked) {
             return `
-                <div class="npp-section" data-section="ppp">
-                    <div class="npp-section-handle" data-section="ppp">${t('prop.path_props', 'Path Properties')}</div>
+                <div data-section="ppp">
+                    <div class="property_group_title npp-drag-handle">${t('prop.path_props', 'Path Properties')}</div>
                     <div class="npp-fields">
                         <div class="ppp-row ppp-path-field"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
@@ -913,8 +918,8 @@ export class PropertyPanel extends HTMLElement {
         const item = EditorModel.getTreeItem(groupId);
         if (!item || item.type !== 'group' || item.isRef) return '';
         return `
-            <div class="npp-section" data-section="grp">
-                <div class="npp-section-handle" data-section="grp" data-i18n="prop.group_settings">Group Settings</div>
+            <div data-section="grp">
+                <div class="property_group_title npp-drag-handle">Group Settings</div>
                 <div class="npp-fields">
                     <div class="npp-row"><label>${t('prop.name', 'Name')}</label><input type="text" id="g_name"></div>
                     <div class="npp-row"><label>${t('prop.char', 'Char')}</label><input type="text" id="g_char"></div>

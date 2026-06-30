@@ -611,7 +611,7 @@ glyph-sequence-bar {
 .dock-content {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -1105,8 +1105,7 @@ object-tree {
     padding: 0;
     flex: 1;
     min-height: 0;
-    min-width: 240px;
-    overflow-x: auto;
+    overflow: auto;
     position: relative;
 }
 .property_panel label {
@@ -1368,10 +1367,15 @@ group-settings-popup {
     border: 1px solid var(--ui-border);
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    min-width: 220px;
+    min-width: 260px;
     user-select: none;
     display: none;
     cursor: move;
+}
+
+/* docked sections: fill container width, no overflow */
+#property_container > [data-section] {
+    min-width: 260px;
 }
 node-property-popup.visible,
 path-property-popup.visible,
@@ -1386,12 +1390,18 @@ group-settings-popup.visible {
     color: var(--ui-text-muted);
     letter-spacing: 0.2px;
     padding: 4px 6px 4px 6px;
-    border-radius: 6px 6px 0 0;
     background: var(--ui-bg-placeholder);
     user-select: none;
 }
 .npp-drag-handle:active {
     cursor: grabbing;
+}
+/* popup-specific: round top corners to match popup border-radius */
+node-property-popup .npp-drag-handle,
+path-property-popup .npp-drag-handle,
+bounding-box-popup .npp-drag-handle,
+group-settings-popup .npp-drag-handle {
+    border-radius: 6px 6px 0 0;
 }
 pen-tool-popup,
 ellipse-tool-popup,
@@ -1611,31 +1621,6 @@ font-popup.visible {
     white-space: nowrap;
 }
 
-/* ── Sub-component sections (docked in property panel) ── */
-.npp-section {
-    position: relative;
-    border-bottom: 1px solid var(--ui-border);
-}
-.npp-section:last-child {
-    border-bottom: none;
-}
-.npp-section-handle {
-    padding: 6px 8px;
-    cursor: grab;
-    user-select: none;
-    background: var(--ui-bg-placeholder);
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--ui-text-muted);
-    letter-spacing: 0.2px;
-    transition: background 0.12s;
-}
-.npp-section-handle:hover {
-    background: var(--ui-hover-bg);
-}
-.npp-section-handle:active {
-    cursor: grabbing;
-}
 /* blue insertion preview line during reorder drag */
 .npp-section-preview {
     height: 2px;
@@ -1646,7 +1631,7 @@ font-popup.visible {
     flex-shrink: 0;
 }
 /* dragged section becomes semi-transparent */
-.npp-section.is-dragging {
+[data-section].is-dragging {
     opacity: 0.35;
 }
 
@@ -1686,7 +1671,7 @@ font-popup.visible {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.npp-axis {
+.npp-row .npp-axis {
     font-size: 10px;
     color: var(--ui-text-muted);
     flex-shrink: 0;
