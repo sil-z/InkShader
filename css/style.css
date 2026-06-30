@@ -325,8 +325,8 @@ glyph-sequence-bar {
     transition: all 0.15s;
 }
 .seq-bar-rm-btn:hover {
-    background: #e11d48;
-    border-color: #e11d48;
+    background: #f43f5e; /* 原为 #e11d48 */
+    border-color: #f43f5e;
     color: #fff;
 }
 .seq-bar-ins-btn:hover,
@@ -402,33 +402,25 @@ glyph-sequence-bar {
 }
 .seq-bar-name {
     font-weight: 500;
-    background: #8b5cf6;
-    border-color: #8b5cf6;
+    background: #6366f1; /* 原为 #8b5cf6，改为稍微内敛的靛蓝 */
+    border-color: #6366f1;
     color: #fff;
 }
-.seq-bar-pos .seq-bar-code {
-    background: #0d9488 !important;
-    border-color: #0d9488 !important;
-    color: #fff !important;
-}
-.seq-bar-pos .seq-bar-code.seq-bar-code-missing {
-    background: #e11d48 !important;
-    border-color: #e11d48 !important;
-    color: #fff !important;
-}
+.seq-bar-pos .seq-bar-code,
 .seq-bar-popup .seq-bar-code {
-    background: #0d9488 !important;
-    border-color: #0d9488 !important;
+    background: #14b8a6 !important; /* 原为 #0d9488，改为更柔和的青灰绿 */
+    border-color: #14b8a6 !important;
     color: #fff !important;
 }
+.seq-bar-pos .seq-bar-code.seq-bar-code-missing,
 .seq-bar-popup .seq-bar-code.seq-bar-code-missing {
-    background: #e11d48 !important;
-    border-color: #e11d48 !important;
+    background: #f43f5e !important; /* 原为 #e11d48，改为玫瑰红 */
+    border-color: #f43f5e !important;
     color: #fff !important;
 }
 .seq-bar-pos.active .seq-bar-name {
-    background: #7c3aed;
-    border-color: #7c3aed;
+    background: #4f46e5; /* 原为 #7c3aed，加深一档的靛蓝 */
+    border-color: #4f46e5;
     color: #fff;
 }
 .seq-bar-add-btn {
