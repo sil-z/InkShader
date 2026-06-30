@@ -1,9 +1,5 @@
 // 仅 Windows Firefox：通过 data-scrollbar-visible 属性控制滚动条显示/隐藏
-// （样式规则已迁移至 style.css 的 scrollbar 区块）
-const SCROLLABLE = [
-    '.placeholder', '.tree_panel', '.sequence-add-menu',
-    '.pref_modal_body', '.pref_content_area', '.logger-output'
-].join(', ');
+const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-output';
 
 function isFirefoxWindows() {
     return navigator.userAgent.toLowerCase().includes('firefox')
@@ -12,6 +8,30 @@ function isFirefoxWindows() {
 
 export function initScrollbarVisibility() {
     if (!isFirefoxWindows()) return;
+
+    // 为 Firefox 设置初始滚动条样式（不在 CSS 中写，避免 Chrome 新版也应用 scrollbar-color）
+    document.querySelectorAll(SCROLLABLE).forEach(el => {
+        el.style.setProperty('scrollbar-width', 'thin');
+        el.style.setProperty('scrollbar-color', 'transparent transparent');
+    });
+    // 观察动态添加的元素
+    const mo = new MutationObserver((records) => {
+        for (const rec of records) {
+            for (const node of rec.addedNodes) {
+                if (node.nodeType === 1) {
+                    if (node.matches?.(SCROLLABLE)) {
+                        node.style.setProperty('scrollbar-width', 'thin');
+                        node.style.setProperty('scrollbar-color', 'transparent transparent');
+                    }
+                    node.querySelectorAll?.(SCROLLABLE).forEach(el => {
+                        el.style.setProperty('scrollbar-width', 'thin');
+                        el.style.setProperty('scrollbar-color', 'transparent transparent');
+                    });
+                }
+            }
+        }
+    });
+    mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
     document.addEventListener('mouseover', (e) => {
         const el = e.target.closest(SCROLLABLE);

@@ -783,12 +783,12 @@ logger-panel {
 .placeholder:focus, .tree_panel:focus, #object_tree:focus, .tree_item:focus {
     outline: none;
 }
+/* 滚动条（面板）：默认透明，hover 显示 */
 .placeholder::-webkit-scrollbar,
 .right::-webkit-scrollbar,
 #property_container::-webkit-scrollbar,
 .dock-content::-webkit-scrollbar,
-.tree_panel::-webkit-scrollbar,
-.logger-scroll::-webkit-scrollbar {
+.tree_panel::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
@@ -796,8 +796,7 @@ logger-panel {
 .right::-webkit-scrollbar-button,
 #property_container::-webkit-scrollbar-button,
 .dock-content::-webkit-scrollbar-button,
-.tree_panel::-webkit-scrollbar-button,
-.logger-scroll::-webkit-scrollbar-button {
+.tree_panel::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
@@ -806,16 +805,14 @@ logger-panel {
 .right::-webkit-scrollbar-corner,
 #property_container::-webkit-scrollbar-corner,
 .dock-content::-webkit-scrollbar-corner,
-.tree_panel::-webkit-scrollbar-corner,
-.logger-scroll::-webkit-scrollbar-corner {
+.tree_panel::-webkit-scrollbar-corner {
     background: transparent;
 }
 .placeholder::-webkit-scrollbar-thumb,
 .right::-webkit-scrollbar-thumb,
 #property_container::-webkit-scrollbar-thumb,
 .dock-content::-webkit-scrollbar-thumb,
-.tree_panel::-webkit-scrollbar-thumb,
-.logger-scroll::-webkit-scrollbar-thumb {
+.tree_panel::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 10px;
     transition: background 0.35s ease 0.5s;
@@ -824,9 +821,7 @@ logger-panel {
 .right:hover::-webkit-scrollbar-thumb,
 #property_container:hover::-webkit-scrollbar-thumb,
 .dock-content:hover::-webkit-scrollbar-thumb,
-.tree_panel:hover::-webkit-scrollbar-thumb,
-.logger-scroll:hover::-webkit-scrollbar-thumb,
-.logger-scroll.show-scrollbar::-webkit-scrollbar-thumb {
+.tree_panel:hover::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
@@ -834,8 +829,7 @@ logger-panel {
 .right::-webkit-scrollbar-thumb:hover,
 #property_container::-webkit-scrollbar-thumb:hover,
 .dock-content::-webkit-scrollbar-thumb:hover,
-.tree_panel::-webkit-scrollbar-thumb:hover,
-.logger-scroll::-webkit-scrollbar-thumb:hover {
+.tree_panel::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
@@ -843,11 +837,81 @@ logger-panel {
 .right::-webkit-scrollbar-track,
 #property_container::-webkit-scrollbar-track,
 .dock-content::-webkit-scrollbar-track,
-.tree_panel::-webkit-scrollbar-track,
+.tree_panel::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+
+/* 控制台：独立控制，通过 show-scrollbar class 切换 */
+.logger-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.logger-scroll::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.logger-scroll::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.logger-scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    transition: background 0.3s ease;
+}
+.logger-scroll.show-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
+}
+.logger-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
 .logger-scroll::-webkit-scrollbar-track {
     background: transparent;
     border: none;
 }
+
+/* 偏好设置弹窗：默认透明，hover 显示 */
+.pref_modal_body::-webkit-scrollbar,
+.pref_content_area::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.pref_modal_body::-webkit-scrollbar-button,
+.pref_content_area::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.pref_modal_body::-webkit-scrollbar-corner,
+.pref_content_area::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.pref_modal_body::-webkit-scrollbar-track,
+.pref_content_area::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+.pref_modal_body::-webkit-scrollbar-thumb,
+.pref_content_area::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
+}
+.pref_modal_body:hover::-webkit-scrollbar-thumb,
+.pref_content_area:hover::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
+}
+.pref_modal_body::-webkit-scrollbar-thumb:hover,
+.pref_content_area::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
+
+/* 添加菜单：独立，通过 show-scrollbar 控制 */
 .sequence-add-menu::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -878,16 +942,13 @@ logger-panel {
     border: none;
 }
 
-/* Firefox scrollbar: thin + transparent, show on hover/scroll (via data attribute) */
-.placeholder, .tree_panel, .sequence-add-menu,
-.pref_modal_body, .pref_content_area, .logger-output {
-    scrollbar-width: thin !important;
-    scrollbar-color: transparent transparent !important;
-}
+/* Firefox：通过 data-scrollbar-visible 属性控制（scrollbar-color 由 scrollbar_visibility.js 运行时设置） */
 .placeholder[data-scrollbar-visible], .tree_panel[data-scrollbar-visible],
-.sequence-add-menu[data-scrollbar-visible], .pref_modal_body[data-scrollbar-visible],
-.pref_content_area[data-scrollbar-visible], .logger-output[data-scrollbar-visible] {
-    scrollbar-color: var(--ui-border-light) transparent !important;
+.sequence-add-menu[data-scrollbar-visible],
+.pref_modal_body[data-scrollbar-visible],
+.pref_content_area[data-scrollbar-visible],
+.logger-output[data-scrollbar-visible] {
+    scrollbar-color: var(--ui-border-light) transparent;
 }
 .placeholder span, .property_panel label {
     white-space: nowrap;
@@ -2397,43 +2458,6 @@ dropdown-menu {
 .logger-input:focus {
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
 }
-/* --- 统一滚动条样式 --- */
-.pref_modal_body::-webkit-scrollbar,
-.pref_content_area::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-.pref_modal_body::-webkit-scrollbar-button,
-.pref_content_area::-webkit-scrollbar-button {
-    display: none;
-    width: 0;
-    height: 0;
-}
-.pref_modal_body::-webkit-scrollbar-corner,
-.pref_content_area::-webkit-scrollbar-corner {
-    background: transparent;
-}
-.pref_modal_body::-webkit-scrollbar-track,
-.pref_content_area::-webkit-scrollbar-track {
-    background: transparent;
-    border: none;
-}
-.pref_modal_body::-webkit-scrollbar-thumb,
-.pref_content_area::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 10px;
-    transition: background 0.35s ease 0.5s;
-}
-.pref_modal_body:hover::-webkit-scrollbar-thumb,
-.pref_content_area:hover::-webkit-scrollbar-thumb {
-    background: var(--ui-border-light);
-    transition: background 0.05s ease 0s;
-}
-.pref_modal_body::-webkit-scrollbar-thumb:hover,
-.pref_content_area::-webkit-scrollbar-thumb:hover {
-    background: var(--ui-text-muted);
-    transition: background 0.05s ease 0s;
-}
 
 /* 新增: 输入框统一及美化样式 */
 .pref_input, .logger-input, .custom-select-trigger, .color_picker_group input[type="text"] {
@@ -2614,7 +2638,9 @@ body.is-resizing-v { cursor: ns-resize !important; }
    ========================================= */
 .seq-bar-popup-grid {
     display: grid;
-    grid-template-columns: 20px auto auto 20px;
+    grid-template-columns: 20px 20px 20px auto auto 20px;
+    gap: 2px;
+    padding: 4px;
     align-items: center;
 }
 .seq-bar-popup .is-locked {

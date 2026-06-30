@@ -247,23 +247,44 @@ export class GlyphSequenceBar extends HTMLElement {
         const p = document.createElement("div");
         p.className = "seq-bar-popup seq-bar-popup-grid";
         for (const it of items) {
-            const parts = [];
-            parts.push(this._mkRemoveBtn(it.gid, it.idx));
+            const rowCells = [];
+            rowCells.push(this._mkLockBtn(it.gid));
+            rowCells.push(this._mkVisBtn(it.gid));
+            rowCells.push(this._mkRemoveBtn(it.gid, it.idx));
             const ns = document.createElement("span");
             ns.className = "seq-bar-name";
             ns.textContent = it.name;
-            parts.push(ns);
-            if (!it.isMissing) {
-                const cs = document.createElement("span");
-                cs.className = "seq-bar-code";
-                cs.textContent = it.codeStr;
-                parts.push(cs);
-            }
-            parts.push(this._mkInsertBtn(it.idx));
-            if (it.locked) parts.forEach((el) => el.classList.add('is-locked'));
-            parts.forEach((el) => p.appendChild(el));
+            rowCells.push(ns);
+            const cs = document.createElement("span");
+            cs.className = "seq-bar-code" + (it.isMissing ? " seq-bar-code-missing" : "");
+            cs.textContent = it.isMissing ? "" : it.codeStr;
+            rowCells.push(cs);
+            rowCells.push(this._mkInsertBtn(it.idx));
+            if (it.locked) rowCells.forEach((el) => el.classList.add("is-locked"));
+            rowCells.forEach((el) => p.appendChild(el));
         }
         document.body.appendChild(p);
+        // Live-update lock/vis buttons on state change (deferred to avoid
+        // DOM mutation during in-progress event dispatch breaking click handlers)
+        const offState = appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, () => {
+            setTimeout(() => {
+                if (!p.isConnected) return;
+                const cells = p.children;
+                for (let i = 0; i < items.length; i++) {
+                    const gid = items[i].gid;
+                    if (!gid) continue;
+                    const gi = EditorModel.getTreeItem(gid);
+                    if (!gi) continue;
+                    const baseIdx = i * 6;
+                    const locked = !!gi.locked;
+                    cells[baseIdx].replaceWith(this._mkLockBtn(gid));
+                    cells[baseIdx + 1].replaceWith(this._mkVisBtn(gid));
+                    for (let j = 0; j < 6; j++) {
+                        cells[baseIdx + j].classList.toggle("is-locked", locked);
+                    }
+                }
+            }, 0);
+        });
         const r = (e.target.closest(".seq-bar-ellipsis") || e.target).getBoundingClientRect();
         p.style.left = `${r.left}px`;
         p.style.top = `${r.bottom + 4}px`;
@@ -271,7 +292,11 @@ export class GlyphSequenceBar extends HTMLElement {
         if (pr.right > window.innerWidth) p.style.left = `${window.innerWidth - pr.width - 8}px`;
         if (pr.bottom > window.innerHeight) p.style.top = `${r.top - pr.height - 4}px`;
         const close = (ev) => {
-            if (!p.contains(ev.target) && !ev.target.closest(".seq-bar-ellipsis")) { p.remove(); document.removeEventListener("mousedown", close); }
+            if (!p.contains(ev.target) && !ev.target.closest(".seq-bar-ellipsis")) {
+                p.remove();
+                offState();
+                document.removeEventListener("mousedown", close);
+            }
         };
         setTimeout(() => document.addEventListener("mousedown", close), 0);
     }
@@ -412,6 +437,9 @@ export class GlyphSequenceBar extends HTMLElement {
             { recordHistory: true }
         );
         this._render();
+        // Close popup since the sequence changed and its content is stale
+        const popup = document.querySelector(".seq-bar-popup");
+        if (popup) popup.remove();
     }
     _addMenu(x, y, insertAt = -1, triggerBtn = null) {
         if (this._activeMenu && this._lastTriggerBtn === triggerBtn) {

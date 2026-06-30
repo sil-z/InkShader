@@ -570,14 +570,32 @@ export class CurveManager {
             const newCurves = boolEngine.executeUnion(targetCurves, parentGroupId);
             if (!newCurves || newCurves.length === 0) return false;
 
-            targetCurves.forEach(c => {
+            // Clean up old curves: remove DOM markers, delete tree items,
+            // and clear selection (curves already removed from store by proxy)
+            for (let c of targetCurves) {
+                this.curveStore.unregisterCurveDomMarkers(c);
+                this.treeStore.deleteTreeItem(c.id, false);
                 this.selected_curves.delete(c);
-                let treeItem = Array.from(this.treeItems.values()).find(item => item.curveId === c.id);
-                if (treeItem) this.selectedTreeIds.delete(treeItem.id);
-            });
+            }
 
-            for (let nc of newCurves) this.selected_curves.add(nc);
-            this.syncTreeSelectionFromCanvas();
+            // Register new curves in the tree and set groupId
+            for (let nc of newCurves) {
+                nc.groupId = parentGroupId;
+                this.treeStore.treeItems.set(nc.id, {
+                    id: nc.id, type: 'curve', curveId: nc.id,
+                    name: nc.id, parentId: parentGroupId
+                });
+                const parent = this.treeStore.treeItems.get(parentGroupId);
+                if (parent && parent.type === 'group' && !parent.isRef) {
+                    if (!parent.children) parent.children = [];
+                    parent.children.push(nc.id);
+                    parent.is_modified = true;
+                }
+                this.selected_curves.add(nc);
+            }
+
+            this.treeStore.invalidateGroupCache(parentGroupId);
+            this.notifyTreeUpdate();
             return true;
         } catch (err) {
             console.error("Boolean Operation Failed:", err);

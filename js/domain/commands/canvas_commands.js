@@ -793,6 +793,7 @@ export class CanvasCommands {
         if (validCurves.length === 0) return false;
         const changed = cm.executeBooleanUnion(validCurves, firstGroupId);
         if (!changed) return false;
+        cm.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;
