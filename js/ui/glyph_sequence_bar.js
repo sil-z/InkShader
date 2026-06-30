@@ -245,10 +245,7 @@ export class GlyphSequenceBar extends HTMLElement {
         const old = document.querySelector(".seq-bar-popup");
         if (old) old.remove();
         const p = document.createElement("div");
-        p.className = "seq-bar-popup";
-        p.style.display = "grid";
-        p.style.gridTemplateColumns = "20px auto auto 20px";
-        p.style.alignItems = "center";
+        p.className = "seq-bar-popup seq-bar-popup-grid";
         for (const it of items) {
             const parts = [];
             parts.push(this._mkRemoveBtn(it.gid, it.idx));
@@ -263,7 +260,7 @@ export class GlyphSequenceBar extends HTMLElement {
                 parts.push(cs);
             }
             parts.push(this._mkInsertBtn(it.idx));
-            if (it.locked) parts.forEach((el) => el.style.opacity = "0.4");
+            if (it.locked) parts.forEach((el) => el.classList.add('is-locked'));
             parts.forEach((el) => p.appendChild(el));
         }
         document.body.appendChild(p);

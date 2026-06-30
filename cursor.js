@@ -77,7 +77,10 @@
         }
 
         createElements();
-        injectStyles();
+        // Apply large preset class (CSS handles the variable overrides in style.css)
+        if (config && config.preset === 'large' && container) {
+            container.classList.add('cursor-large');
+        }
         bindEvents();
         checkEnvironment();
         createSpringSolver();
@@ -147,195 +150,14 @@
         document.body.appendChild(container);
     }
 
-    function injectStyles() {
-        let styleEl = document.getElementById('inkshader-cursor-styles');
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'inkshader-cursor-styles';
-            document.head.appendChild(styleEl);
-        }
-
-        styleEl.innerHTML = `
-            .inkshader-cursor-container {
-                pointer-events: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                z-index: 999999;
-                opacity: 0;
-                transition: opacity 0.35s ease;
-                mix-blend-mode: difference;
-            }
-            .inkshader-cursor-container.is-visible { opacity: 1; }
-            
-            .inkshader-cursor-outer-pos, .inkshader-cursor-inner-pos {
-                position: fixed;
-                top: 0;
-                left: 0;
-                pointer-events: none;
-                will-change: transform;
-            }
-            
-            .inkshader-cursor-outer-visual {
-                width: ${opts.outerSize}px;
-                height: ${opts.outerSize}px;
-                border-radius: 50%;
-                border: 1px solid rgba(255, 255, 255, 0.45);
-                background-color: transparent;
-                transform: translate(-50%, -50%);
-                transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
-                                        height 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
-                                        border-color 0.25s ease, background-color 0.25s ease;
-                box-sizing: border-box;
-            }
-            
-            .inkshader-cursor-inner-visual {
-                position: relative;
-                width: ${opts.innerSize}px;
-                height: ${opts.innerSize}px;
-                border-radius: 50%;
-                background-color: #ffffff;
-                transform: translate(-50%, -50%) scale(1);
-                transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-                                        width 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                                        height 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                                        border-radius 0.18s ease, background-color 0.15s ease,
-                                        border-color 0.15s ease, opacity 0.15s ease;
-                box-sizing: border-box;
-            }
-
-            .inkshader-cursor-inner-visual::before, .inkshader-cursor-inner-visual::after {
-                content: "";
-                position: absolute;
-                opacity: 0;
-                transition: opacity 0.12s ease;
-                pointer-events: none;
-                box-sizing: border-box;
-            }
-            
-            .inkshader-cursor-container.is-hovered .inkshader-cursor-outer-visual {
-                width: ${opts.hoverOuterSize}px;
-                height: ${opts.hoverOuterSize}px;
-                border-color: rgba(255, 255, 255, 0.65);
-            }
-            .inkshader-cursor-container.is-hovered .inkshader-cursor-inner-visual {
-                transform: translate(-50%, -50%) scale(0.4);
-            }
-            
-            .inkshader-cursor-container.is-text .inkshader-cursor-inner-visual {
-                width: 1px;
-                height: 18px;
-                border-radius: 0px;
-                transform: translate(-50%, -50%);
-            }
-
-            .inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual {
-                width: 14px;
-                height: 1.5px;
-                border-radius: 0px;
-            }
-            .inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual::before {
-                opacity: 1; left: -4px; top: -3.25px;
-                border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-            .inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual::after {
-                opacity: 1; right: -4px; top: -3.25px;
-                border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-
-            .inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual {
-                width: 1.5px;
-                height: 14px;
-                border-radius: 0px;
-            }
-            .inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual::before {
-                opacity: 1; top: -4px; left: -3.25px;
-                border-bottom: 5px solid #ffffff; border-left: 4px solid transparent; border-right: 4px solid transparent;
-            }
-            .inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual::after {
-                opacity: 1; bottom: -4px; left: -3.25px;
-                border-top: 5px solid #ffffff; border-left: 4px solid transparent; border-right: 4px solid transparent;
-            }
-
-            .inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual {
-                width: 14px; height: 1.5px; border-radius: 0px;
-                transform: translate(-50%, -50%) rotate(45deg);
-            }
-            .inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual::before {
-                opacity: 1; left: -4px; top: -3.25px;
-                border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-            .inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual::after {
-                opacity: 1; right: -4px; top: -3.25px;
-                border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-
-            .inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual {
-                width: 14px; height: 1.5px; border-radius: 0px;
-                transform: translate(-50%, -50%) rotate(-45deg);
-            }
-            .inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual::before {
-                opacity: 1; left: -4px; top: -3.25px;
-                border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-            .inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual::after {
-                opacity: 1; right: -4px; top: -3.25px;
-                border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-            }
-
-            .inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual {
-                width: 16px; height: 16px; background-color: transparent; border-radius: 0px;
-            }
-            .inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual::before {
-                opacity: 1; width: 16px; height: 1px; background-color: #ffffff; top: 7.5px; left: 0;
-            }
-            .inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual::after {
-                opacity: 1; width: 1px; height: 16px; background-color: #ffffff; top: 0; left: 7.5px;
-            }
-
-            .inkshader-cursor-container.is-move .inkshader-cursor-inner-visual {
-                width: 4px; height: 4px; background-color: #ffffff; border-radius: 50%;
-            }
-            .inkshader-cursor-container.is-move .inkshader-cursor-inner-visual::before {
-                opacity: 1; width: 14px; height: 1px; background-color: #ffffff; top: 1.5px; left: -5px;
-            }
-            .inkshader-cursor-container.is-move .inkshader-cursor-inner-visual::after {
-                opacity: 1; width: 1px; height: 14px; background-color: #ffffff; top: -5px; left: 1.5px;
-            }
-
-            .inkshader-cursor-container.is-not-allowed .inkshader-cursor-inner-visual {
-                width: 16px; height: 1.5px; background-color: #ffffff; border-radius: 0px;
-                transform: translate(-50%, -50%) rotate(-45deg);
-            }
-
-            .inkshader-cursor-container.is-loading .inkshader-cursor-outer-visual {
-                border-color: rgba(255, 255, 255, 0.15);
-                border-top-color: #ffffff;
-                animation: inkshader-spin 0.75s linear infinite;
-            }
-            .inkshader-cursor-container.is-loading .inkshader-cursor-inner-visual {
-                transform: translate(-50%, -50%) scale(0.4);
-                opacity: 0.4;
-            }
-
-            @keyframes inkshader-spin {
-                from { transform: translate(-50%, -50%) rotate(0deg); }
-                to { transform: translate(-50%, -50%) rotate(360deg); }
-            }
-        `;
-
-        let hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-        if (!hideStyleEl) {
-            hideStyleEl = document.createElement('style');
-            hideStyleEl.id = 'inkshader-cursor-hide-styles';
-            document.head.appendChild(hideStyleEl);
-        }
-        
-        hideStyleEl.innerHTML = opts.activeClasses.map(cls => `
-            html.${cls}, html.${cls} * { cursor: none !important; }
-        `).join('\n');
+    // Temporarily remove custom cursor hide classes to read the native cursor,
+    // then restore them. (CSS rules in style.css handle the actual cursor: none.)
+    function readNativeCursor(target) {
+        const cls = opts.activeClasses;
+        document.documentElement.classList.remove(...cls);
+        const cursor = window.getComputedStyle(target).cursor;
+        document.documentElement.classList.add(...cls);
+        return cursor;
     }
 
     function bindEvents() {
@@ -354,13 +176,9 @@
         targetX = clientX;
         targetY = clientY;
 
-        const hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-
         const target = e.target;
         if (target) {
-            if (hideStyleEl) hideStyleEl.disabled = true;
-            const currentCursor = window.getComputedStyle(target).cursor;
-            if (hideStyleEl) hideStyleEl.disabled = false;
+            const currentCursor = readNativeCursor(target);
 
             if (currentCursor && currentCursor !== lastTrackedCursor) {
                 lastTrackedCursor = currentCursor;
@@ -388,10 +206,7 @@
         if (!target || !container) return;
 
         if (!nativeCursor) {
-            const hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-            if (hideStyleEl) hideStyleEl.disabled = true;
-            nativeCursor = window.getComputedStyle(target).cursor;
-            if (hideStyleEl) hideStyleEl.disabled = false;
+            nativeCursor = readNativeCursor(target);
         }
 
         const isTextFallback = (target.tagName === 'INPUT' && target.type !== 'checkbox' && target.type !== 'radio') || target.tagName === 'TEXTAREA' || target.isContentEditable;
@@ -433,11 +248,7 @@
         const target = e.target;
         if (!target || !container) return;
 
-        const hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-        if (hideStyleEl) hideStyleEl.disabled = true;
-        lastTrackedCursor = window.getComputedStyle(target).cursor;
-        if (hideStyleEl) hideStyleEl.disabled = false;
-
+        lastTrackedCursor = readNativeCursor(target);
         evaluateNativeCursor(target);
     }
 
@@ -537,12 +348,6 @@
         });
 
         if (container && container.parentNode) container.parentNode.removeChild(container);
-        
-        let styleEl = document.getElementById('inkshader-cursor-styles');
-        if (styleEl) styleEl.parentNode.removeChild(styleEl);
-        
-        let hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-        if (hideStyleEl) hideStyleEl.parentNode.removeChild(hideStyleEl);
 
         container = null; outerPos = null; outerVisual = null;
         innerPos = null; innerVisual = null;
@@ -560,8 +365,6 @@
             document.documentElement.classList.remove(cls);
         });
         if (container) container.classList.remove('is-visible');
-        const hideStyleEl = document.getElementById('inkshader-cursor-hide-styles');
-        if (hideStyleEl) hideStyleEl.disabled = true;
     }
 
     function enable() {

@@ -51,9 +51,9 @@ export class CanvasInputController {
                     const px = e.clientX - pa.left;
                     const py = e.clientY - pa.top;
                     const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
-                    c._rulerIndicatorH.style.display = inCanvas ? "block" : "none";
+                    c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
                     c._rulerIndicatorH.style.left = `${px - 5}px`;
-                    c._rulerIndicatorV.style.display = inCanvas ? "block" : "none";
+                    c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
                     c._rulerIndicatorV.style.top = `${py - 5}px`;
                 }
                 if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
@@ -98,23 +98,23 @@ export class CanvasInputController {
                     // Guide hover takes priority — skip cursor override
                 } else if (c.current_state === 'IDLE' && tool === 'SELECT') {
                     let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
-                    if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.style.cursor = 'nwse-resize';
-                    else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.style.cursor = 'nesw-resize';
-                    else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.style.cursor = 'ns-resize';
-                    else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.style.cursor = 'ew-resize';
-                    else if (handleHit === 'rot') c.canvasObj.style.cursor = 'crosshair';
+                    if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
+                    else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
+                    else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.dataset.cursor = 'ns-resize';
+                    else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.dataset.cursor = 'ew-resize';
+                    else if (handleHit === 'rot') c.canvasObj.dataset.cursor = 'crosshair';
                     else {
                         let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                         const ix = c.getInteractionSnapshot();
                         const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
-                        c.canvasObj.style.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
+                        c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
                     }
                 } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                        c.canvasObj.style.cursor = divHit ? "ew-resize" : "default";
+                        c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
                     } else {
-                        c.canvasObj.style.cursor = "crosshair";
+                        c.canvasObj.dataset.cursor = "crosshair";
                     }
                 }
                 if (c.current_state === 'IDLE') {
@@ -122,8 +122,8 @@ export class CanvasInputController {
                 } else { if (c.previewData !== null) { c.previewData = null; c.is_dirty = true; } }
             });
             c.addGlobalListener(c.canvasObj, "mouseleave", () => {
-                if (c._rulerIndicatorH) c._rulerIndicatorH.style.display = "none";
-                if (c._rulerIndicatorV) c._rulerIndicatorV.style.display = "none";
+                if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
+                if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
                 if (!c._draggingUserGuide) {
                     c._hoveredUserGuideId = null;
                     c.is_dirty = true;
@@ -145,7 +145,7 @@ export class CanvasInputController {
                     if (Math.abs(e.clientX - guide._clientX) <= 4 && Math.abs(e.clientY - guide._clientY) <= 4) return;
                     guide._dragStarted = true;
                 }
-                c.canvasObj.style.cursor = guide.type === 'v' ? 'ew-resize' : 'ns-resize';
+                c.canvasObj.dataset.cursor = guide.type === 'v' ? 'ew-resize' : 'ns-resize';
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
                 const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
                 guide.x = (pointer.x - offsetX) / c.scale;
@@ -159,7 +159,7 @@ export class CanvasInputController {
                     if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
                     div._dragStarted = true;
                 }
-                c.canvasObj.style.cursor = 'ew-resize';
+                c.canvasObj.dataset.cursor = 'ew-resize';
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
                 const dx = pointer.x - div.startScreenX;
                 const newAdvance = Math.max(0, div.startAdvance + dx / c.scale);
@@ -241,7 +241,7 @@ export class CanvasInputController {
                 const newId = hit ? hit.guide.id : null;
                 if (c._hoveredUserGuideId !== newId) {
                     c._hoveredUserGuideId = newId;
-                    c.canvasObj.style.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                    c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                     c.is_dirty = true;
                 }
                 const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
@@ -478,7 +478,7 @@ export class CanvasInputController {
             let isMiddlePan = (e.button === 1);
             if (isMiddlePan || isCtrlLeftPan) {
                 e.preventDefault(); c.current_state = 'PANNING';
-                c.canvasObj.style.cursor = 'move';
+                c.canvasObj.dataset.cursor = 'move';
                 c.drag_start = { x: e.clientX, y: e.clientY }; c.offset_start = { x: c.offset.x, y: c.offset.y };
                 c.previewData = null; c.is_dirty = true; return;
             }
@@ -548,9 +548,9 @@ export class CanvasInputController {
                 const px = e.clientX - pa.left;
                 const py = e.clientY - pa.top;
                 const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
-                c._rulerIndicatorH.style.display = inCanvas ? "block" : "none";
+                c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
                 c._rulerIndicatorH.style.left = `${px - 5}px`;
-                c._rulerIndicatorV.style.display = inCanvas ? "block" : "none";
+                c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
                 c._rulerIndicatorV.style.top = `${py - 5}px`;
             }
             if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
@@ -595,23 +595,23 @@ export class CanvasInputController {
                 // Guide hover takes priority — skip cursor override
             } else if (c.current_state === 'IDLE' && tool === 'SELECT') {
                 let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
-                if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.style.cursor = 'nwse-resize';
-                else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.style.cursor = 'nesw-resize';
-                else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.style.cursor = 'ns-resize';
-                else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.style.cursor = 'ew-resize';
-                else if (handleHit === 'rot') c.canvasObj.style.cursor = 'crosshair';
+                if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
+                else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
+                else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.dataset.cursor = 'ns-resize';
+                else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.dataset.cursor = 'ew-resize';
+                else if (handleHit === 'rot') c.canvasObj.dataset.cursor = 'crosshair';
                 else {
                     let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                     const ix = c.getInteractionSnapshot();
                     const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
-                    c.canvasObj.style.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
+                    c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
                 }
             } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                        c.canvasObj.style.cursor = divHit ? "ew-resize" : "default";
+                        c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
                     } else {
-                        c.canvasObj.style.cursor = "crosshair";
+                        c.canvasObj.dataset.cursor = "crosshair";
                     }
             }
             if (c.current_state === 'IDLE') {
@@ -619,8 +619,8 @@ export class CanvasInputController {
             } else { if (c.previewData !== null) { c.previewData = null; c.is_dirty = true; } }
         });
         c.addGlobalListener(c.canvasObj, "mouseleave", () => {
-            if (c._rulerIndicatorH) c._rulerIndicatorH.style.display = "none";
-            if (c._rulerIndicatorV) c._rulerIndicatorV.style.display = "none";
+            if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
+            if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
             if (!c._draggingUserGuide) {
                 c._hoveredUserGuideId = null;
                 c.is_dirty = true;
@@ -678,7 +678,7 @@ export class CanvasInputController {
                 if (Math.abs(e.clientX - guide._clientX) <= 4 && Math.abs(e.clientY - guide._clientY) <= 4) return;
                 guide._dragStarted = true;
             }
-            c.canvasObj.style.cursor = guide.type === 'v' ? 'ew-resize' : 'ns-resize';
+            c.canvasObj.dataset.cursor = guide.type === 'v' ? 'ew-resize' : 'ns-resize';
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
             guide.x = (pointer.x - offsetX) / c.scale;
@@ -692,7 +692,7 @@ export class CanvasInputController {
                 if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
                 div._dragStarted = true;
             }
-            c.canvasObj.style.cursor = 'ew-resize';
+            c.canvasObj.dataset.cursor = 'ew-resize';
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const dx = pointer.x - div.startScreenX;
             const newAdvance = Math.max(0, div.startAdvance + dx / c.scale);
@@ -775,7 +775,7 @@ export class CanvasInputController {
             const newId = hit ? hit.guide.id : null;
             if (c._hoveredUserGuideId !== newId) {
                 c._hoveredUserGuideId = newId;
-                c.canvasObj.style.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                 c.is_dirty = true;
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);

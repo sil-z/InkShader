@@ -29,7 +29,9 @@ export function drawSequenceGroupPreview(ctx, curveManager, groupId) {
     const offsetX = 60 - (minX + w / 2) * scale;
     const offsetY = 60 - (minY + h / 2) * scale;
 
-    ctx.fillStyle = "#111";
+    // Use CSS custom property to support theme switching
+    const rootStyle = getComputedStyle(document.documentElement);
+    ctx.fillStyle = rootStyle.getPropertyValue('--cvs-path-fill').trim() || '#111';
     ctx.beginPath();
 
     let hasFill = false;

@@ -259,13 +259,13 @@ export class CanvasController {
         const base = c.env.getLocationHref();
         if(c.lock_guideline_icon) c.lock_guideline_icon.src = new URL(c.lock_guideline_icon.dataset.src, base).href;
         if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.src = new URL(c.lock_guideline_icon_unlocked.dataset.src, base).href;
-        if(c.lock_guideline_icon) c.lock_guideline_icon.style.display = "none";
-        if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.style.display = "inline";
+        if(c.lock_guideline_icon) c.lock_guideline_icon.classList.remove('is-visible');
+        if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.classList.add('is-visible');
 
         c.lock_guideline_button?.addEventListener("mousedown", () => {
             c.guideline_lock = !c.guideline_lock;
-            if(c.guideline_lock) { c.lock_guideline_icon.style.display = "inline"; c.lock_guideline_icon_unlocked.style.display = "none"; }
-            else { c.lock_guideline_icon.style.display = "none"; c.lock_guideline_icon_unlocked.style.display = "inline"; }
+            if(c.guideline_lock) { c.lock_guideline_icon.classList.add('is-visible'); c.lock_guideline_icon_unlocked.classList.remove('is-visible'); }
+            else { c.lock_guideline_icon.classList.remove('is-visible'); c.lock_guideline_icon_unlocked.classList.add('is-visible'); }
         });
     }
 

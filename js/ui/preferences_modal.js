@@ -28,7 +28,7 @@ const TEMPLATE_HTML = `
                                 <option value="dark" data-i18n="pref.theme.dark">Dark Mode</option>
                             </select>
                         </div>
-                        <h4 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--ui-border); padding-bottom: 4px;" data-i18n="pref.override">Canvas Colors Override</h4>
+                        <h4 class="pref_section_heading" data-i18n="pref.override">Canvas Colors Override</h4>
                         <div id="color_overrides_container"></div>
                         <div class="pref_modal_actions">
                             <button id="btn_reset_colors" class="pref_button_secondary" data-i18n="pref.reset">Reset to Theme Default</button>

@@ -394,7 +394,7 @@ export class CanvasRendererService {
         c.ruler_horizontal.replaceChildren();
         const svg = c.env.createSVGElement("svg");
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
-        svg.style.position = "absolute"; svg.style.top = "0"; svg.style.left = "0"; svg.style.display = "block";
+        svg.classList.add("svg-ruler-overlay");
         const { step, precision } = this.getStepAndPrecision(c.scale);
         const origin = c.offset.x;
         const theme = getCanvasTheme();
@@ -426,7 +426,7 @@ export class CanvasRendererService {
         c.ruler_vertical.replaceChildren();
         const svg = c.env.createSVGElement("svg");
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
-        svg.style.position = "absolute"; svg.style.top = "0"; svg.style.left = "0"; svg.style.display = "block";
+        svg.classList.add("svg-ruler-overlay");
         const { step, precision } = this.getStepAndPrecision(c.scale);
         const bottomOrigin = c.offset.y + c.canvas_size_height * c.scale;
         const theme = getCanvasTheme();

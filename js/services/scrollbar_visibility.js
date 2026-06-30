@@ -1,4 +1,5 @@
-// 仅 Windows Firefox：动态注入 thin + 透明滚动条，mouseover 显示/离开立即隐藏
+// 仅 Windows Firefox：通过 data-scrollbar-visible 属性控制滚动条显示/隐藏
+// （样式规则已迁移至 style.css 的 scrollbar 区块）
 const SCROLLABLE = [
     '.placeholder', '.tree_panel', '.sequence-add-menu',
     '.pref_modal_body', '.pref_content_area', '.logger-output'
@@ -9,24 +10,8 @@ function isFirefoxWindows() {
         && navigator.userAgent.toLowerCase().includes('windows');
 }
 
-function injectStyles() {
-    const style = document.createElement('style');
-    style.textContent = `
-        ${SCROLLABLE} {
-            scrollbar-width: thin !important;
-            scrollbar-color: transparent transparent !important;
-        }
-        ${SCROLLABLE}[data-scrollbar-visible] {
-            scrollbar-color: var(--ui-border-light) transparent !important;
-        }
-    `;
-    document.head.appendChild(style);
-}
-
 export function initScrollbarVisibility() {
     if (!isFirefoxWindows()) return;
-
-    injectStyles();
 
     document.addEventListener('mouseover', (e) => {
         const el = e.target.closest(SCROLLABLE);

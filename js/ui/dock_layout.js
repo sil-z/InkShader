@@ -935,7 +935,7 @@ export class DockLayout {
             total, startPos,
             startPcts: children.map(parsePct)
         };
-        document.body.style.cursor = direction === "h" ? "ew-resize" : "ns-resize";
+        document.body.classList.add(direction === "h" ? 'is-resizing-h' : 'is-resizing-v');
         document.addEventListener("mousemove", this._onResizeMove);
         document.addEventListener("mouseup", this._onResizeUp);
     }
@@ -992,7 +992,7 @@ export class DockLayout {
 
     _onResizeUp = () => {
         this._resizing = null;
-        document.body.style.cursor = "";
+        document.body.classList.remove('is-resizing-h', 'is-resizing-v');
         document.removeEventListener("mousemove", this._onResizeMove);
         document.removeEventListener("mouseup", this._onResizeUp);
         this._saveStateToStorage();
@@ -1045,7 +1045,7 @@ export class DockLayout {
     }
 
     _cleanupDragPreview() {
-        this._previewEl.classList.remove("visible");
+        this._previewEl.classList.remove("visible", "dock-preview-merge", "dock-preview-insert");
         this._previewEl.style.background = "";
         this._previewEl.style.boxShadow = "";
         this._previewEl.style.borderRadius = "";
@@ -1063,14 +1063,10 @@ export class DockLayout {
 
     _updateDragPreview(target, cx, cy) {
         if (!target) {
-            this._previewEl.classList.remove("visible");
+            this._previewEl.classList.remove("visible", "dock-preview-merge", "dock-preview-insert");
             return;
         }
-        this._previewEl.classList.remove("visible");
-        this._previewEl.style.background = "";
-        this._previewEl.style.boxShadow = "";
-        this._previewEl.style.borderRadius = "";
-        this._previewEl.style.border = "";
+        this._previewEl.classList.remove("visible", "dock-preview-merge", "dock-preview-insert");
         this._previewEl.style.zIndex = "";
 
         if (target.zone === "float-merge" && target.groupId) {
@@ -1079,12 +1075,11 @@ export class DockLayout {
                 const tabBar = fw.querySelector(".dock-tab-bar");
                 if (tabBar) {
                     const r = tabBar.getBoundingClientRect();
+                    this._previewEl.classList.add("dock-preview-merge");
                     this._previewEl.style.left = r.left + "px";
                     this._previewEl.style.top = r.top + "px";
                     this._previewEl.style.width = r.width + "px";
                     this._previewEl.style.height = r.height + "px";
-                    this._previewEl.style.background = "rgba(96,165,250,0.2)";
-                    this._previewEl.style.boxShadow = "none";
                     const fwZ = parseInt(fw.style.zIndex) || 1000;
                     this._previewEl.style.zIndex = (fwZ + 1).toString();
                     this._previewEl.classList.add("visible");
@@ -1096,13 +1091,11 @@ export class DockLayout {
         if (target.zone === "empty-dock") {
             const cr = this.container.getBoundingClientRect();
             const PREVIEW_THICKNESS = 4;
+            this._previewEl.classList.add("dock-preview-insert");
             this._previewEl.style.left = (cr.left - PREVIEW_THICKNESS / 2) + "px";
             this._previewEl.style.top = cr.top + "px";
             this._previewEl.style.width = PREVIEW_THICKNESS + "px";
             this._previewEl.style.height = cr.height + "px";
-            this._previewEl.style.background = "#60a5fa";
-            this._previewEl.style.boxShadow = "0 0 6px rgba(96,165,250,0.5)";
-            this._previewEl.style.borderRadius = "0";
             this._previewEl.classList.add("visible");
             return;
         }
@@ -1113,13 +1106,11 @@ export class DockLayout {
                 const tabBar = tabsEl.querySelector(".dock-tab-bar");
                 if (tabBar) {
                     const r = tabBar.getBoundingClientRect();
+                    this._previewEl.classList.add("dock-preview-merge");
                     this._previewEl.style.left = r.left + "px";
                     this._previewEl.style.top = r.top + "px";
                     this._previewEl.style.width = r.width + "px";
                     this._previewEl.style.height = r.height + "px";
-                    this._previewEl.style.background = "rgba(96,165,250,0.2)";
-                    this._previewEl.style.boxShadow = "none";
-                    this._previewEl.style.zIndex = "2";
                     this._previewEl.classList.add("visible");
                 }
             }
@@ -1131,9 +1122,7 @@ export class DockLayout {
             const half = PREVIEW_THICKNESS / 2;
             const r = target.tabsEl.getBoundingClientRect();
             const seam = this._calcSeam(target.tabsEl, target.edge);
-            this._previewEl.style.background = "#60a5fa";
-            this._previewEl.style.boxShadow = "0 0 6px rgba(96,165,250,0.5)";
-            this._previewEl.style.borderRadius = "0";
+            this._previewEl.classList.add("dock-preview-insert");
             this._previewEl.classList.add("visible");
 
             if (target.edge === "top" || target.edge === "bottom") {

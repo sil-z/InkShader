@@ -1,12 +1,6 @@
 /* =========================================
    全局主题变量 (Theme Variables)
    ========================================= */
-/* =========================================
-   全局主题变量 (Theme Variables)
-   ========================================= */
-/* =========================================
-   全局主题变量 (Theme Variables)
-   ========================================= */
 /* 亮色模式 (Light Mode - Default) */
 :root, [data-theme="light"] {
     /* --- 基础 UI 变量 --- */
@@ -883,6 +877,18 @@ logger-panel {
     background: transparent;
     border: none;
 }
+
+/* Firefox scrollbar: thin + transparent, show on hover/scroll (via data attribute) */
+.placeholder, .tree_panel, .sequence-add-menu,
+.pref_modal_body, .pref_content_area, .logger-output {
+    scrollbar-width: thin !important;
+    scrollbar-color: transparent transparent !important;
+}
+.placeholder[data-scrollbar-visible], .tree_panel[data-scrollbar-visible],
+.sequence-add-menu[data-scrollbar-visible], .pref_modal_body[data-scrollbar-visible],
+.pref_content_area[data-scrollbar-visible], .logger-output[data-scrollbar-visible] {
+    scrollbar-color: var(--ui-border-light) transparent !important;
+}
 .placeholder span, .property_panel label {
     white-space: nowrap;
 }
@@ -1183,6 +1189,11 @@ object-tree {
     width: 14px;
     height: 14px;
     color: var(--ui-text-muted);
+    display: none;
+}
+.lock_guideline_icon.is-visible,
+.lock_guideline_icon_unlocked.is-visible {
+    display: inline;
 }
 .lock_guideline_button {
     position: absolute;
@@ -2316,6 +2327,11 @@ dropdown-menu {
 .color_picker_group input[type="color"] { width: 24px; height: 24px; padding: 0; border: 1px solid var(--ui-border); border-radius: 4px; cursor: pointer; background: transparent; }
 .color_picker_group input[type="text"] { width: 140px; font-family: ui-monospace, monospace; font-size: 12px; padding: 4px 6px; border: 1px solid var(--ui-border); background: var(--ui-bg-base); color: var(--ui-text-main); border-radius: 4px; }
 .theme_select { padding: 4px 8px; border: 1px solid var(--ui-border); background: var(--ui-bg-base); color: var(--ui-text-main); border-radius: 4px; outline: none; }
+.pref_section_heading {
+    margin: 20px 0 10px 0;
+    border-bottom: 1px solid var(--ui-border);
+    padding-bottom: 4px;
+}
 /* =========================================
    Logger Panel (Floating Console)
    ========================================= */
@@ -2542,4 +2558,260 @@ dropdown-menu {
 .logger-output, .logger-input, .log-entry {
     user-select: text;
     cursor: text;
+}
+
+/* =========================================
+   统一 Canvas 光标控制（从 JS 内联样式中解耦）
+   ========================================= */
+main-canvas[data-cursor="nwse-resize"] { cursor: nwse-resize !important; }
+main-canvas[data-cursor="nesw-resize"] { cursor: nesw-resize !important; }
+main-canvas[data-cursor="ns-resize"]   { cursor: ns-resize   !important; }
+main-canvas[data-cursor="ew-resize"]   { cursor: ew-resize   !important; }
+main-canvas[data-cursor="crosshair"]   { cursor: crosshair   !important; }
+main-canvas[data-cursor="move"]        { cursor: move        !important; }
+main-canvas[data-cursor="default"]     { cursor: default     !important; }
+
+/* =========================================
+   标尺指示器可见性（替代 JS 中 display:none/block）
+   ========================================= */
+.ruler-indicator-h.is-visible,
+.ruler-indicator-v.is-visible {
+    display: block;
+}
+
+/* =========================================
+   SVG 标尺覆盖层（替代 JS 中内联 position/display）
+   ========================================= */
+.svg-ruler-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+}
+
+/* =========================================
+   Dock 拖拽预览样式变体（从 JS 硬编码颜色解耦）
+   ========================================= */
+.dock-preview-merge {
+    background: rgba(96, 165, 250, 0.2) !important;
+    box-shadow: none !important;
+}
+.dock-preview-insert {
+    background: #60a5fa !important;
+    box-shadow: 0 0 6px rgba(96, 165, 250, 0.5) !important;
+    border-radius: 0 !important;
+}
+.dock-preview-insert-merge {
+    background: rgba(96, 165, 250, 0.2) !important;
+    box-shadow: none !important;
+}
+/* Body resizing cursor */
+body.is-resizing-h { cursor: ew-resize !important; }
+body.is-resizing-v { cursor: ns-resize !important; }
+
+/* =========================================
+   Glyph 序列栏弹出层样式（从 JS 内联样式解耦）
+   ========================================= */
+.seq-bar-popup-grid {
+    display: grid;
+    grid-template-columns: 20px auto auto 20px;
+    align-items: center;
+}
+.seq-bar-popup .is-locked {
+    opacity: 0.4;
+}
+
+/* =========================================
+   自定义光标系统（从 cursor.js 内联注入解耦）
+   ========================================= */
+:root {
+    --cursor-outer-size: 32px;
+    --cursor-hover-outer-size: 52px;
+    --cursor-inner-size: 6px;
+}
+
+/* Large cursor preset */
+.inkshader-cursor-container.cursor-large {
+    --cursor-outer-size: 128px;
+    --cursor-hover-outer-size: 205px;
+    --cursor-inner-size: 6px;
+}
+
+/* Hide native cursor when custom cursor is active (default active classes) */
+html.inkshader-cursor-active,
+html.inkshader-cursor-active *,
+html.custom-cursor-active,
+html.custom-cursor-active * {
+    cursor: none !important;
+}
+
+.inkshader-cursor-container {
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 999999;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    mix-blend-mode: difference;
+}
+.inkshader-cursor-container.is-visible { opacity: 1; }
+
+.inkshader-cursor-outer-pos,
+.inkshader-cursor-inner-pos {
+    position: fixed;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.inkshader-cursor-outer-visual {
+    width: var(--cursor-outer-size);
+    height: var(--cursor-outer-size);
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background-color: transparent;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.25s ease, background-color 0.25s ease;
+    box-sizing: border-box;
+}
+
+.inkshader-cursor-inner-visual {
+    position: relative;
+    width: var(--cursor-inner-size);
+    height: var(--cursor-inner-size);
+    border-radius: 50%;
+    background-color: #ffffff;
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+                width 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                border-radius 0.18s ease, background-color 0.15s ease,
+                border-color 0.15s ease, opacity 0.15s ease;
+    box-sizing: border-box;
+}
+
+.inkshader-cursor-inner-visual::before,
+.inkshader-cursor-inner-visual::after {
+    content: "";
+    position: absolute;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.inkshader-cursor-container.is-hovered .inkshader-cursor-outer-visual {
+    width: var(--cursor-hover-outer-size);
+    height: var(--cursor-hover-outer-size);
+    border-color: rgba(255, 255, 255, 0.65);
+}
+.inkshader-cursor-container.is-hovered .inkshader-cursor-inner-visual {
+    transform: translate(-50%, -50%) scale(0.4);
+}
+
+.inkshader-cursor-container.is-text .inkshader-cursor-inner-visual {
+    width: 1px;
+    height: 18px;
+    border-radius: 0px;
+    transform: translate(-50%, -50%);
+}
+
+.inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual {
+    width: 14px;
+    height: 1.5px;
+    border-radius: 0px;
+}
+.inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual::before {
+    opacity: 1; left: -4px; top: -3.25px;
+    border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.inkshader-cursor-container.is-resize-horizontal .inkshader-cursor-inner-visual::after {
+    opacity: 1; right: -4px; top: -3.25px;
+    border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+
+.inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual {
+    width: 1.5px;
+    height: 14px;
+    border-radius: 0px;
+}
+.inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual::before {
+    opacity: 1; top: -4px; left: -3.25px;
+    border-bottom: 5px solid #ffffff; border-left: 4px solid transparent; border-right: 4px solid transparent;
+}
+.inkshader-cursor-container.is-resize-vertical .inkshader-cursor-inner-visual::after {
+    opacity: 1; bottom: -4px; left: -3.25px;
+    border-top: 5px solid #ffffff; border-left: 4px solid transparent; border-right: 4px solid transparent;
+}
+
+.inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual {
+    width: 14px; height: 1.5px; border-radius: 0px;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+.inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual::before {
+    opacity: 1; left: -4px; top: -3.25px;
+    border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.inkshader-cursor-container.is-resize-diagonal-1 .inkshader-cursor-inner-visual::after {
+    opacity: 1; right: -4px; top: -3.25px;
+    border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+
+.inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual {
+    width: 14px; height: 1.5px; border-radius: 0px;
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+.inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual::before {
+    opacity: 1; left: -4px; top: -3.25px;
+    border-right: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.inkshader-cursor-container.is-resize-diagonal-2 .inkshader-cursor-inner-visual::after {
+    opacity: 1; right: -4px; top: -3.25px;
+    border-left: 5px solid #ffffff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+
+.inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual {
+    width: 16px; height: 16px; background-color: transparent; border-radius: 0px;
+}
+.inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual::before {
+    opacity: 1; width: 16px; height: 1px; background-color: #ffffff; top: 7.5px; left: 0;
+}
+.inkshader-cursor-container.is-crosshair .inkshader-cursor-inner-visual::after {
+    opacity: 1; width: 1px; height: 16px; background-color: #ffffff; top: 0; left: 7.5px;
+}
+
+.inkshader-cursor-container.is-move .inkshader-cursor-inner-visual {
+    width: 4px; height: 4px; background-color: #ffffff; border-radius: 50%;
+}
+.inkshader-cursor-container.is-move .inkshader-cursor-inner-visual::before {
+    opacity: 1; width: 14px; height: 1px; background-color: #ffffff; top: 1.5px; left: -5px;
+}
+.inkshader-cursor-container.is-move .inkshader-cursor-inner-visual::after {
+    opacity: 1; width: 1px; height: 14px; background-color: #ffffff; top: -5px; left: 1.5px;
+}
+
+.inkshader-cursor-container.is-not-allowed .inkshader-cursor-inner-visual {
+    width: 16px; height: 1.5px; background-color: #ffffff; border-radius: 0px;
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.inkshader-cursor-container.is-loading .inkshader-cursor-outer-visual {
+    border-color: rgba(255, 255, 255, 0.15);
+    border-top-color: #ffffff;
+    animation: inkshader-spin 0.75s linear infinite;
+}
+.inkshader-cursor-container.is-loading .inkshader-cursor-inner-visual {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.4;
+}
+
+@keyframes inkshader-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
 }
