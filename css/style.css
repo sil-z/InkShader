@@ -2336,15 +2336,19 @@ dropdown-menu {
 }
 .logger-output {
     flex: 1;
-    padding: 8px;
+    padding: 8px 8px 8px 10px;
     font-family: ui-monospace, monospace;
     font-size: 12px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 .log-entry {
     margin-bottom: 4px;
     word-break: break-all;
     line-height: 1.4;
     white-space: pre-wrap !important; /* 强制覆盖全局的 nowrap，使控制台允许换行 */
+    user-select: text;
+    -webkit-user-select: text;
 }
 .log-entry .log-msg {
     white-space: pre-wrap !important;
@@ -2359,6 +2363,9 @@ dropdown-menu {
 .log-error .log-msg { color: #ef4444; }
 .log-system .log-msg { color: var(--ui-accent); font-weight: bold; }
 .log-user .log-msg { color: #10b981; font-weight: bold; }
+.log-command .log-msg { color: var(--ui-accent); }
+.log-command .log-msg::after { content: ''; }
+.log-history .log-msg { color: #8b5cf6; font-style: italic; }
 .logger-input {
     flex: 1;
     border: none;

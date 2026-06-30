@@ -61,7 +61,7 @@ export function computeSelectionBounds(cm, interactionSnapshot, mode = "transfor
             : -1;
 
     for (const curve of resolveCurvesFromSnapshot(interactionSnapshot, cm)) {
-        if (curve.visible === false || curve.locked === true) continue;
+        if (curve.visible === false) continue;
         const seqIdx = getSeqIdxForGroupId(layout, curve.groupId, focusedSeqIdx);
         if (seqIdx !== -1 && !layout.activeIndices.has(seqIdx)) continue;
         const bounds = useGeometry ? curve.getGeometryBounds(null) : curve.getTransformBounds(null);
@@ -75,7 +75,7 @@ export function computeSelectionBounds(cm, interactionSnapshot, mode = "transfor
 
     for (const ref of resolveRefsFromSnapshot(interactionSnapshot, cm)) {
         if (!ref.isRef && ref.type !== "image") continue;
-        if (ref.visible === false || ref.locked === true) continue;
+        if (ref.visible === false) continue;
 
         const refGroupId =
             ref.type === "image"
@@ -103,7 +103,7 @@ export function computeSelectionBounds(cm, interactionSnapshot, mode = "transfor
         } else {
             const cdList = cm.getCurvesForGroup(ref.id);
             for (const cd of cdList) {
-                if (cd.curve.visible === false || cd.curve.locked === true) continue;
+                if (cd.curve.visible === false) continue;
                 const bounds = useGeometry
                     ? cd.curve.getGeometryBounds(cd.matrix)
                     : cd.curve.getTransformBounds(cd.matrix);

@@ -2,7 +2,7 @@ const PANEL_DEFS = {
     canvas: { label: "Canvas", compSelector: ".canvas-wrap" },
     objects: { label: "Objects", compSelector: "object-tree" },
     properties: { label: "Properties", compSelector: ".property_panel" },
-    terminal: { label: "Terminal", compSelector: "logger-panel" }
+    console: { label: "Console", compSelector: "logger-panel" }
 };
 
 function createNode(type, data = {}) {
@@ -114,6 +114,21 @@ export class DockLayout {
             if (!raw) return false;
             const data = JSON.parse(raw);
             if (!data || !data.tree) return false;
+            // Migration: rename panel ID 'terminal' → 'console' in stored layouts
+            {
+                const migrateId = (node) => {
+                    if (!node) return;
+                    if (node.type === 'leaf' && node.id === 'terminal') node.id = 'console';
+                    if (node.children) node.children.forEach(migrateId);
+                };
+                migrateId(data.tree);
+            }
+            if (Array.isArray(data.floats)) {
+                data.floats = data.floats.map(f => ({
+                    ...f,
+                    panelId: f.panelId === 'terminal' ? 'console' : f.panelId
+                }));
+            }
             this._restoring = true;
             // Assign tree root BEFORE building DOM so all tree operations work
             this.root = data.tree;

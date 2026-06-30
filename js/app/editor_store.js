@@ -88,6 +88,10 @@ export class EditorStore {
         if (recorded !== false) {
             this._bumpDocumentRevision();
             this.syncHistoryStacks();
+            this.emit('COMMAND_COMMITTED', {
+                commandName: detail.commandName,
+                payload: detail.payload
+            });
         }
         return recorded !== false;
     }
