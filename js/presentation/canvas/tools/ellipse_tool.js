@@ -9,8 +9,6 @@ export class EllipseTool {
 
     handleMouseDown(mouseX, mouseY, worldX, worldY, isCtrl) {
         const c = this.canvas;
-        if (c.curve_manager.activeSequenceIndices.size === 0) return;
-
         // Read from Store first (source of truth); CM projection may lag behind async event bus
         const activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId
             ?? c.curve_manager.ensureActiveGroup();
@@ -69,8 +67,10 @@ export class EllipseTool {
 
     _createEllipse(c, sx, sy, ex, ey) {
         const cm = c.curve_manager;
-        const activeGroupId = cm.ensureActiveGroup();
+        const storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        const activeGroupId = storeId ?? cm.ensureActiveGroup();
         if (!activeGroupId) return;
+        c.commands.syncActiveGroupForDraw(activeGroupId);
 
         // Compute sequence offset for this group
         let seqOffsetX = 0;

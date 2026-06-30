@@ -267,6 +267,28 @@ export class SequenceService {
                 return gid;
             }
         }
+
+        // No active indices — fall back to first non-locked group in sequence tokens
+        for (let i = 0; i < this.sequenceTokens.length; i++) {
+            let token = this.sequenceTokens[i];
+            let gid = token.isChar ? this.getDefaultGroupForChar(token.value) : token.value;
+            if (gid) {
+                let item = this._treeStore.treeItems.get(gid);
+                if (item && !item.locked) {
+                    this.activeSequenceIndices.add(i);
+                    return gid;
+                }
+            }
+        }
+
+        // Last resort: any non-locked group in the tree
+        for (let item of this._treeStore.treeItems.values()) {
+            if (item.type === 'group' && !item.locked && !item.isRef) {
+                let rootId = this._treeStore.getRootGroupId(item.id);
+                let rootItem = this._treeStore.treeItems.get(rootId);
+                if (rootItem && !rootItem.hidden_by_sequence) return item.id;
+            }
+        }
         return null;
     }
 }

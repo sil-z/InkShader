@@ -548,7 +548,8 @@ export class CanvasRendererService {
     }
 
     _getGroupSeqOffsets(c) {
-        const activeGroupId = c.curve_manager.ensureActiveGroup();
+        const storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        const activeGroupId = storeId ?? c.curve_manager.ensureActiveGroup();
         if (!activeGroupId) return null;
         const seqTokens = c.curve_manager.sequenceTokens || [];
         const offsets = [];

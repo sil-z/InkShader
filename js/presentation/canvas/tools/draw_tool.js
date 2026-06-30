@@ -12,7 +12,6 @@ export class DrawTool extends BaseTool {
 
     handleMouseDown(mouseX, mouseY, worldX_raw, worldY) {
         const c = this.canvas;
-        if (c.curve_manager.activeSequenceIndices.size === 0) return;
         // Read from Store first (source of truth); CM projection may lag behind async event bus
         let activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId
             ?? c.curve_manager.ensureActiveGroup();

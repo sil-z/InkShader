@@ -132,11 +132,11 @@ export class GlyphSequenceBar extends HTMLElement {
         const deferred = [];
         for (let i = 0; i < tokens.length; i++) {
             const tok = tokens[i];
+            const gid = tok.isChar ? EditorModel.getDefaultGroupForChar(tok.value) : tok.value;
             const active = this.activeIndices.has(i);
             const sx = nextX[i];
             const nextSx = i + 1 < tokens.length ? nextX[i + 1] : lastEnd;
             const availW = nextSx - sx;
-            const gid = tok.isChar ? EditorModel.getDefaultGroupForChar(tok.value) : tok.value;
             const gi = gid ? EditorModel.getTreeItem(gid) : null;
             const locked = !!(gi?.locked);
             const hidden = gi?.visible === false;
