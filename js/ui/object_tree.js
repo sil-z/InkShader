@@ -509,7 +509,7 @@ export class ObjectTree extends HTMLElement {
         if (!target) {
             target = this.treeContent.querySelector(".tree_item.active-group");
         }
-        if (target && !this._skipTreeScroll && actionType !== "SET_TREE_SELECTION") {
+        if (target && !this._skipTreeScroll) {
             target.scrollIntoView({ block: "center", behavior: "auto" });
         }
     }

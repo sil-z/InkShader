@@ -1,0 +1,8 @@
+{
+  // InkShader 项目级 opencode 配置
+  // AGENTS.md 定义了完整的 AI 工作流程
+
+  "instructions": [
+    "AGENTS.md"
+  ]
+}

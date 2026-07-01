@@ -4,7 +4,7 @@ import {
     snapshotIncludesCurve,
     snapshotIncludesNodeMarker
 } from "../../app/editor_interaction_state.js";
-import { computeSelectionBounds, getSeqIdxForGroupId } from "../../app/selection_geometry.js";
+import { computeSelectionBounds, createSequenceLayoutFromCurveManager, getSeqIdxForGroupId } from "../../app/selection_geometry.js";
 import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/curve_renderer.js";
 import { createDeviceViewportTransform } from "../rendering/viewport_transform.js";
 import { emitCubicBezierSegments } from "../../core/bezier/path_emitter.js";
@@ -21,7 +21,8 @@ export class CanvasUtilsService {
         const cm = this.canvas.curve_manager;
         const ix = this.canvas.getInteractionSnapshot();
         const focused = typeof ix.focusedSeqIdx === "number" && ix.focusedSeqIdx >= 0 ? ix.focusedSeqIdx : -1;
-        return getSeqIdxForGroupId(cm, groupId, focused);
+        const layout = createSequenceLayoutFromCurveManager(cm);
+        return layout ? getSeqIdxForGroupId(layout, groupId, focused) : -1;
     }
     getSelectionBounds(mode = "transform") {
         const c = this.canvas;
@@ -247,7 +248,9 @@ export class CanvasUtilsService {
                     if (item && item.type === "image" && item.visible && !item.locked) {
                         const worldX = (mouseX - offsetX) / c.scale - seqOffsetX;
                         const worldY = (mouseY - offsetY) / c.scale;
-                        const invM = item.transform.inverse();
+                        const t = item.transform;
+                        const mat = t instanceof DOMMatrix ? t : new DOMMatrix([t.a, t.b, t.c, t.d, t.e, t.f]);
+                        const invM = mat.inverse();
                         const localP = invM.transformPoint({ x: worldX, y: worldY });
                         if (localP.x >= 0 && localP.x <= item.width && localP.y >= 0 && localP.y <= item.height) {
                             hitResult = { curve: null, refId: item.id, seqIndex: i, matrix: item.transform, isImage: true };
@@ -256,6 +259,24 @@ export class CanvasUtilsService {
                     }
                 }
                 if (hitResult) break;
+            }
+        }
+        if (!hitResult) {
+            const rootChildren = c.curve_manager.rootChildren || [];
+            for (let j = rootChildren.length - 1; j >= 0; j--) {
+                const item = c.curve_manager.treeItems.get(rootChildren[j]);
+                if (item && item.type === "image" && item.visible && !item.locked) {
+                    const worldX = (mouseX - offsetX) / c.scale;
+                    const worldY = (mouseY - offsetY) / c.scale;
+                    const t = item.transform;
+                    const mat = t instanceof DOMMatrix ? t : new DOMMatrix([t.a, t.b, t.c, t.d, t.e, t.f]);
+                    const invM = mat.inverse();
+                    const localP = invM.transformPoint({ x: worldX, y: worldY });
+                    if (localP.x >= 0 && localP.x <= item.width && localP.y >= 0 && localP.y <= item.height) {
+                        hitResult = { curve: null, refId: item.id, seqIndex: -1, matrix: item.transform, isImage: true };
+                        break;
+                    }
+                }
             }
         }
         c.ctx.restore();

@@ -280,6 +280,9 @@ export class SelectionState {
             } else if (item && item.type === "group") {
                 lastGroup = item.isRef ? item.parentId : id;
                 if (item.isRef) this.selected_refs.add(item);
+            } else if (item && item.type === "image") {
+                this.selected_refs.add(item);
+                lastGroup = item.parentId || id;
             }
         }
         if (lastGroup) this.activeGroupId = lastGroup;

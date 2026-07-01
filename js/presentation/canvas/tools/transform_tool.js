@@ -179,7 +179,7 @@ export class TransformTool {
             if (action !== 'rot' && c.transform_start_bounds) {
                 const currentBounds = c.utils.getSelectionBounds();
                 if (currentBounds) {
-                    const corr = this.getScaleAnchorCorrection(action, c.transform_start_bounds, currentBounds);
+                    const corr = this.getScaleAnchorCorrection(action, c.transform_start_bounds, currentBounds, params);
                     if (corr.dx !== 0 || corr.dy !== 0) {
                         c.curve_manager.translateTransformPreview(
                             corr.dx, corr.dy, c.transform_snapshot, c.transform_snapshot_refs
@@ -193,17 +193,82 @@ export class TransformTool {
         c.is_dirty = true;
     }
 
-    getScaleAnchorCorrection(action, startBounds, currentBounds) {
+    /**
+     * Calculate anchor edge correction after a scale transform.
+     * When a flip occurs (scale factor < 0 on an axis), the bounds edges invert:
+     * the original anchor edge maps to the OPPOSITE bound after the flip.
+     * This method detects flips from the scale params and selects the correct
+     * bounds edge for the correction.
+     *
+     * @param {string} action - Handle identifier ('mr', 'ml', 'bc', 'tc', 'br', 'bl', 'tr', 'tl')
+     * @param {object} startBounds - Bounds at transform start
+     * @param {object} currentBounds - Bounds after current scale
+     * @param {object} [params] - Scale params { sx, sy }. When absent, assumes no flip.
+     * @returns {{ dx: number, dy: number }} Translation correction to keep anchor fixed
+     */
+    getScaleAnchorCorrection(action, startBounds, currentBounds, params) {
         let dx = 0, dy = 0;
+        // Detect flip on each axis: when scale goes negative, bounds invert.
+        const sxFlip = params && params.sx < 0;
+        const syFlip = params && params.sy < 0;
+
         switch (action) {
-            case 'mr': dx = startBounds.minX - currentBounds.minX; break;
-            case 'ml': dx = startBounds.maxX - currentBounds.maxX; break;
-            case 'bc': dy = startBounds.minY - currentBounds.minY; break;
-            case 'tc': dy = startBounds.maxY - currentBounds.maxY; break;
-            case 'br': dx = startBounds.minX - currentBounds.minX; dy = startBounds.minY - currentBounds.minY; break;
-            case 'bl': dx = startBounds.maxX - currentBounds.maxX; dy = startBounds.minY - currentBounds.minY; break;
-            case 'tr': dx = startBounds.minX - currentBounds.minX; dy = startBounds.maxY - currentBounds.maxY; break;
-            case 'tl': dx = startBounds.maxX - currentBounds.maxX; dy = startBounds.maxY - currentBounds.maxY; break;
+            case 'mr':
+                // Pivot at left edge (startBounds.minX). After flip, anchor is at currentBounds.maxX.
+                dx = sxFlip
+                    ? startBounds.minX - currentBounds.maxX
+                    : startBounds.minX - currentBounds.minX;
+                break;
+            case 'ml':
+                // Pivot at right edge (startBounds.maxX). After flip, anchor is at currentBounds.minX.
+                dx = sxFlip
+                    ? startBounds.maxX - currentBounds.minX
+                    : startBounds.maxX - currentBounds.maxX;
+                break;
+            case 'bc':
+                // Pivot at top edge (startBounds.minY). After flip, anchor is at currentBounds.maxY.
+                dy = syFlip
+                    ? startBounds.minY - currentBounds.maxY
+                    : startBounds.minY - currentBounds.minY;
+                break;
+            case 'tc':
+                // Pivot at bottom edge (startBounds.maxY). After flip, anchor is at currentBounds.minY.
+                dy = syFlip
+                    ? startBounds.maxY - currentBounds.minY
+                    : startBounds.maxY - currentBounds.maxY;
+                break;
+            case 'br':
+                dx = sxFlip
+                    ? startBounds.minX - currentBounds.maxX
+                    : startBounds.minX - currentBounds.minX;
+                dy = syFlip
+                    ? startBounds.minY - currentBounds.maxY
+                    : startBounds.minY - currentBounds.minY;
+                break;
+            case 'bl':
+                dx = sxFlip
+                    ? startBounds.maxX - currentBounds.minX
+                    : startBounds.maxX - currentBounds.maxX;
+                dy = syFlip
+                    ? startBounds.minY - currentBounds.maxY
+                    : startBounds.minY - currentBounds.minY;
+                break;
+            case 'tr':
+                dx = sxFlip
+                    ? startBounds.minX - currentBounds.maxX
+                    : startBounds.minX - currentBounds.minX;
+                dy = syFlip
+                    ? startBounds.maxY - currentBounds.minY
+                    : startBounds.maxY - currentBounds.maxY;
+                break;
+            case 'tl':
+                dx = sxFlip
+                    ? startBounds.maxX - currentBounds.minX
+                    : startBounds.maxX - currentBounds.maxX;
+                dy = syFlip
+                    ? startBounds.maxY - currentBounds.minY
+                    : startBounds.maxY - currentBounds.maxY;
+                break;
         }
         return { dx, dy };
     }

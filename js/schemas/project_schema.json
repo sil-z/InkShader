@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inkshader.dev/schemas/project_schema.json",
+  "title": "InkShader Project File",
+  "description": "Save format for InkShader font editor — flat top-level fields, groups indexed by name in ch/components, paths nested under groups, vertices as keyed objects",
+  "type": "object",
+  "required": [
+    "version",
+    "canvas_size_width",
+    "canvas_size_height",
+    "family_name",
+    "basic_spacing",
+    "editor_sequence",
+    "editor_active_indices",
+    "editor_fill_color",
+    "editor_stroke_color",
+    "editor_guideline_h",
+    "editor_guideline_v",
+    "editor_guideline_lock",
+    "editor_root_order",
+    "ch",
+    "components"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "File format version (semantic major.minor)",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "canvas_size_width": {
+      "type": "number",
+      "description": "Canvas viewport width in CSS pixels"
+    },
+    "canvas_size_height": {
+      "type": "number",
+      "description": "Canvas viewport height in CSS pixels"
+    },
+    "family_name": {
+      "type": "string",
+      "description": "Font family name"
+    },
+    "project_name": {
+      "type": "string",
+      "description": "Project name (reserved, currently empty on export)"
+    },
+    "basic_spacing": {
+      "type": "number",
+      "description": "Default advance width for glyphs without explicit advance",
+      "default": 1000
+    },
+    "editor_sequence": {
+      "type": "string",
+      "description": "Glyph sequence text with \\group\\ references"
+    },
+    "editor_active_indices": {
+      "type": "array",
+      "description": "Currently active sequence indices (multi-selection)",
+      "items": { "type": "number", "minimum": 0 }
+    },
+    "editor_fill_color": {
+      "type": "string",
+      "description": "Default fill color for new paths (hex RRGGBB)",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "editor_stroke_color": {
+      "type": "string",
+      "description": "Default stroke color for new paths (hex RRGGBB)",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "editor_guideline_h": {
+      "type": "array",
+      "description": "Horizontal guideline Y-positions",
+      "items": { "type": "number" }
+    },
+    "editor_guideline_v": {
+      "type": "array",
+      "description": "Vertical guideline X-positions",
+      "items": { "type": "number" }
+    },
+    "editor_guideline_lock": {
+      "type": "boolean",
+      "description": "Whether guidelines are locked against editing",
+      "default": false
+    },
+    "editor_user_guidelines": {
+      "type": "array",
+      "description": "User-defined angled guidelines",
+      "items": { "$ref": "#/$defs/UserGuideline" }
+    },
+    "editor_root_order": {
+      "type": "array",
+      "description": "Root-level group display order (group names)",
+      "items": { "type": "string" }
+    },
+    "ch": {
+      "type": "object",
+      "description": "Glyph groups indexed by group name (groups with a char_code)",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": { "$ref": "#/$defs/GroupData" }
+    },
+    "components": {
+      "type": "object",
+      "description": "Non-glyph groups (component definitions, folders) indexed by group name",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": { "$ref": "#/$defs/GroupData" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "UserGuideline": {
+      "type": "object",
+      "required": ["id", "type", "x", "y"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique guideline identifier" },
+        "type": { "type": "string", "description": "Guideline type", "enum": ["h", "v", "angled"] },
+        "x": { "type": "number", "description": "X position" },
+        "y": { "type": "number", "description": "Y position" },
+        "angle": { "type": "number", "description": "Rotation angle in radians", "default": 0 }
+      },
+      "additionalProperties": false
+    },
+    "GroupData": {
+      "type": "object",
+      "description": "A group (glyph / component definition / folder) with nested paths and component references",
+      "required": ["name"],
+      "properties": {
+        "original_id": { "type": "string", "description": "Original group identifier (preserved on import)" },
+        "name": { "type": "string", "description": "Group display name" },
+        "char_code": { "type": ["string", "null"], "description": "Single character mapped to this glyph, or null for non-glyph groups" },
+        "advance": { "type": "number", "description": "Advance width in UPM units", "default": 1000, "minimum": 0 },
+        "locked": { "type": "boolean", "description": "Whether the group is locked against editing", "default": false },
+        "visible": { "type": "boolean", "description": "Whether the group is visible", "default": true },
+        "paths": {
+          "type": "object",
+          "description": "Bezier paths indexed by path name (nested under group)",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": { "$ref": "#/$defs/PathData" }
+        },
+        "components": {
+          "type": "object",
+          "description": "Component references indexed by reference name",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": { "$ref": "#/$defs/ComponentRef" }
+        },
+        "tree_child_order": {
+          "type": "array",
+          "description": "Ordered list of child names (paths + component refs) defining display/traversal order",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PathData": {
+      "type": "object",
+      "description": "A single Bezier path with attributes and vertices",
+      "required": ["vertices"],
+      "properties": {
+        "closed": { "type": "boolean", "description": "Whether the path is closed", "default": false },
+        "stroke_width": { "type": "number", "description": "Stroke width in UPM units", "default": 8, "minimum": 0 },
+        "smart_stroke": { "type": "boolean", "description": "Whether smart expand stroke is enabled", "default": false },
+        "smart_stroke_clockwise": { "type": "boolean", "description": "Smart stroke winding direction", "default": true },
+        "show_skeleton": { "type": "boolean", "description": "Whether skeleton lines are shown in editor", "default": false },
+        "visible": { "type": "boolean", "description": "Whether the path is visible", "default": true },
+        "locked": { "type": "boolean", "description": "Whether editing this path is locked", "default": false },
+        "render_mode": { "type": "string", "description": "Rendering mode override", "enum": ["auto"], "default": "auto" },
+        "vertices": {
+          "type": "object",
+          "description": "Vertex collection indexed by node_id — order is determined by the 'order' field",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": { "$ref": "#/$defs/VertexData" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "VertexData": {
+      "type": "object",
+      "description": "A single vertex (node) on a Bezier path",
+      "required": ["order", "node_id", "x", "y"],
+      "properties": {
+        "order": { "type": "integer", "description": "Traversal order within the path (0-based)", "minimum": 0 },
+        "node_id": { "type": "string", "description": "Globally unique node identifier" },
+        "x": { "type": "number", "description": "X coordinate in UPM units" },
+        "y": { "type": "number", "description": "Y coordinate in UPM units" },
+        "start": { "type": "boolean", "description": "Whether this node is the path start point", "default": false },
+        "end": { "type": "boolean", "description": "Whether this node is the path end point", "default": false },
+        "smooth": { "type": "boolean", "description": "Whether the node is smooth (auto-handles)", "default": false },
+        "control_mode": { "type": "integer", "description": "Handle mode: 0=corner, 1=smooth, 2=symmetric", "enum": [0, 1, 2], "default": 0 },
+        "relate_last": { "type": "null", "description": "Reserved for future smooth-last relationship" },
+        "relate_next": { "type": "null", "description": "Reserved for future smooth-next relationship" },
+        "control_1": { "$ref": "#/$defs/ControlHandle", "description": "Outgoing control handle (absolute position)" },
+        "control_2": { "$ref": "#/$defs/ControlHandle", "description": "Incoming control handle (absolute position)" }
+      },
+      "additionalProperties": false
+    },
+    "ControlHandle": {
+      "type": "object",
+      "required": ["active", "x", "y"],
+      "properties": {
+        "active": { "type": "boolean", "description": "Whether the handle is active (affects curve shape)" },
+        "x": { "type": "number", "description": "Handle X position in UPM units" },
+        "y": { "type": "number", "description": "Handle Y position in UPM units" }
+      },
+      "additionalProperties": false
+    },
+    "ComponentRef": {
+      "type": "object",
+      "description": "Reference to a reusable component definition",
+      "required": ["component_id", "transform"],
+      "properties": {
+        "component_id": { "type": "string", "description": "Target component group name" },
+        "transform": {
+          "type": "array",
+          "description": "Affine transform matrix [a, b, c, d, tx, ty] (row-major 2x3)",
+          "items": { "type": "number" },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "visible": { "type": "boolean", "description": "Whether the component instance is visible", "default": true },
+        "locked": { "type": "boolean", "description": "Whether the component instance is locked", "default": false }
+      },
+      "additionalProperties": false
+    }
+  }
+}

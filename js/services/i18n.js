@@ -12,7 +12,7 @@ export const translations = {
         "mode.corner": "Make selected nodes corner", "mode.smooth": "Make selected nodes smooth", "mode.symmetric": "Make selected nodes symmetric",
         "action.union": "Create union of selected paths", "action.expand": "Expand a stroke into a filled path",
         
-        "pref.title": "Preferences", "pref.general": "General & Appearance", "pref.lang": "Language", "pref.theme": "Color Theme", "pref.theme.light": "Light Mode (Default)", "pref.theme.dark": "Dark Mode", "pref.override": "Canvas Colors Override", "pref.reset": "Reset to Theme Default",
+        "pref.title": "Preferences", "pref.general": "General", "pref.appearance": "Appearance", "pref.lang": "Language", "pref.theme": "Color Theme", "pref.theme.light": "Light Mode (Default)", "pref.theme.dark": "Dark Mode", "pref.override": "Canvas Colors Override", "pref.reset": "Reset to Theme Default",
         
         "help.title": "Help & Shortcuts", "help.close": "Close", "help.shortcuts": "Keyboard Shortcuts",
         "help.s.undo": "Ctrl + Z : Undo", "help.s.redo": "Ctrl + Y / Ctrl + Shift + Z : Redo", "help.s.pan": "Space + Drag / Mid-Click : Pan Canvas", "help.s.del": "Del : Delete Selected", "help.s.save": "Ctrl + S : Quick Save",
@@ -51,7 +51,7 @@ export const translations = {
         "mode.corner": "使选中节点成为角点", "mode.smooth": "使选中节点平滑", "mode.symmetric": "使选中节点对称",
         "action.union": "合并选中的路径", "action.expand": "将描边扩展为填充路径",
         
-        "pref.title": "首选项", "pref.general": "通用与外观", "pref.lang": "语言 (Language)", "pref.theme": "颜色主题", "pref.theme.light": "浅色模式", "pref.theme.dark": "深色模式", "pref.override": "画布颜色覆盖", "pref.reset": "恢复默认",
+        "pref.title": "首选项", "pref.general": "通用", "pref.appearance": "外观", "pref.lang": "语言 (Language)", "pref.theme": "颜色主题", "pref.theme.light": "浅色模式", "pref.theme.dark": "深色模式", "pref.override": "画布颜色覆盖", "pref.reset": "恢复默认",
         
         "help.title": "帮助与快捷键", "help.close": "关闭", "help.shortcuts": "键盘快捷键",
         "help.s.undo": "Ctrl + Z : 撤销", "help.s.redo": "Ctrl + Y / Ctrl + Shift + Z : 重做", "help.s.pan": "空格 + 拖拽 / 鼠标中键 : 平移画布", "help.s.del": "Del : 删除选中项", "help.s.save": "Ctrl + S : 快速保存",

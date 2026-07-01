@@ -57,6 +57,9 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
                     } else {
                         lastGroupId = id;
                     }
+                } else if (item.type === "image") {
+                    selectedRefIds.push(id);
+                    if (item.parentId) lastGroupId = item.parentId;
                 }
             }
         }

@@ -16,5 +16,5 @@ export function resolveRefsFromSnapshot(snapshot, curveManager) {
     if (!curveManager || !snapshot?.selectedRefIds?.length) return [];
     return snapshot.selectedRefIds
         .map((id) => curveManager.treeItems.get(id))
-        .filter((item) => item && item.isRef);
+        .filter((item) => item && (item.isRef || item.type === 'image'));
 }

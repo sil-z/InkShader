@@ -77,28 +77,40 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
         return;
     }
 
-    const curves = (state.selectedCurveIds || [])
-        .map((id) => cm.curves.find((c) => c.id === id))
-        .filter(Boolean);
-    const refs = (state.selectedRefIds || [])
-        .map((id) => cm.treeItems.get(id))
-        .filter((item) => item && item.isRef);
+    // Handle object selection: resolve curves and refs from store state
+    const selectedCurveIds = state.selectedCurveIds || [];
+    const selectedRefIds = state.selectedRefIds || [];
 
-    if (
-        actionType === EDITOR_ACTIONS.CHANGE_OBJECT_SELECTION &&
-        (state.selectedCurveIds || []).length === 0 &&
-        (state.selectedRefIds || []).length === 0
-    ) {
+    if (selectedRefIds.length > 0) {
+        const refItems = [];
+        for (let i = 0; i < selectedRefIds.length; i++) {
+            const item = cm.treeItems.get(selectedRefIds[i]);
+            if (item && (item.isRef || item.type === 'image')) refItems.push(item);
+        }
+        if (refItems.length > 0) {
+            cm.changeObjectSelection("replace", { curves: [], refs: refItems });
+            return;
+        }
+    }
+
+    if (selectedCurveIds.length > 0) {
+        const curveItems = [];
+        for (let i = 0; i < selectedCurveIds.length; i++) {
+            const curve = cm.curves.find((c) => c.id === selectedCurveIds[i]);
+            if (curve) curveItems.push(curve);
+        }
+        if (curveItems.length > 0) {
+            cm.changeObjectSelection("replace", { curves: curveItems, refs: [] });
+            return;
+        }
+    }
+
+    if (actionType === EDITOR_ACTIONS.CHANGE_OBJECT_SELECTION) {
         cm.changeObjectSelection("clear", {});
         return;
     }
 
-    if (curves.length === 0 && refs.length === 0) {
-        cm.changeObjectSelection("clear", {});
-        return;
-    }
-
-    cm.changeObjectSelection("replace", { curves, refs });
+    cm.changeObjectSelection("clear", {});
 }
 
 /** 视口字段：平移/缩放后由 Store.syncViewFromCanvas 写入（非选区逆向同步） */

@@ -945,6 +945,14 @@ export class TreeStore {
         for (const raw of sessionImages) {
             if (!raw || !raw.id) continue;
             const img = { ...raw };
+            // Preserve the live HTML Image element reference from the existing
+            // treeItems entry. History cloning destroys it (structuredClone
+            // throws on DOM elements, JSON fallback yields {}), which would
+            // cause ctx.drawImage() to throw and freeze the render loop.
+            const existing = this.treeItems.get(raw.id);
+            if (existing && existing.image && typeof HTMLImageElement !== 'undefined' && existing.image instanceof HTMLImageElement) {
+                img.image = existing.image;
+            }
             this.treeItems.set(img.id, img);
             const parent = this.treeItems.get(img.parentId);
             if (parent && !parent.children.includes(img.id)) parent.children.push(img.id);

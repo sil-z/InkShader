@@ -10,10 +10,11 @@ const TEMPLATE_HTML = `
             </div>
             <div class="pref_modal_body">
                 <div class="pref_sidebar">
-                    <div class="pref_tab active" data-target="sec_appearance" data-i18n="pref.general">General & Appearance</div>
+                    <div class="pref_tab active" data-target="sec_general" data-i18n="pref.general">General</div>
+                    <div class="pref_tab" data-target="sec_appearance" data-i18n="pref.appearance">Appearance</div>
                 </div>
                 <div class="pref_content_area">
-                    <div class="pref_section active" id="sec_appearance">
+                    <div class="pref_section active" id="sec_general">
                         <div class="pref_row">
                             <span class="pref_label" data-i18n="pref.lang">Language</span>
                             <select class="theme_select" id="lang_selector">
@@ -21,13 +22,8 @@ const TEMPLATE_HTML = `
                                 <option value="zh">中文</option>
                             </select>
                         </div>
-                        <div class="pref_row">
-                            <span class="pref_label" data-i18n="pref.theme">Color Theme</span>
-                            <select class="theme_select" id="theme_selector">
-                                <option value="light" data-i18n="pref.theme.light">Light Mode (Default)</option>
-                                <option value="dark" data-i18n="pref.theme.dark">Dark Mode</option>
-                            </select>
-                        </div>
+                    </div>
+                    <div class="pref_section" id="sec_appearance">
                         <h4 class="pref_section_heading" data-i18n="pref.override">Canvas Colors Override</h4>
                         <div id="color_overrides_container"></div>
                         <div class="pref_modal_actions">
@@ -42,21 +38,7 @@ const TEMPLATE_HTML = `
 
 const CONFIGURABLE_COLORS = [
     { varName: '--cvs-path-stroke', key: 'color.path_stroke' },
-    { varName: '--cvs-path-fill', key: 'color.path_fill' },
-    { varName: '--cvs-preview', key: 'color.preview' },
-    { varName: '--cvs-hover-stroke', key: 'color.hover_stroke' },
-    { varName: '--cvs-oncurve-stroke', key: 'color.oncurve_stroke' },
-    { varName: '--cvs-oncurve-fill', key: 'color.oncurve_fill' },
-    { varName: '--cvs-selected-stroke', key: 'color.selected_stroke' },
-    { varName: '--cvs-selected-fill', key: 'color.selected_fill' },
-    { varName: '--cvs-ctrl-stroke', key: 'color.ctrl_stroke' },
-    { varName: '--cvs-ctrl-fill', key: 'color.ctrl_fill' },
-    { varName: '--cvs-ctrl-ahead', key: 'color.ctrl_ahead' },
-    { varName: '--cvs-ctrl-back', key: 'color.ctrl_back' },
-    { varName: '--cvs-guideline', key: 'color.guideline' },
-    { varName: '--cvs-measure', key: 'color.measure' },
-    { varName: '--cvs-select-box', key: 'color.select_box' },
-    { varName: '--cvs-body-bg', key: 'color.body_bg' }
+    { varName: '--cvs-path-fill', key: 'color.path_fill' }
 ];
 
 export class PreferencesModal extends HTMLElement {
@@ -167,13 +149,6 @@ export class PreferencesModal extends HTMLElement {
             if (window.I18n) window.I18n.setLang(e.target.value);
         });
 
-        const themeSelector = this.querySelector('#theme_selector');
-        themeSelector.addEventListener('change', (e) => {
-            this.applyTheme(e.target.value);
-            this.saveSettings();
-            this.refreshColorInputs();
-        });
-
         this.querySelector('#btn_reset_colors').addEventListener('click', () => {
             this.customColors = {};
             CONFIGURABLE_COLORS.forEach(item => {
@@ -254,12 +229,12 @@ export class PreferencesModal extends HTMLElement {
     }
 
     saveSettings() {
-        const theme = this.querySelector('#theme_selector').value;
+        const existing = JSON.parse(localStorage.getItem('InkShader_preferences') || '{}');
+        const theme = existing.theme || document.documentElement.getAttribute('data-theme') || 'light';
         const settings = { 
             theme, 
             customColors: this.customColors
         };
-        const existing = JSON.parse(localStorage.getItem('InkShader_preferences') || '{}');
         settings.fontSettings = existing.fontSettings || {};
         localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
     }
@@ -275,9 +250,6 @@ export class PreferencesModal extends HTMLElement {
             if (data) {
                 const settings = JSON.parse(data);
                 if (settings.theme) {
-                    const themeSel = this.querySelector('#theme_selector');
-                    themeSel.value = settings.theme;
-                    themeSel.dispatchEvent(new Event('change'));
                     this.applyTheme(settings.theme);
                 }
                 if (settings.customColors) {

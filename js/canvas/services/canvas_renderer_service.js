@@ -89,6 +89,21 @@ export class CanvasRendererService {
                 }
             });
         }
+        // Render root-level images (not associated with any sequence group)
+        const rootChildren = c.curve_manager.rootChildren || [];
+        rootChildren.forEach((id) => {
+            const item = c.curve_manager.treeItems.get(id);
+            if (item && item.type === "image" && item.visible) {
+                console.warn('[IMG_DEBUG] rendering root-level image', id);
+                c.ctx.save();
+                c.ctx.translate(offsetX, offsetY);
+                c.ctx.scale(c.scale, c.scale);
+                const m = item.transform;
+                c.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+                c.ctx.drawImage(item.image, 0, 0);
+                c.ctx.restore();
+            }
+        });
         for (let i = 0; i < seqTokens.length; i++) {
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
             let token = seqTokens[i];
@@ -226,6 +241,7 @@ export class CanvasRendererService {
         }
         if (c.getActiveTool() === "SELECT") {
             let bounds = c.utils.getSelectionBounds();
+            console.warn('[IMG_DEBUG] render SELECT tool bounds:', !!bounds, bounds ? JSON.stringify(bounds) : 'null');
             if (bounds) {
                 let minSX = bounds.minX * c.scale + offsetX; let minSY = bounds.minY * c.scale + offsetY;
                 let maxSX = bounds.maxX * c.scale + offsetX; let maxSY = bounds.maxY * c.scale + offsetY;

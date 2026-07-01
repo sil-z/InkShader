@@ -111,7 +111,12 @@ export class EditorStore {
     }
 
     getState() {
-        return this._snapshotState(this.state);
+        const snap = this._snapshotState(this.state);
+        if (!this.__loggedGetState && snap.selectedRefIds?.length) {
+            this.__loggedGetState = true;
+            console.warn('[IMG_DEBUG] getState WITH refs:', [...snap.selectedRefIds]);
+        }
+        return snap;
     }
 
     _snapshotState(state = this.state) {
@@ -137,6 +142,9 @@ export class EditorStore {
         }
         if (this._stateEquals(this.state, next)) return false;
         this.state = next;
+        if (action.type === 'CHANGE_OBJECT_SELECTION') {
+            console.warn('[IMG_DEBUG] commitInteraction change selection', { selectedRefIds: this.state.selectedRefIds, selectedCurveIds: this.state.selectedCurveIds });
+        }
         this._applyInteractionToRuntime(action.type);
         if (emit) {
             this._emitPayload(action, beforeState, true);
@@ -276,14 +284,32 @@ export class EditorStore {
 
     _preDispatchInteraction(action) {
         if (!INTERACTION_PAYLOAD_ACTIONS.has(action?.type)) return;
+        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
+            console.warn('[IMG_DEBUG] _preDispatch CHANGE_OBJECT_SELECTION', 
+                { refIds: action.payload?.refIds, hasLength: action.payload?.refIds?.length > 0 });
+        }
         if (action?.type === CANVAS_ACTIONS.SET_TOOL_MODE) {
             action.meta = { ...(action.meta || {}), previousTool: this.state.currentTool };
         }
         const canvas = this._getCanvas();
         const cm = canvas?.curve_manager;
+
+        // Pre-set refIds/curveIds before reducer runs (belt-and-suspenders for 
+        // CHANGE_OBJECT_SELECTION where the reducer may not propagate payload correctly).
+        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION && action.payload) {
+            const p = action.payload;
+            if (p.strategy === "replace") {
+                if (p.refIds?.length) this.state.selectedRefIds = [...p.refIds];
+                if (p.curveIds?.length) this.state.selectedCurveIds = [...p.curveIds];
+            }
+        }
+
         let next = reduceInteractionState(this.state, action, cm);
         next = finalizeInteractionState(next, cm, action.type);
         this.state = next;
+        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
+            console.warn('[IMG_DEBUG] _preDispatch AFTER state update, selectedRefIds:', [...(this.state.selectedRefIds || [])]);
+        }
         if (canvas) {
             canvas.__storeDispatchDepth = (canvas.__storeDispatchDepth || 0) + 1;
             this._applyInteractionToRuntime(action.type);
@@ -340,6 +366,11 @@ export class EditorStore {
             this.commitCommand(action);
         }
         const afterSnapshot = this._snapshotState(this.state);
+        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
+            console.warn('[IMG_DEBUG] _finalizeDispatch CHANGE_OBJECT_SELECTION',
+                { beforeRefIds: [...(beforeSnapshot.selectedRefIds || [])],
+                  afterRefIds: [...(afterSnapshot.selectedRefIds || [])] });
+        }
         if (!this._stateEquals(beforeSnapshot, afterSnapshot)) {
             this._emitStateChanged(action, beforeSnapshot, afterSnapshot, result);
         }

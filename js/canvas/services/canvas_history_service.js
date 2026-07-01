@@ -38,6 +38,20 @@ export class CanvasHistoryService {
         return snapshotDeepClone(value);
     }
 
+    /**
+     * Shallow-clone sessionImages preserving HTML Image element references.
+     * _deepClone destroys them (structuredClone throws on DOM elements,
+     * JSON.parse(JSON.stringify) yields {}), causing ctx.drawImage to throw
+     * and the render loop to die (canvas "freeze").
+     */
+    _cloneSessionImages(sessionImages) {
+        if (!Array.isArray(sessionImages)) return [];
+        return sessionImages.map((item) => {
+            if (!item || typeof item !== "object") return item;
+            return { ...item };
+        });
+    }
+
     _normalizeHistoryPayload(value, seen = new WeakMap(), refs = { count: 0 }) {
         if (value === null || value === undefined) return value;
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
@@ -120,7 +134,7 @@ export class CanvasHistoryService {
             selection: this._deepClone(s.selection),
             selectedCurveIds: this._deepClone(s.selectedCurveIds || []),
             selectedRefIds: this._deepClone(s.selectedRefIds || []),
-            sessionImages: this._deepClone(s.sessionImages || []),
+            sessionImages: this._cloneSessionImages(s.sessionImages),
             sequenceText: s.sequenceText,
             activeIndices: this._deepClone(s.activeIndices || []),
             activeGroupId: s.activeGroupId,
@@ -158,7 +172,7 @@ export class CanvasHistoryService {
             selection: this._deepClone(meta.selection || { treeIds: [], nodes: [] }),
             selectedCurveIds: [...(meta.selectedCurveIds || [])],
             selectedRefIds: [...(meta.selectedRefIds || [])],
-            sessionImages: this._deepClone(meta.sessionImages || []),
+            sessionImages: this._cloneSessionImages(meta.sessionImages),
             sequenceText: meta.sequenceText ?? "",
             activeIndices: [...(meta.activeIndices || [])],
             activeGroupId: meta.activeGroupId ?? null,
@@ -224,7 +238,7 @@ export class CanvasHistoryService {
             selection: this._deepClone(meta.selection || { treeIds: [], nodes: [] }),
             selectedCurveIds: this._deepClone(meta.selectedCurveIds || []),
             selectedRefIds: this._deepClone(meta.selectedRefIds || []),
-            sessionImages: this._deepClone(meta.sessionImages || []),
+            sessionImages: this._cloneSessionImages(meta.sessionImages),
             sequenceText: meta.sequenceText || "",
             activeIndices: this._deepClone(meta.activeIndices || []),
             activeGroupId: meta.activeGroupId || null,
@@ -427,7 +441,7 @@ export class CanvasHistoryService {
                       selection: this._deepClone(c.currentStateObj.selection),
                       selectedCurveIds: this._deepClone(c.currentStateObj.selectedCurveIds || []),
                       selectedRefIds: this._deepClone(c.currentStateObj.selectedRefIds || []),
-                      sessionImages: this._deepClone(c.currentStateObj.sessionImages || []),
+                      sessionImages: this._cloneSessionImages(c.currentStateObj.sessionImages),
                       sequenceText: c.currentStateObj.sequenceText,
                       activeIndices: this._deepClone(c.currentStateObj.activeIndices || []),
                       activeGroupId: c.currentStateObj.activeGroupId,
@@ -438,7 +452,7 @@ export class CanvasHistoryService {
                 selection: this._deepClone(newState.selection),
                 selectedCurveIds: this._deepClone(newState.selectedCurveIds || []),
                 selectedRefIds: this._deepClone(newState.selectedRefIds || []),
-                sessionImages: this._deepClone(newState.sessionImages || []),
+                sessionImages: this._cloneSessionImages(newState.sessionImages),
                 sequenceText: newState.sequenceText,
                 activeIndices: this._deepClone(newState.activeIndices || []),
                 activeGroupId: newState.activeGroupId,
