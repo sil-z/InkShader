@@ -14,12 +14,12 @@ import {
 import { resolveMarkersFromCanvas } from "../selection/marker_resolution.js";
 
 export class CanvasCommands {
-    /** 不经 dispatch 的画布直连命令写栈（其余走 EditorStore 自动 commit） */
+    /** Canvas direct-command history write without dispatch (others go through EditorStore auto commit) */
     _commitHistory(commandName, payload = {}) {
         return commitCommandHistoryFromHost(this, commandName, payload);
     }
 
-    /** 画布 Delete 等：dispatch 路径由 finalize 写栈，直连命令需自行 commit */
+    /** Canvas Delete etc.: dispatch path writes stack via finalize, direct commands must self-commit */
     _commitHistoryUnlessDispatching(commandName, payload = {}) {
         return commitCommandHistoryUnlessDispatching(this, commandName, payload);
     }
@@ -36,8 +36,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 确认对控制点坐标的改变
-     * 作用: 用户拖拽释放(mouseup)时终期调用，统一写入一次历史
+     * Command: commits coordinate changes to a control point
+     * Effect: called terminally on mouseup (drag release), writes history once
      */
     changeControlNodePosition(marker, x, y) {
         let success = this.curve_manager.adjustControlNode(marker, x, y);
@@ -60,8 +60,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 确认对选中主节点坐标的改变
-     * 作用: 拖拽主节点释放(mouseup)时终期调用，统一写入一次历史
+     * Command: commits coordinate changes to selected main nodes
+     * Effect: called terminally on mouseup (main node drag release), writes history once
      */
     changeSelectedNodesPosition(updates = null) {
         if (updates && updates.length > 0) {
@@ -74,7 +74,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 修改所有选中节点的平滑状态
+     * Command: changes smooth mode for all selected nodes
      */
     changeSmoothModeOnSelectedNode(markers, mode, forceCreateHandles = false) {
         let changed = false;
@@ -91,7 +91,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 在已有路径中插入新节点
+     * Command: inserts a new node in an existing path
      */
     insertMainNode(segment, localX, localY) {
         if (!segment) return null;
@@ -120,13 +120,13 @@ export class CanvasCommands {
         return newMarker;
     }
 
-    /** 将 CM 活动组写入 Store（绘制渲染读 Store.activeGroupId） */
+    /** Write CM active group to Store (draw render reads Store.activeGroupId) */
     syncActiveGroupForDraw(groupId) {
         return syncActiveGroupToStore(this, groupId);
     }
 
     /**
-     * Action: 开始创建一个新路径
+     * Action: Start creating a new path
      */
     startAddingPath(activeGroupId, seqOffsetX) {
         syncActiveGroupToStore(this, activeGroupId);
@@ -145,7 +145,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Action: 结束当前路径创建
+     * Action: Finish creating current path
      */
     finishAddingPath() {
         this.curve_manager.finishAddingPath(this.current_curve);
@@ -162,7 +162,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 完成当前路径并写入一次历史
+     * Command: Complete current path and write to history once
      */
     finishAddingPathCommand() {
         const hasPath = !!(this.current_curve && this.current_curve.startNode);
@@ -176,7 +176,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 在当前绘制路径末尾追加一个主节点
+     * Command: Append a main node at the end of the current drawing path
      */
     addMainNode(worldX, worldY) {
         if (!this.current_curve) return null;
@@ -193,7 +193,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Action: 绘制中撤回上一个主节点（不写历史）
+     * Action: undo the last main node during drawing (does not write history)
      */
     undoDrawingStep() {
         if (!this.current_curve || !this.current_curve.startNode) return false;
@@ -225,8 +225,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 删除所有选中节点
-     * 作用: 批量执行删除 Action 后，做清理与单次快照保存
+     * Command: deletes all selected nodes
+     * Effect: batch executes delete action, then cleanup and single snapshot save
      */
     deleteSelectedNodes() {
         const markers = resolveMarkersFromCanvas(commandCanvas(this));
@@ -253,8 +253,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 删除所有选中对象
-     * 作用: 批量执行对象删除 Action，并在结束后统一写入一次历史
+     * Command: deletes all selected objects
+     * Effect: batch executes object delete action, writes history once after completion
      */
     deleteSelectedObjects(ids = null) {
         const canvas = commandCanvas(this);
@@ -281,8 +281,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更改多个对象归属组/层级位置
-     * 作用: 批量调用 changeSingleObjectGroup，并统一写入一次历史
+     * Command: changes group/hierarchy position for multiple objects
+     * Effect: batch calls changeSingleObjectGroup, writes history once
      */
     changeSelectedObjectsGroup(ids = [], targetId = null, mode = 'inside') {
         if (!Array.isArray(ids) || ids.length === 0) return false;
@@ -303,7 +303,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 批量修改单对象属性
+     * Command: batch update single object properties
      * updates: [{ id, props }]
      */
     setSingleObjectProperties(updates = [], options = {}) {
@@ -326,8 +326,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 确认对象变换（拖拽/缩放/旋转）
-     * 作用: 统一收口状态同步与历史记录
+     * Command: commits object transform (drag/scale/rotate)
+     * Effect: unifies state sync and history recording
      */
     changeSelectedObjectsTransform(hasChanged = false) {
         this.curve_manager.syncTreeSelectionFromCanvas();
@@ -338,7 +338,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 修改选中对象边界框参数（x/y/w/h）
+     * Command: modify selected object bounding box parameters (x/y/w/h)
      */
     changeSelectedObjectsBounds(prop, value, options = {}) {
         const bounds = this.utils.getSelectionBounds();
@@ -357,7 +357,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 复制选中对象到剪贴板
+     * Command: copy selected objects to clipboard
      */
     copySelectedObjects(ids = null) {
         const targetIds = selectedTreeIdsFromStore(commandCanvas(this), ids);
@@ -383,7 +383,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 将剪贴板对象粘贴到目标组
+     * Command: paste clipboard objects to target group
      */
     pasteCopiedObjects(targetId = null) {
         const cm = this.curve_manager;
@@ -411,7 +411,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 复制（duplicate）选中对象
+     * Command: duplicate selected objects
      */
     duplicateSelectedObjects(ids = null) {
         const targetIds = selectedTreeIdsFromStore(commandCanvas(this), ids);
@@ -460,7 +460,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 锁定/解锁所有选中对象
+     * Command: lock/unlock all selected objects
      */
     toggleSelectedObjectsLock(ids = null, locked = undefined) {
         const targetIds = selectedTreeIdsFromStore(commandCanvas(this), ids);
@@ -480,10 +480,10 @@ export class CanvasCommands {
         }
         if (!changed) return false;
 
-        // 锁定/解锁与序列激活状态等价：
-        // - 锁定 => 对应序列索引设为不激活
-        // - 解锁 => 对应序列索引设为激活
-        // 对曲线的 locked 仍是独立属性；这里只同步“分组(root group)”。
+        // Lock/unlock is equivalent to sequence activation state:
+        // - Lock    => corresponding sequence index set to inactive
+        // - Unlock  => corresponding sequence index set to active
+        // Curve locked is still an independent property; this only syncs "root groups".
         const nextActive = new Set(cm.activeSequenceIndices || []);
         if (targetGroupIds.size > 0 && Array.isArray(cm.sequenceTokens)) {
             for (let i = 0; i < cm.sequenceTokens.length; i++) {
@@ -508,7 +508,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 显示/隐藏所有选中对象
+     * Command: show/hide all selected objects
      */
     toggleSelectedObjectsDisplay(ids = null, visible = undefined) {
         const targetIds = selectedTreeIdsFromStore(commandCanvas(this), ids);
@@ -527,7 +527,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 重命名单个树对象
+     * Command: rename a single tree object
      */
     renameTreeItem(itemId, newName) {
         const item = this.curve_manager.treeItems.get(itemId);
@@ -541,7 +541,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更新分组 advance
+     * Command: update group advance
      */
     setGroupAdvance(groupId, advance, options = {}) {
         const item = this.curve_manager.treeItems.get(groupId);
@@ -559,7 +559,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更新单节点属性
+     * Command: update single node property
      */
     updateSingleNodeProperty(marker, propId, value, options = {}) {
         const num = Number(value);
@@ -572,7 +572,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更新钢笔工具默认属性
+     * Command: update pen tool default properties
      */
     setPenProperties(updates = {}, options = {}) {
         if (!updates || typeof updates !== 'object') return false;
@@ -597,7 +597,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更新分组字符映射（g_char）
+     * Command: update group character mapping (g_char)
      */
     setGroupCharCode(groupId, rawValue, options = {}) {
         const item = this.curve_manager.treeItems.get(groupId);
@@ -652,8 +652,8 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 更新序列编辑器状态（text + activeIndices）
-     * 默认不写历史，按需由 options.recordHistory 控制
+     * Command: update sequence editor state (text + activeIndices)
+     * Does not write history by default; controlled by options.recordHistory
      */
     setSequenceEditorState({ text, activeIndices } = {}, options = {}) {
         const cm = this.curve_manager;
@@ -666,7 +666,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 删除分组并同步序列状态（供 sequence editor 菜单使用）
+     * Command: delete group and sync sequence state (for sequence editor menu)
      */
     deleteGroupAndUpdateSequence(groupId, { text, activeIndices } = {}, options = {}) {
         if (!groupId || typeof text !== 'string') return false;
@@ -689,7 +689,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 画布对象选区（SELECT 工具点击/框选，不写历史）
+     * Command: canvas object selection (SELECT tool click/box-select, no history write)
      * payload: { strategy, curveIds?, refIds?, activeGroupId? }
      */
     changeObjectSelection(strategy = "replace", payload = {}) {
@@ -704,7 +704,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 节点选区（NODE/DRAW 工具；Store 已在 dispatch 前 apply，此处与 CM 对齐）
+     * Command: node selection (NODE/DRAW tool; Store already applied before dispatch, aligned with CM here)
      */
     changeNodeSelection(strategy = "replace", payload = {}) {
         const canvas = commandCanvas(this);
@@ -718,7 +718,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 设置树选中（仅交互态，不写历史）
+     * Command: set tree selection (interaction only, no history write)
      */
     setTreeSelection(ids = [], activeGroupId = undefined) {
         if (!Array.isArray(ids)) return false;
@@ -737,7 +737,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 设置当前活动组（仅交互态，不写历史）
+     * Command: set current active group (interaction only, no history write)
      */
     setActiveGroup(groupId) {
         const canvas = commandCanvas(this);
@@ -751,7 +751,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 折叠/展开分组（仅交互态，不写历史）
+     * Command: collapse/expand group (interaction only, no history write)
      */
     toggleGroupCollapsed(groupId) {
         const item = this.curve_manager.treeItems.get(groupId);
@@ -764,7 +764,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 合并选中路径（Boolean Union）
+     * Command: merge selected paths (Boolean Union)
      */
     booleanUnionSelectedCurves() {
         const cm = this.curve_manager;
@@ -800,7 +800,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 取消引用（批量）
+     * Command: unlink references (batch)
      */
     unlinkSelectedReferences(ids = []) {
         if (!Array.isArray(ids) || ids.length === 0) return false;
@@ -815,7 +815,7 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: 扩展描边（批量）
+     * Command: expand stroke (batch)
      */
     expandSelectedStroke() {
         const cm = this.curve_manager;

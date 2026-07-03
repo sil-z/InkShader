@@ -1,5 +1,5 @@
 /**
- * 从文档获取 MainCanvas 宿主（显式组合入口：services / commands / editorStore）。
+ * Resolves MainCanvas host from document (explicit composition entry: services / commands / editorStore).
  */
 
 export function getCanvasHostFromDocument() {

@@ -1,7 +1,7 @@
 import { parseSequenceTokens } from "./sequence_tokenizer.js";
 
 /**
- * 从序列文本中移除匹配某组的 token，并重建 active 索引。
+ * Removes tokens matching a group from sequence text, and rebuilds active indices.
  * @param {object} options
  * @param {string} options.text
  * @param {Set<number>} options.activeIndices

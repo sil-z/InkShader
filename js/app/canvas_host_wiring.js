@@ -1,5 +1,5 @@
 /**
- * 画布宿主一次性接线：Paper、CurveManager 端口、命令/Store 端口、领域事件桥。
+ * One-time canvas host wiring: Paper, CurveManager port, command/Store port, domain event bridge.
  */
 import { configurePaperScope } from "../core/paper_scope.js";
 import { CurveManager } from "../core/bezier/manager.js";

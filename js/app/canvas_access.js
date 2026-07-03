@@ -1,6 +1,6 @@
 /**
- * 从 main-canvas 解析宿主（UI 不得 CurveManager.getInstance()）。
- * 组件可能早于 main-canvas 挂载，使用 whenCanvasReady 延迟初始化。
+ * Resolves host from main-canvas (UI must not call CurveManager.getInstance()).
+ * Components may mount before main-canvas; use whenCanvasReady for deferred initialization.
  */
 
 export function getMainCanvasFromDocument() {
@@ -31,7 +31,7 @@ export function whenCanvasReady(callback, { maxFrames = 600 } = {}) {
     tick();
 }
 
-/** @deprecated 使用 whenCanvasReady；保留别名供现有 UI 导入 */
+/** @deprecated Use whenCanvasReady; keep alias for existing UI imports */
 export function whenCurveManagerReady(callback, options = {}) {
     whenCanvasReady((canvas) => callback(canvas.curve_manager), options);
 }

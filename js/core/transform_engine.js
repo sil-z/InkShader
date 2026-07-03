@@ -2,7 +2,7 @@
 
 export class TransformEngine {
     /**
-     * 计算拖拽时的局部坐标偏移量 (包含矩阵反解逻辑)
+     * Computes local coordinate offset during drag (including matrix inverse logic)
      * @returns {Object} { local_dx, local_dy }
      */
     static calculateLocalDelta(screenDx, screenDy, scale, matrix) {
@@ -13,7 +13,7 @@ export class TransformEngine {
             return { local_dx: logic_dx, local_dy: logic_dy };
         }
         
-        // 矩阵逆变换计算真实局部坐标增量
+        // Inverse matrix transform to compute actual local coordinate delta
         let inv = matrix.inverse();
         let pt0 = inv.transformPoint({x: 0, y: 0});
         let pt1 = inv.transformPoint({x: logic_dx, y: logic_dy});
@@ -25,11 +25,11 @@ export class TransformEngine {
     }
 
     /**
-     * 纯函数：计算基于快照的节点组整体平移结果
-     * @param {Map} initialNodesMap - mousedown时保存的快照 (drag_initial_nodes)
-     * @param {Number} actual_dx - 经过吸附修正后的真实 X 位移
-     * @param {Number} actual_dy - 经过吸附修正后的真实 Y 位移
-     * @returns {Array} 包含需要更新的节点数据的数组指令
+     * Pure function: computes node group translation based on snapshot
+     * @param {Map} initialNodesMap - snapshot saved at mousedown (drag_initial_nodes)
+     * @param {Number} actual_dx - actual X displacement after snap correction
+     * @param {Number} actual_dy - actual Y displacement after snap correction
+     * @returns {Array} array of instruction objects containing node data to update
      */
     static calculateNodesTranslation(initialNodesMap, actual_dx, actual_dy) {
         const updates = [];
@@ -42,7 +42,7 @@ export class TransformEngine {
                 control2: null
             };
             
-            // 绝对坐标系的控制点平移
+            // Control point translation in absolute coordinate system
             if (init_pos.c1x !== undefined) {
                 update.control1 = {
                     x: init_pos.c1x + actual_dx,
@@ -61,18 +61,18 @@ export class TransformEngine {
     }
 
     // =========================================================================
-    // [新增] 变换 (Transform) 相关的纯计算引擎 (针对 handleMouseMoveTransforming)
+    // [New] Transform-related pure computation engine (for handleMouseMoveTransforming)
     // =========================================================================
 
     /**
-     * 纯函数：计算旋转角度及三角函数参数
+     * Pure function: computes rotation angle and trigonometric parameters
      */
     static calculateRotationParams(pivot, startWorld, currentWorld, isCtrlPressed) {
         let startAngle = Math.atan2(startWorld.y - pivot.y, startWorld.x - pivot.x);
         let currentAngle = Math.atan2(currentWorld.y - pivot.y, currentWorld.x - pivot.x);
         let angleDeg = (currentAngle - startAngle) * 180 / Math.PI;
         
-        // Ctrl 键开启 5 度吸附
+        // Ctrl key enables 5-degree snap
         if (isCtrlPressed) angleDeg = Math.round(angleDeg / 5) * 5; 
         
         let angle = angleDeg * Math.PI / 180;
@@ -84,7 +84,7 @@ export class TransformEngine {
     }
 
     /**
-     * 纯函数：计算基于各个控制柄的缩放比例
+     * Pure function: computes scale ratio based on each handle
      */
     static calculateScaleParams(action, pivot, startWorld, currentWorld, keepRatio) {
         let sx = 1, sy = 1;
@@ -96,7 +96,7 @@ export class TransformEngine {
         if (Math.abs(startW) > 0.01 && ['tl', 'tr', 'bl', 'br', 'ml', 'mr'].includes(action)) sx = currW / startW;
         if (Math.abs(startH) > 0.01 && ['tl', 'tr', 'bl', 'br', 'tc', 'bc'].includes(action)) sy = currH / startH;
         
-        // 保持等比缩放
+        // Keep aspect ratio scaling
         if (keepRatio && ['tl', 'tr', 'bl', 'br'].includes(action)) {
             let maxScale = Math.max(Math.abs(sx), Math.abs(sy));
             sx = maxScale * Math.sign(sx); 
@@ -106,7 +106,7 @@ export class TransformEngine {
     }
 
     /**
-     * 纯函数：将计算出的变换参数应用到单个节点的坐标和其附带偏移系上
+     * Pure function: applies computed transform parameters to a single node's coordinates and its offset system
      */
     static applyTransformationToPoint(pt, snap, action, pivot, params) {
         if (snap && snap.localToWorld && snap.worldToLocal) {

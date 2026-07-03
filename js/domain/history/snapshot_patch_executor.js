@@ -1,6 +1,6 @@
 /**
- * 快照 JSON 上的 Delta Patch：生成、校验、应用（undo 反向 / redo 正向）。
- * 不依赖 per-command undo()，也不做全量文件快照恢复。
+ * Delta Patch on snapshot JSON: generate, validate, apply (undo reverse / redo forward).
+ * Does not depend on per-command undo() or full file snapshot restore.
  */
 
 function deepClone(value) {
@@ -275,7 +275,7 @@ export class SnapshotPatchExecutor {
     }
 
     /**
-     * 原地应用补丁（undo/redo 热路径：不做整文档 probe 深拷贝）。
+     * Apply patches in-place (undo/redo hot path: no full-document probe deep copy).
      */
     applyPatches(snapshotObj, patches = [], direction = "undo") {
         if (!Array.isArray(patches) || patches.length === 0) return snapshotObj;
@@ -317,7 +317,7 @@ export class SnapshotPatchExecutor {
     }
 
     /**
-     * 树顺序变更统一为整段 replace，避免逐索引补丁在运行时/撤回顺序上失步。
+     * Tree hierarchy changes unified as full replace, avoiding per-index patch desync between runtime/undo order.
      */
     ensureTreeHierarchyCoarsePatches(beforeSnap, afterSnap, patches = []) {
         if (!beforeSnap || !afterSnap) return patches;

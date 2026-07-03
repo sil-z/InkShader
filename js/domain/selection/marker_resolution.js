@@ -1,5 +1,5 @@
 /**
- * 从交互快照 / domMap 解析节点 marker（无 UI / 无 EventBus）。
+ * Resolve node markers from interaction snapshot / domMap (no UI / no EventBus).
  */
 import { getCanvasCommandPort } from "../ports/canvas_command_host_port.js";
 
@@ -34,7 +34,7 @@ export function resolveMarkerById(curveManager, markerId) {
 }
 
 /**
- * @param {object} canvas 需 curve_manager 与 commandHostPort.getInteractionSnapshot
+ * @param {object} canvas requires curve_manager and commandHostPort.getInteractionSnapshot
  */
 export function resolveMarkersFromCanvas(canvas) {
     const cm = canvas?.curve_manager;

@@ -1,5 +1,5 @@
 /**
- * 曲线布尔熔合几何缓存（Paper.js）；无 DOM、无 Canvas 呈现 API。
+ * Curve boolean fusion geometry cache (Paper.js); no DOM, no Canvas rendering API.
  */
 import { getPaperScope } from "./paper_scope.js";
 import {
@@ -53,7 +53,7 @@ function buildPaperPaths(pScope, recorder) {
     return pathList;
 }
 
-/** 根据曲线当前几何刷新 cached_boolean_geometry */
+/** Refresh cached_boolean_geometry based on current curve geometry */
 export function refreshCurveBooleanCache(curve) {
     const pScope = getPaperScope();
     if (!pScope || !curve?.startNode) {

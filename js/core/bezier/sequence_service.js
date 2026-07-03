@@ -1,10 +1,10 @@
-// js/core/bezier/sequence_service.js — 序列文本解析、字符映射、偏移计算
+// js/core/bezier/sequence_service.js — Sequence text parsing, character mapping, offset calculation
 import { getSequenceDisplayChar } from '../../domain/sequence/sequence_display.js';
 import { parseSequenceTokens } from '../../domain/sequence/sequence_tokenizer.js';
 
 /**
- * SequenceService：管理序列文本、token 解析、字符→分组映射、偏移量计算。
- * 依赖 TreeStore 做分组查找与创建。
+ * SequenceService: manages sequence text, token parsing, character→group mapping, offset calculation.
+ * Depends on TreeStore for group lookup and creation.
  */
 export class SequenceService {
     /** @type {import('./tree_store.js').TreeStore} */
@@ -21,7 +21,7 @@ export class SequenceService {
     }
 
     // =========================================================================
-    // AGL（Adobe Glyph List）名称映射
+    // AGL (Adobe Glyph List) name mapping
     // =========================================================================
 
     _getDisplayChar(char) {
@@ -50,7 +50,7 @@ export class SequenceService {
     }
 
     // =========================================================================
-    // 解析 + 字符映射
+    // Parsing + character mapping
     // =========================================================================
 
     parseSequence(text) {
@@ -88,7 +88,7 @@ export class SequenceService {
     }
 
     // =========================================================================
-    // 序列更新 + 偏移
+    // Sequence update + offsets
     // =========================================================================
 
     updateSequenceParsing(activeSequenceIndices, syncTreeFn) {
@@ -180,7 +180,7 @@ export class SequenceService {
     }
 
     // =========================================================================
-    // 序列 ↔ 树同步
+    // Sequence ↔ tree sync
     // =========================================================================
 
     syncTreeWithSequence(validateSelectionFn, syncTreeSelectionFn, notifySelectionInvalidatedFn, notifyTreeUpdateFn) {

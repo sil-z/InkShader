@@ -1,11 +1,11 @@
 /**
- * main-canvas → 命令/Store 领域端口（logic/UI 边界）。
+ * main-canvas → command/Store domain port (logic/UI boundary).
  */
 import { EMPTY_CANVAS_COMMAND_HOST_PORT } from "../domain/ports/canvas_command_host_port.js";
 import { readInteractionSnapshotFromCurveManager } from "../domain/selection/runtime_interaction_snapshot.js";
 
 /**
- * @param {object|null} canvas main-canvas 实例
+ * @param {object|null} canvas main-canvas instance
  */
 export function createCanvasCommandHostPort(canvas) {
     if (!canvas) {

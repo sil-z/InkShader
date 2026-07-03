@@ -1,4 +1,4 @@
-// js/presentation/canvas/tools/base_tool.js — 工具基类 + 共享辅助方法
+// js/presentation/canvas/tools/base_tool.js — Tool base class + shared helpers
 import { CanvasDispatcher } from "../../../app/canvas_dispatcher.js";
 import {
     createNodeMarkerIdSet,
@@ -12,8 +12,18 @@ import {
 } from "../../../app/editor_interaction_state.js";
 
 /**
- * BaseTool：所有工具的基类，提供共享的辅助方法。
- * 子类只需实现 handleMouseDown / handleMouseMove / handleMouseUp。
+ * BaseTool: base class for all tools, provides shared helper methods.
+ *
+ * Lifecycle:
+ * constructor -> (handleMouseDown -> handleMouseMove -> handleMouseUp)* -> destructor
+ *
+ * Tool rules (all tools MUST follow):
+ * 1. Tools are only responsible for INPUT HANDLING and PREVIEW UPDATES.
+ *    Final data changes MUST go through CanvasCommands.*
+ * 2. Tools MUST NOT directly modify CurveManager data.
+ * 3. Tool switching is handled by CanvasController which cleans up previous tool state.
+ *
+ * Subclasses only need to implement handleMouseDown / handleMouseMove / handleMouseUp.
  */
 export class BaseTool {
     constructor(canvas, interactionController) {
@@ -24,7 +34,7 @@ export class BaseTool {
     }
 
     // =========================================================================
-    // 选择请求辅助
+    // Selection request helper
     // =========================================================================
 
     requestObjectSelection(strategy, { curves = [], refs = [], curve = null, refId = null } = {}) {
@@ -61,7 +71,7 @@ export class BaseTool {
     }
 
     // =========================================================================
-    // 预览键收集（stroke preview）
+    // Preview key collection (stroke preview)
     // =========================================================================
 
     pushPreviewKeys(keys, curveId, refId = null) {
@@ -91,7 +101,7 @@ export class BaseTool {
     }
 
     // =========================================================================
-    // 框选辅助
+    // Box-select helper
     // =========================================================================
 
     getBoxSelectRectWorld() {
@@ -109,7 +119,7 @@ export class BaseTool {
     }
 
     // =========================================================================
-    // 默认实现（子类可覆盖）
+    // Default implementation (subclasses may override)
     // =========================================================================
 
     handleMouseDown() {}

@@ -1,5 +1,5 @@
 /**
- * 序列缩略图（presentation + CM）；仅供 editor_read_facade 调用，UI 不得 import presentation。
+ * Sequence thumbnail (presentation + CM); for editor_read_facade only, UI must not import presentation.
  */
 import { drawSequenceGroupPreview } from "../presentation/sequence/sequence_group_preview.js";
 import { getMainCanvasFromDocument } from "./canvas_access.js";

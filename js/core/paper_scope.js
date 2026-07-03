@@ -1,5 +1,5 @@
 /**
- * Paper.js 离屏作用域：由宿主在启动时注入 canvas 工厂，领域层不触碰 document。
+ * Paper.js off-screen scope: host injects canvas factory at startup, domain layer does not touch document.
  */
 let _createCanvas = null;
 let _paperScope = null;

@@ -1,4 +1,4 @@
-// js/core/bezier/node.js — 领域节点几何（绘制见 canvas/rendering/node_renderer.js）
+// js/core/bezier/node.js — Domain node geometry (rendering in canvas/rendering/node_renderer.js)
 import { generateMarker } from './utils.js';
 import { CurveStore } from './curve_store.js';
 

@@ -1,5 +1,5 @@
 /**
- * 节点手柄 Canvas 呈现（领域 CurveNode 仅提供坐标与 control_mode）。
+ * Node handle Canvas rendering (domain CurveNode provides only coordinates and control_mode).
  */
 import { getCanvasTheme } from "./canvas_theme.js";
 import { createViewportTransform } from "./viewport_transform.js";

@@ -1,5 +1,5 @@
 /**
- * 序列编辑器显示字符（纯函数，无 DOM / 无 CurveManager）。
+ * Sequence editor display character (pure function, no DOM / no CurveManager).
  */
 export function getSequenceDisplayChar(char) {
     const formatAndControlRegex = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;

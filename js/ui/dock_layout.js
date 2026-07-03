@@ -917,7 +917,7 @@ export class DockLayout {
         if (!splitEl || !splitEl.classList.contains("dock-split")) return;
         const direction = splitEl.classList.contains("dock-split-h") ? "h" : "v";
         const children = Array.from(splitEl.children).filter(ch => !ch.classList.contains("dock-resizer"));
-        // 找出当前拖动条对应的是哪两个子节点
+        // Find which two child nodes correspond to the current drag bar
         let leftIdx = -1, nonResizerCount = 0;
         for (const ch of splitEl.children) {
             if (ch === resizer) { leftIdx = nonResizerCount - 1; break; }

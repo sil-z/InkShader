@@ -1,5 +1,5 @@
 /**
- * 侧边栏 / 右栏布局度量（任务 E）：集中 getBoundingClientRect，供 layout 与 view-state 持久化使用。
+ * Sidebar / right-panel layout metrics (task E): centralize getBoundingClientRect for layout and view-state persistence.
  */
 
 export function readElementRect(element) {

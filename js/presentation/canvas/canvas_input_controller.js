@@ -1,5 +1,25 @@
 import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
 import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } from "../../app/editor_interaction_state.js";
+/**
+ * CanvasInputController: binds DOM events to canvas interaction layer.
+ *
+ * Keyboard shortcuts (handled at canvas level):
+ * - Delete / Backspace: delete selected objects (SELECT tool) or selected nodes (NODE tool) | canvas / tree
+ * - Ctrl+Z: undo; during DRAW draw reverts last main node | global
+ * - Ctrl+Shift+Z / Ctrl+Y: redo | global
+ * - Ctrl+C: copy selected objects | canvas / tree
+ * - Ctrl+V: paste to active group | canvas / tree
+ * - Ctrl+D: duplicate selected objects | canvas / tree
+ * - Ctrl+S: save file | global
+ * - Ctrl+Shift+E: export UFO | global
+ * - Ctrl+U: boolean union | global
+ * - Ctrl+= / Ctrl+-: adjust canvas size (change_canvas_size) | global
+ * - Escape: cancel current operation | global
+ *
+ * Mouse coordinate display:
+ * Top-right of canvas shows world coordinates: "Mouse Pos {x} {y}"
+ * (y = canvas_size_height - worldY, i.e. positive upward)
+ */
 export class CanvasInputController {
     constructor(canvas) {
         this.canvas = canvas;

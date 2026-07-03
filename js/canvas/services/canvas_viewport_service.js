@@ -1,5 +1,17 @@
 /**
- * HiDPI 位图 + 用户空间（CSS px）绘制；指针与 setTransform(dpr) 后坐标一致。
+ * CanvasViewportService: viewport control (zoom and pan).
+ *
+ * Zoom/Pan interaction:
+ * - Ctrl + wheel: zoom (centered on mouse position, scale factor 1.1^tick)
+ * - Middle mouse drag: pan canvas
+ * - Ctrl + left drag (no object hit): pan canvas (state -> PANNING)
+ * - Ctrl + arrow keys (up/down/left/right): pan by 40px step
+ * - Zoom range: 2% ~ 5000% (scale_min: 0.02, scale_max: 50)
+ *
+ * Zoom is calculated via zoomTicks counter + formula: scale = scaleBase * zoomFactor^ticks.
+ * Snaps when approaching 100%.
+ *
+ * HiDPI bitmap + user space (CSS px) rendering; coordinates consistent with setTransform(dpr).
  */
 export class CanvasViewportService {
     constructor(canvas) {
@@ -49,8 +61,8 @@ export class CanvasViewportService {
     }
 
     /**
-     * 用户空间坐标（与 renderCanvas 中 setTransform(dpr) 后一致）。
-     * 优先 canvas 上的 offsetX/Y（含 pointer capture）；否则 client 映射到 userSpace。
+     * User space coordinates (consistent with setTransform(dpr) in renderCanvas).
+     * Prefers offsetX/Y on canvas (including pointer capture); falls back to client → userSpace mapping.
      */
     getViewportMousePosition(clientX, clientY, event = null) {
         const el = this.canvas.canvasObj;

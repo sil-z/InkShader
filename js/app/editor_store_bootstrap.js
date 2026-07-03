@@ -1,6 +1,6 @@
 /**
- * Store 冷启动种子（仅 mount / load 时 CM → Store 一次）。
- * 运行时选区修正须走 EditorStore.commitRuntimeSelectionPatch（经 commitInteraction）。
+ * Store cold-boot seed (CM → Store once, only on mount/load).
+ * Runtime selection corrections must go through EditorStore.commitRuntimeSelectionPatch (via commitInteraction).
  */
 import { EDITOR_ACTIONS } from "../domain/actions/editor_actions.js";
 import { readInteractionSnapshotFromCurveManager } from "../domain/selection/runtime_interaction_snapshot.js";
@@ -20,7 +20,7 @@ function resolveNodeSelectionRefId(curveManager) {
     return null;
 }
 
-/** @internal 仅 EditorStore 构造 / seedFromCanvas / IO restore */
+/** @internal Only for EditorStore constructor / seedFromCanvas / IO restore */
 export function buildInteractionSeedFromCanvas(canvas) {
     const cm = canvas?.curve_manager;
     const snap = readInteractionSnapshotFromCurveManager(cm);
@@ -56,8 +56,8 @@ export function buildInteractionSeedFromCanvas(canvas) {
 }
 
 /**
- * CM 内部 validateSelection 修剪选区后，经 reducer 正式写入 Store（非 reconcile/absorb）。
- * @returns {boolean} 是否 commitInteraction 成功
+ * After CM's internal validateSelection trims the selection, formally write to Store via reducer (not reconcile/absorb).
+ * @returns {boolean} Whether commitInteraction succeeded
  */
 export function buildRuntimeSelectionPatchAction(canvas) {
     const cm = canvas?.curve_manager;

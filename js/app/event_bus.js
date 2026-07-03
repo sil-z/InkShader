@@ -1,6 +1,6 @@
 /**
- * 底层传输：window 上的 CustomEvent。
- * 写意图请用 CanvasDispatcher；读状态请订阅 STATE_CHANGED 等领域/Store 事件。
+ * Low-level transport: CustomEvent on window.
+ * For write intent, use CanvasDispatcher; for reading state, subscribe to STATE_CHANGED and other domain/Store events.
  */
 export class EventBus {
     constructor(target = window) {

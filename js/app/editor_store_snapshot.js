@@ -1,4 +1,4 @@
-/** EditorStore 状态浅快照（避免 structuredClone / JSON 全量深拷贝） */
+/** EditorStore state shallow snapshot (avoiding structuredClone / JSON full deep copy) */
 
 const ARRAY_KEYS = Object.freeze([
     "selectedTreeIds",

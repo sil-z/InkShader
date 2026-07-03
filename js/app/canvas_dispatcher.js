@@ -1,9 +1,9 @@
 /**
- * 画布写意图的唯一对外入口（单向数据流第 1 步）。
+ * Sole external entry point for canvas write intent (unidirectional data flow step 1).
  *
- * UI 不得 appEventBus.emit(REQUEST_*)。读状态只订阅 EditorStore 的 STATE_CHANGED。
- * 撤回/重做：requestUndo / requestRedo → EditorStore.undo/redo → restoreFromHistoryMeta → snapshot patch → HISTORY_APPLY。
- * 交互态：仅经 dispatch / commitInteraction 写入 Store，再投影到 CM。
+ * UI must NOT appEventBus.emit(REQUEST_*). For reading state, only subscribe to EditorStore's STATE_CHANGED.
+ * Undo/Redo: requestUndo / requestRedo → EditorStore.undo/redo → restoreFromHistoryMeta → snapshot patch → HISTORY_APPLY.
+ * Interaction state: written to Store only via dispatch / commitInteraction, then projected to CM.
  */
 import { appEventBus } from "./event_bus.js";
 import { CANVAS_EVENTS, createCanvasAction } from "./canvas_events.js";
@@ -137,7 +137,7 @@ export const CanvasDispatcher = Object.freeze({
     requestSaveToCache(projectName) { emitRequest(CANVAS_EVENTS.REQUEST_SAVE_TO_CACHE, { projectName }); },
     requestExport() { emitRequest(CANVAS_EVENTS.REQUEST_EXPORT); },
 
-    /** 领域通知：序列文本变更（由 sequence UI 发出，Controller 转 SET_SEQUENCE_EDITOR_STATE） */
+    /** Domain notification: sequence text changed (emitted by sequence UI, Controller forwards SET_SEQUENCE_EDITOR_STATE) */
     emitSequenceChanged(text) {
         appEventBus.emit(CANVAS_EVENTS.SEQUENCE_CHANGED, { text });
     },
@@ -145,18 +145,18 @@ export const CanvasDispatcher = Object.freeze({
         appEventBus.emit(CANVAS_EVENTS.SEQUENCE_ACTIVE_CHANGED, { activeIndices });
     },
 
-    /** 偏好 / 主题：通知画布重算主题与重绘 */
+    /** Preferences / theme: notify canvas to recompute theme and redraw */
     notifyThemeAndRedraw() {
         appEventBus.emit(CANVAS_EVENTS.THEME_PARAMS_UPDATED);
         appEventBus.emit(CANVAS_EVENTS.FORCE_CANVAS_REDRAW);
     },
 
-    /** 布局尺寸变更后持久化视图（右栏高度、宽度等） */
+    /** Persist view state after layout size change (right column height, width, etc.) */
     requestSaveViewState(immediate = true) {
         emitRequest(CANVAS_EVENTS.REQUEST_SAVE_VIEW_STATE, { immediate: immediate !== false });
     },
 
-    /** 恢复视图时同步工具栏（仅 Controller / 历史恢复使用） */
+    /** Sync toolbar on view restore (Controller / history restore only) */
     syncToolUi(mode) {
         appEventBus.emit(CANVAS_EVENTS.SYNC_TOOL_UI, { mode });
     }

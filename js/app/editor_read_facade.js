@@ -1,10 +1,10 @@
 /**
- * UI 层数据边界（SSOT 读模型 + 只读领域查询）。
+ * UI layer data boundary (SSOT read model + read-only domain queries).
  *
- * - UI 禁止 import `canvas_access`、`CurveManager`、`core/bezier/*`、`presentation/*`
- * - 写：`CanvasDispatcher.request*`
- * - 读：`EditorStore` 快照（STATE_CHANGED / getEditorStoreState）
- * - 本模块内可回退 CM（bootstrap、缩略图、写路径附带 marker 解析）
+ * - UI must NOT import `canvas_access`, `CurveManager`, `core/bezier/*`, `presentation/*`
+ * - Write: `CanvasDispatcher.request*`
+ * - Read: `EditorStore` snapshot (STATE_CHANGED / getEditorStoreState)
+ * - This module may fall back to CM (bootstrap, thumbnail, write-path marker resolution)
  */
 import { mapActiveIndicesAfterTokenChange } from "../domain/sequence/sequence_active_indices.js";
 import { appendRawToSequence, removeGroupTokensFromSequence } from "../domain/sequence/sequence_text_ops.js";
@@ -40,7 +40,7 @@ function treeSnapshot() {
     return storeState()?.treeSnapshot ?? null;
 }
 
-/** Store 就绪后回调（不向 UI 暴露 canvas 实例） */
+/** Callback after Store is ready (does not expose canvas instance to UI) */
 export function whenEditorStoreReady(callback) {
     whenCanvasReady(() => {
         const st = storeState();
@@ -48,7 +48,7 @@ export function whenEditorStoreReady(callback) {
     });
 }
 
-/** @deprecated 使用 whenEditorStoreReady */
+/** @deprecated Use whenEditorStoreReady */
 export function whenEditorModelReady(callback) {
     whenEditorStoreReady(callback);
 }
@@ -94,7 +94,7 @@ export function getTreeItem(id) {
     return curveManager()?.treeItems.get(id) ?? null;
 }
 
-/** 树行可见/锁定（仅用快照字段，不读 Curve 实例） */
+/** Tree row visibility/lock (snapshot fields only, no Curve instance reads) */
 export function getTreeItemVisibilityState(item) {
     if (!item) return { isVis: true, isLocked: false };
     let isVis = item.visible !== false;
@@ -106,7 +106,7 @@ export function getTreeItemVisibilityState(item) {
     return { isVis, isLocked };
 }
 
-/** 引用组 transform（快照为 plain 对象；回退读 CM） */
+/** Ref group transform (snapshot as plain object; falls back to CM) */
 export function getRefTransform(itemOrId) {
     const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
     const item = typeof itemOrId === "object" && itemOrId ? itemOrId : getTreeItem(id);
@@ -149,7 +149,7 @@ export function getCurveById(curveId) {
     return pickCurvesReadSnapshot(cm)[curveId] ?? null;
 }
 
-/** @deprecated 使用 getCurveById */
+/** @deprecated use getCurveById */
 export function findCurveById(curveId) {
     return getCurveById(curveId);
 }
@@ -195,7 +195,7 @@ export function getNodeReadByMarkerId(markerId) {
     };
 }
 
-/** 写路径：解析 marker DOM（UI 仅用于 dispatch 参数） */
+/** Write path: resolve marker DOM (UI only for dispatch params) */
 export function resolveNodeMarker(markerId) {
     return resolveMarkerById(curveManager(), markerId);
 }
@@ -219,7 +219,7 @@ export function getSelectionBounds(mode = "transform") {
     return computeSelectionBounds(cm, mergeInteractionFromStoreState(st), mode);
 }
 
-/** @deprecated 使用 getSelectionBounds */
+/** @deprecated use getSelectionBounds */
 export function computeSelectionBoundsForSnapshot(interactionSnapshot, mode = "transform") {
     const cm = curveManager();
     if (!cm) return null;
@@ -280,7 +280,7 @@ export function getGroupByName(name) {
     return curveManager()?.getGroupByName(name) ?? null;
 }
 
-/** 宿主未就绪时由 Store 种子构建（bootstrap） */
+/** Host not ready yet, built by Store seed (bootstrap) */
 export function snapshotTreeFromCurveManager(cm) {
     return buildTreeSnapshot(cm);
 }

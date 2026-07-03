@@ -1,5 +1,5 @@
 /**
- * 视口变换：模型坐标 → 画布逻辑像素（presentation 层，领域层不依赖）。
+ * Viewport transform: model coordinates → canvas logical pixels (presentation layer; domain layer does not depend on it).
  */
 
 export function createViewportTransform({

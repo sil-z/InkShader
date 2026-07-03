@@ -1,5 +1,5 @@
 /**
- * 序列列 ↔ 组 id 映射（纯数据，可读 Store 快照）。
+ * Sequence column ↔ group id mapping (pure data, readable from Store snapshot).
  */
 
 export function createSequenceLayoutFromState({ sequenceTokens = [], activeSequenceIndices = [], charToGroupId = {} } = {}) {

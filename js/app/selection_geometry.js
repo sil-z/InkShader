@@ -1,4 +1,4 @@
-/** @deprecated 从 domain/selection/selection_bounds 导入 */
+/** @deprecated Import from domain/selection/selection_bounds */
 export {
     computeSelectionBounds,
     createSequenceLayoutFromCurveManager,

@@ -1,4 +1,4 @@
-/** @deprecated 从 canvas_access 导入 */
+/** @deprecated Import from canvas_access */
 export {
     getMainCanvasFromDocument,
     getCurveManagerFromDocument,

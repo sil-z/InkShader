@@ -31,7 +31,7 @@ export class CanvasHistoryService {
     }
 
     _debugCommand(message, payload = {}) {
-        console.log(`[CommandDebug] ${message}${this._formatDebugPayload(payload)}`);
+        console.debug(`[CommandDebug] ${message}${this._formatDebugPayload(payload)}`);
     }
 
     _deepClone(value) {
@@ -112,7 +112,7 @@ export class CanvasHistoryService {
     }
 
     /**
-     * 补丁完整性告警；history_strict_patch_runtime=true 时抛错（开发期开关）。
+     * Patch integrity warning; throws when history_strict_patch_runtime=true (dev toggle).
      */
     _reportPatchIssue(code, detail = {}, { throwIfStrict = true } = {}) {
         const payload = { code, ...detail };
@@ -142,7 +142,7 @@ export class CanvasHistoryService {
         };
     }
 
-    /** 更新 currentStateObj 的 meta 切片，不克隆 snapshotObj（undo/redo 热路径） */
+    /** Update currentStateObj meta slice without cloning snapshotObj (undo/redo hot path) */
     _syncUiAfterHistoryApply() {
         const c = this.canvas;
         const cm = c.curve_manager;
@@ -199,9 +199,9 @@ export class CanvasHistoryService {
         };
         if (c.projectManager && c.projectManager.getActiveProjectName()) {
             StorageUtils.saveProject(c.projectManager.getActiveProjectName(), data)
-                .catch((e) => console.error(" [Storage] 项目保存失败:", e));
+                .catch((e) => console.error(" [Storage] Project save failed:", e));
         }
-        StorageUtils.save(data).catch((e) => console.error(" [Storage] 运行态保存失败:", e));
+        StorageUtils.save(data).catch((e) => console.error(" [Storage] Runtime state save failed:", e));
     }
 
     _queueRuntimeStateSave() {
@@ -345,7 +345,7 @@ export class CanvasHistoryService {
                 selected_tree_ids: interaction.selectedTreeIds,
                 sequence_text: c.curve_manager.sequenceText
             };
-            StorageUtils.saveViewState(viewState).catch((e) => console.error(" [Storage] 保存视图状态失败:", e));
+            StorageUtils.saveViewState(viewState).catch((e) => console.error(" [Storage] View state save failed:", e));
         };
 
         if (immediate) {
@@ -358,7 +358,7 @@ export class CanvasHistoryService {
     }
 
     /**
-     * 写历史条目时导出当前文档快照（含 exportJSON，仅 commit 路径调用，非 undo/redo）。
+     * Export current document snapshot when writing history entry (with exportJSON, called only from commit path, not undo/redo).
      */
     getHistoryState() {
         const c = this.canvas;

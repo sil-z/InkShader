@@ -1,5 +1,5 @@
 /**
- * 领域事件 → 应用 EventBus 事件名映射（仅 app 层使用）。
+ * Domain event → app EventBus event name mapping (app layer only).
  */
 import { DOMAIN_EVENTS } from "../domain/events/domain_events.js";
 import { CANVAS_EVENTS } from "./canvas_events.js";

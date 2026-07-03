@@ -1,5 +1,5 @@
 export function logAtomicOperation(actionName, details) {
-    console.log(`[Atom Action Test] 🛠️ ${actionName}:`, details);
+    console.debug(`[Atom Action Test] ${actionName}:`, details);
 }
 
 export function generateMarker(type) { 

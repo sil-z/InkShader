@@ -1,4 +1,4 @@
-// js/presentation/canvas/tools/index.js — 工具注册表
+// js/presentation/canvas/tools/index.js — Tool registry
 export { BaseTool } from './base_tool.js';
 export { TransformTool } from './transform_tool.js';
 export { SelectTool } from './select_tool.js';

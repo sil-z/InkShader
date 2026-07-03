@@ -1,5 +1,5 @@
 /**
- * 将 main-canvas 宿主能力适配为 CurveManager 领域端口（logic/UI 边界）。
+ * Adapts main-canvas host capabilities to the CurveManager domain port (logic/UI boundary).
  */
 import { readInteractionSnapshotFromCurveManager } from "../domain/selection/runtime_interaction_snapshot.js";
 

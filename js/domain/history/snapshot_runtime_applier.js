@@ -1,6 +1,6 @@
 /**
- * 将 snapshotPatches 应用到 CurveManager / 画布运行时（避免 undo/redo 全量 loadFromJSON）。
- * 以 snapshotObj（已应用 JSON 补丁）为真值；路径级/组级 resync 覆盖插入/删除节点等结构变更。
+ * Applies snapshotPatches to CurveManager / canvas runtime (avoiding full undo/redo loadFromJSON).
+ * Uses snapshotObj (with JSON patches applied) as source of truth; path-level/group-level resync covers structural changes like node insert/delete.
  */
 import { CurveNode } from "../../core/bezier/node.js";
 const GROUP_ROOT_KEYS = new Set(["ch", "components"]);
@@ -60,7 +60,7 @@ function reconstructRootGroup(cm, groupName, groupData, charBucket) {
     cm._reconstructGroup(groupName, groupData, null, charCode);
     return true;
 }
-/** 用快照中整条路径数据重建运行时曲线（插入/删除节点、vertices 整表替换） */
+/** Rebuild runtime curve from full path data in snapshot (insert/delete nodes, vertices table replacement) */
 function resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName) {
     const pathData = getPathDataFromSnapshot(snapshotObj, charBucket, groupName, pathName);
     if (!pathData) {
@@ -73,7 +73,7 @@ function resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName
     }
     return cm.replacePathFromSnapshotData(groupName, pathName, pathData);
 }
-/** 用快照中整组数据重建（删除对象、components 引用变更等） */
+/** Rebuild group from full snapshot data (delete objects, components reference changes, etc.) */
 function resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName) {
     const groupData = getGroupDataFromSnapshot(snapshotObj, charBucket, groupName);
     if (!groupData) return deleteRootGroupByName(cm, groupName);
@@ -113,7 +113,7 @@ function collectTouchedGroupsFromPatches(patches) {
     }
     return keys;
 }
-/** 以快照为准同步所有组的 children 顺序（补丁顺序无关） */
+/** Sync all group children order from snapshot authoritative state (patch order independent) */
 export function syncTreeHierarchyFromSnapshot(cm, snapshotObj) {
     if (!cm || !snapshotObj) return;
     for (const bucket of GROUP_ROOT_KEYS) {
@@ -363,7 +363,7 @@ export function applySnapshotPatchesToRuntime(canvas, patches, direction) {
     canvas.flushSmartStrokeBooleanCache?.();
     return { ok: true, incremental: true };
 }
-/** 全量同步降级（打开文件 / 恢复 / documentChanged 且无细粒度补丁） */
+/** Full sync fallback (open file / restore / documentChanged with no granular patches) */
 export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     const cm = canvas?.curve_manager;
     if (!cm || !snapshotObj) return false;

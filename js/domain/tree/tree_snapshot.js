@@ -1,5 +1,5 @@
 /**
- * 对象树只读快照（纯数据，供 Store / UI 读模型，无 DOM）。
+ * Object tree read-only snapshot (pure data, for Store / UI read model, no DOM).
  */
 
 function serializeDomMatrix(matrix) {

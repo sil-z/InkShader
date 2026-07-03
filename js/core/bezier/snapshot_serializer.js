@@ -1,9 +1,9 @@
-// js/core/bezier/snapshot_serializer.js — 快照序列化/反序列化（JSON I/O）
+// js/core/bezier/snapshot_serializer.js — Snapshot serialization/deserialization (JSON I/O)
 import { Curve } from './curve.js';
 import { CurveNode } from './node.js';
 /**
- * SnapshotSerializer：负责文件格式的导入/导出、快照对象的反序列化重建。
- * 依赖 CurveStore（节点重建）和 TreeStore（树结构重建）。
+ * SnapshotSerializer: handles file format import/export, snapshot object deserialization and reconstruction.
+ * Depends on CurveStore (node reconstruction) and TreeStore (tree structure reconstruction).
  */
 export class SnapshotSerializer {
     /** @type {import('./curve_store.js').CurveStore} */
@@ -26,7 +26,7 @@ export class SnapshotSerializer {
         else console.warn(message);
     }
     // =========================================================================
-    // 导入
+    // Import
     // =========================================================================
     async loadFromJSON(jsonStr, messageReporter) {
         if (!jsonStr) return;
@@ -141,7 +141,7 @@ export class SnapshotSerializer {
         this._treeStore.applyTreeChildOrder(gid, gData.tree_child_order);
     }
     // =========================================================================
-    // 增量替换（undo/redo 补丁）
+    // Incremental replacement (undo/redo patch)
     // =========================================================================
     replacePathFromSnapshotData(groupName, pathName, pData) {
         const group = this._treeStore.getGroupByName(groupName);
@@ -170,7 +170,7 @@ export class SnapshotSerializer {
         }
     }
     // =========================================================================
-    // 导出
+    // Export
     // =========================================================================
     exportJSON(editorState) {
         let file = {

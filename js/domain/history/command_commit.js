@@ -1,5 +1,5 @@
 /**
- * 命令历史提交策略（领域层；不访问 document / EventBus / EditorStore 具体类）。
+ * Command history commit strategy (domain layer; does not access document / EventBus / EditorStore concrete classes).
  */
 import { EDITOR_ACTIONS } from "../actions/editor_actions.js";
 import { getCanvasCommandPort } from "../ports/canvas_command_host_port.js";
@@ -37,7 +37,7 @@ export function shouldCommitCommandAfterDispatch(action, result) {
     return true;
 }
 
-/** @deprecated 别名 */
+/** @deprecated alias */
 export function shouldPostDispatchCommit(action) {
     return shouldCommitCommandAfterDispatch(action, true);
 }
@@ -71,8 +71,8 @@ export function normalizeCommandCommitDetail(actionOrDetail = {}) {
 }
 
 /**
- * 画布命令方法内：优先提交当前 dispatching action，否则按 commandName 提交。
- * @param {object} canvas 需 commandHostPort
+ * Within a canvas command method: prefer submitting current dispatching action, otherwise submit by commandName.
+ * @param {object} canvas requires commandHostPort
  */
 export function commitDispatchingOrNamed(canvas, commandName, payload = {}) {
     const port = getCanvasCommandPort(canvas);

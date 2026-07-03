@@ -98,7 +98,7 @@ export class CanvasController {
         }
     }
 
-    /** 领域副作用单入口（有序、恢复中由 CurveManager 静默） */
+    /** Single entry point for domain side effects (ordered, silenced by CurveManager during restore) */
     onDomainEffect(effect) {
         const c = this.canvas;
         if (c.is_restoring) return;
@@ -282,8 +282,8 @@ export class CanvasController {
                     c.scale = viewState.scale || c.scale;
                     c.zoomTicks = Math.round(Math.log(c.scale / c.scaleBase) / Math.log(c.zoomFactor));
                 }
-                // 恢复偏移，但如果保存时的视口尺寸与当前不同则重新计算
-                // （偏移量依赖视口尺寸，直接恢复会导致画纸定位偏移）
+                // Restore offset; recalculate if saved viewport size differs from current
+                // (offset depends on viewport size, direct restore would misalign canvas paper)
                 c.offset = { x: viewState.offset_x || 0, y: viewState.offset_y || 0 };
                 if (viewState.vp_width && viewState.vp_height) {
                     const vp = c.viewportConfig;
@@ -292,7 +292,7 @@ export class CanvasController {
                         const ruler = c.ruler_size;
                         const paperW = c.canvas_size_width * c.scale;
                         const paperH = c.canvas_size_height * c.scale;
-                        // 计算保存时的中心偏移，保留用户的平移偏移（pan）
+                        // Calculate center offset for save, preserving user's pan offset
                         const oldCenterX = (viewState.vp_width - ruler - paperW) / 2;
                         const oldCenterY = (viewState.vp_height - ruler - paperH) / 2;
                         const panX = viewState.offset_x - oldCenterX;
@@ -315,9 +315,9 @@ export class CanvasController {
                 }
                 c.editorStore?.syncViewFromCanvas?.();
 
-                // 旧的固定宽度恢复（right_width）已由 dock 布局接管，移除避免
-                // 容器被设为 `flex: 0 0 <px>` 而无法随视口缩放，导致右侧截断。
-                // 见 restoreState 中的 dock_layout 反序列化。CSS 中 .right.dock-container 已有 flex: 1。
+                // Old fixed-width restoration (right_width) is now handled by dock layout; removed to avoid
+                // container being set to `flex: 0 0 <px>` and unable to scale with viewport, causing right-side truncation.
+                // See restoreState for dock_layout deserialization. CSS .right.dock-container already has flex: 1.
                 // Guard: only deserialize if the saved tree includes the canvas panel.
                 // Old cached data (pre-dock-integration) may lack canvas, causing it to disappear.
                 if (viewState.dock_layout && window.__dock && _treeHasLeaf(viewState.dock_layout, 'canvas')) {
@@ -426,7 +426,7 @@ export class CanvasController {
 
             c.editorStore?.mergeViewFromCanvas?.();
             c.editorStore?.bumpTreeRevision?.();
-        } catch (err) { console.error(" [Storage] 恢复状态失败:", err); }
+        } catch (err) { console.error(" [Storage] Restore state failed:", err); }
     }
 
     /** Re-register event bus listeners after the dock system removed/re-attached

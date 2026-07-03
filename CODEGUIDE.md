@@ -5,20 +5,16 @@
 
 ---
 
+> **文档语言说明**：本文档使用中文书写以便阅读。G005a 规则仅约束**代码中的注释**必须为英文，文档本身的说明文字不受此限。
+
 ## G001. JavaScript 语言版本
 
 - **目标**: ES2022 (ES13) 模块
 - **模块系统**: ES Module (`import`/`export`)，**不要**使用 CommonJS (`require`/`module.exports`)
 - **严格模式**: 所有模块默认严格模式（ESM 自动启用）
 
-[RULE:G001]
-type: pattern
-path: js/ $exclude js/vendor/
-forbid: \brequire\s*\(|module\.exports
-message: G001: 使用 ES Module (import/export)，禁止使用 CommonJS
-severity: error
-spec-ref: G001
-[ENDRULE]
+
+> **检查路径**: `js/`（排除 `js/vendor/`）| **禁止模式**: `require()` 和 `module.exports`
 
 ---
 
@@ -36,20 +32,32 @@ spec-ref: G001
 | 事件名 | kebab-case（字符串） | `"tree-updated"`, `"request-save"` |
 | 枚举键 | UPPER_SNAKE | `SELECTION_CHANGED`, `REQUEST_UNDO` |
 | 文件命名 | snake_case | `selection_state.js`, `canvas_commands.js` |
-| CSS 类名 | kebab-case | `tool_button`, `prop_toggle_btn`, `canvas-wrap` |
-| CSS 变量 | `--` + kebab-case | `--ui-bg-base`, `--cvs-path-stroke` |
 
-### G002b. 文件名对应规则
+### G002b. 事件名规范
 
-每个文件应默认导出（export）与其功能核心同名的 class 或函数集：
+所有自定义事件名必须使用常量引用，禁止直接写字符串（原生 DOM 事件如 `click`/`mousedown` 等除外）。
 
 ```js
 // ✅ 正确
-// selection_state.js → export class SelectionState { ... }
+appEventBus.emit(DOMAIN_EVENTS.MODEL_UPDATED, { ... });
 
-// ❌ 错误 — 文件名与导出名不匹配
-// sel.js → export class Foo { ... }
+// ❌ 错误
+appEventBus.emit('model-updated', { ... });
 ```
+
+事件类型前缀约定：
+
+| 前缀 | 用途 | 示例 |
+|------|------|------|
+| `REQUEST_*` | 写意图派发 | `REQUEST_CHANGE_OBJECT_SELECTION` |
+| `STATE_CHANGED` | 状态变更通知 | `STATE_CHANGED` |
+| `*_UPDATED` | 数据更新通知 | `TREE_UPDATED`, `MODEL_UPDATED` |
+| `domain:*` | 领域层内部事件 | `domain:selection-changed` |
+
+常量定义位置：
+
+- 领域层事件：`js/domain/events/domain_events.js` 中的 `DOMAIN_EVENTS`
+- 应用层事件：`js/app/canvas_events.js` 中的 `CANVAS_EVENTS`
 
 ---
 
@@ -81,18 +89,13 @@ export class SelectionState { ... }
 // ✅ 正确：多个导出合并
 export { DOMAIN_EVENTS } from './domain_events.js';
 
-// ❌ 避免：export default（除非是单 class 模块）
+// ❌ 避免：export default（优先使用命名导出）
 export default class Foo { }  // 不推荐
 ```
 
-[RULE:G003b]
-type: pattern
-path: js/ $exclude js/vendor/
-forbid: export\s+default\s+(class|function)
-message: G003b: 优先使用命名导出，避免 export default
-severity: warning
-spec-ref: G003b
-[ENDRULE]
+> **推荐**: 优先使用命名导出（`export function` / `export class`），避免 `export default`
+
+> **建议**: 文件名应与主要导出内容的名称对应（如 `selection_state.js` 导出 `SelectionState` 类或相关函数集），便于按文件名定位模块。
 
 ### G003c. 路径规则
 
@@ -100,80 +103,20 @@ spec-ref: G003b
 - 导入路径必须包含**文件扩展名** `.js`
 - 不允许循环导入（A → B → A）
 
-[RULE:G003c]
-type: import-extension
-path: js/ $exclude js/vendor/
-message: G003c: import 路径必须包含 .js 后缀
-severity: error
-spec-ref: G003c
-[ENDRULE]
+> **强制**: import 路径必须包含 `.js` 后缀
 
 ---
 
 ## G004. 代码格式
 
-### G004a. 缩进和括号
+使用统一代码格式，当前约定：
 
 - 缩进：**4 空格**（不是 tab）
 - 行最大长度：**120 字符**
 - 花括号：**K&R 风格**（左括号在行尾）
+- 语句结束使用**分号**
 
-[RULE:G004a]
-type: no-tabs
-path: js/
-message: G004a: 缩进使用 4 空格，禁止制表符
-severity: warning
-spec-ref: G004a
-[ENDRULE]
-
-```js
-// ✅ 正确
-function changeObjectSelection(strategy, payload) {
-    if (!strategy) return false;
-    let changed = false;
-    // ...
-}
-
-// ❌ 错误
-function changeObjectSelection(strategy, payload)
-{
-    if (!strategy) return false;
-}
-```
-
-### G004b. 分号
-
-**必须使用分号**，即使 JavaScript 自动插入（ASI）可能避免：
-
-```js
-// ✅ 正确
-let changed = false;
-this.selected_curves.clear();
-this._emitGlobalSelectionUpdated();
-
-// ❌ 错误
-let changed = false
-this.selected_curves.clear()
-```
-
-### G004c. 空格
-
-```js
-// 操作符两侧空格
-let sum = a + b;
-if (x > 0) { ... }
-for (let i = 0; i < n; i++) { ... }
-
-// 逗号后空格
-function foo(a, b, c) { ... }
-
-// 对象解构空格
-let { x, y } = point;
-
-// ❌ 不允许
-if(x>0){...
-for (let i=0;i<n;i++){...
-```
+手动格式化时遵守上述约定。
 
 ---
 
@@ -183,6 +126,8 @@ for (let i=0;i<n;i++){...
 
 **所有注释必须使用英文。** 不允许使用中文或其他语言写注释。
 
+> **过渡条款**：存量代码中的中文注释，修改该文件时须一并转换为英文（遵循 G005d）。
+
 ```js
 // ✅ Correct (English)
 // Resolve the root group ID for the given group, walking up the tree.
@@ -191,23 +136,7 @@ for (let i=0;i<n;i++){...
 // 解析给定组的根组ID，向上遍历树
 ```
 
-### G005b. 文件头注释
-
-**每个文件开头必须有简短文件头注释**，格式：
-
-```js
-// js/domain/selection/selection_state.js — Editor selection state management
-```
-
-[RULE:G005b]
-type: file-header
-path: js/ $exclude js/vendor/
-message: G005b: 文件开头必须包含文件头注释
-severity: warning
-spec-ref: G005b
-[ENDRULE]
-
-### G005c. 函数/方法注释
+### G005b. 函数/方法注释
 
 **每个导出/公开函数必须有注释**，描述功能、参数和返回值：
 
@@ -229,7 +158,7 @@ changeObjectSelection(strategy, payload) { ... }
 _resolveRefIdForMarker(markers, refContext, index, marker) { ... }
 ```
 
-### G005d. 实现注释（何时需要）
+### G005c. 实现注释（何时需要）
 
 - 复杂算法（贝塞尔曲线插值、布尔运算）必须包含英文算法说明
 - Magic number 必须注释含义
@@ -242,7 +171,11 @@ if (dt > 0.1) dt = 0.1;
 if (dt <= 0) dt = 0.001;
 ```
 
-### G005e. 修改时注释清理
+### G005d. 修改时注释维护
+
+**修改代码行为时，必须同步更新相关注释：**
+
+如果修改了某个模块的交互行为（如工具的点击策略、拖拽逻辑、快捷键等），必须同步更新该文件**顶部的类级 JSDoc**，确保注释描述与实际行为一致。行为描述注释是 AI 修改代码时的主要参考来源，过时的注释比没有注释更有害。
 
 **修改文件时，如果遇到以下情况的注释，必须删除：**
 - 注释语言不是英文
@@ -256,18 +189,25 @@ if (dt <= 0) dt = 0.001;
 
 ## G006. 类型安全
 
+> **前瞻性规则**：本项目为纯 JavaScript（未启用 TypeScript 检查），以下规则在当前阶段无法被工具强制验证，但 AI 必须遵守以保持代码质量。这些规则面向未来迁移 TypeScript 时不会隐藏类型错误。
+
 ### G006a. 硬性禁止
 
 ```js
-// ❌ 严格禁止
-let x: any = ...;
-// @ts-ignore
-// @ts-expect-error
+// ❌ 严格禁止（JSDoc 标注中）
+/** @type {any} */              // 禁止 —— 应用 @type {unknown} 代替
+// @ts-ignore                   // 禁止 —— 当前不生效但表示不良意图
+// @ts-expect-error             // 禁止
 ```
+
+> **⚠️ 注意事项（本项目为纯 JavaScript，未使用 TypeScript）：**
+> - JSDoc 中禁止标注 `@type {any}`——`any` 会完全禁用该变量的类型检查。对于不确定的类型，应使用 `@type {unknown}` 并通过类型收窄（typeof 检查等）处理。
+> - `@ts-ignore` / `@ts-expect-error`：本项目虽未启用 TypeScript 检查，但禁止这些标注以保持代码意图清晰，避免未来启用 TS 时隐藏真实类型错误。
+> - 如确实需要绕过类型检查，必须在注释中显式说明理由并提供替代方案。
 
 ### G006b. 类型标注（JSDoc）
 
-由于项目不使用 TypeScript，所有类型信息通过 JSDoc 表达：
+由于项目不使用 TypeScript，建议在导出函数和关键数据结构上使用 JSDoc 标注类型信息：
 
 ```js
 /** @type {Set<string>} */
@@ -289,95 +229,16 @@ let name = item ? item.name : 'unnamed';
 
 ---
 
-## G007. 状态管理
+## G007. 错误处理与返回值契约
 
-### G007a. 布尔返回值模式
-
-所有状态修改方法必须返回 `boolean` 表示是否发生实际变更。修改 Set/Map 等集合内部时可直接调用 add/delete/clear 等方法，但必须跟踪并返回 changed 标识：
+### G007a. 错误处理
 
 ```js
-// ✅ 正确：直接操作 Set 内部，跟踪并返回变更
-addNodeSelection(markers) {
-    let changed = false;
-    for (let marker of markers) {
-        if (!this.node_selecting.has(marker)) {
-            this.node_selecting.add(marker);   // Set 内部维护
-            changed = true;
-        }
-    }
-    return changed;  // 返回是否变更
-}
-
-// ❌ 错误：无返回值，调用者无法感知是否发生变更
-addNodeSelection(markers) {
-    this.node_selecting = new Set([...this.node_selecting, ...markers]);
-}
-```
-
----
-
-## G008. 事件系统
-
-### G008a. 事件名常量
-
-所有事件名必须使用常量，不允许直接写字符串：
-
-```js
-// ✅ 正确
-appEventBus.emit(CANVAS_EVENTS.REQUEST_SAVE, { ... });
-
-// ❌ 错误
-appEventBus.emit('request-save', { ... });
-```
-
-[RULE:G008a]
-type: event-literal
-path: js/ $exclude js/vendor/ $exclude canvas_events.js $exclude domain_events.js
-message: G008a: 事件名必须使用常量，禁止直接写字符串
-severity: warning
-spec-ref: G008a
-[ENDRULE]
-
-### G008b. 事件类型
-
-| 前缀 | 用途 | 示例 |
-|------|------|------|
-| `REQUEST_*` | 写意图派发 | `REQUEST_CHANGE_OBJECT_SELECTION` |
-| `STATE_CHANGED` | 状态变更通知 | `STATE_CHANGED` |
-| `*_UPDATED` | 数据更新通知 | `TREE_UPDATED`, `MODEL_UPDATED` |
-| `domain:*` | 领域层内部事件 | `domain:selection-changed` |
-
-### G008c. 事件常量定义位置
-
-- 领域层事件：`js/domain/events/domain_events.js` 中的 `DOMAIN_EVENTS`
-- 应用层事件：`js/app/canvas_events.js` 中的 `CANVAS_EVENTS`
-
----
-
-[RULE:G009]
-type: pattern
-path: js/
-forbid: catch\s*\([^)]*\)\s*\{\s*\}
-message: G009: 不允许空 catch 块
-severity: warning
-spec-ref: G009
-[ENDRULE]
-
-## G009. 错误处理
-
-```js
-// ✅ 正确：防御性检查 + 布尔返回值
+// ✅ 正确：防御性检查 + 提前返回
 function deleteSelectedNodes() {
     const markers = resolveMarkersFromCanvas(commandCanvas(this));
     if (markers.length === 0) return false;  // 无操作 → 提前返回
-    
-    let changed = false;
-    for (let marker of markers) {
-        if (this.curve_manager.deleteSingleNode(marker)) {
-            changed = true;
-        }
-    }
-    return changed;
+    // ...
 }
 
 // ✅ 正确：边界条件显式处理
@@ -394,19 +255,43 @@ try { ... } catch(e) {}
 try { ... } catch(e) { /* 什么都不做 */ }
 ```
 
+> **强制**: 不允许空 `catch` 块（`catch(e) {}`）
+
+### G007b. 状态修改方法布尔返回值
+
+所有同步状态修改方法应返回 `boolean` 表示是否发生实际变更。
+
+```js
+// ✅ 正确
+addNodeSelection(markers) {
+    let changed = false;
+    for (let marker of markers) {
+        if (!this.node_selecting.has(marker)) {
+            this.node_selecting.add(marker);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+// ❌ 错误：无返回值，调用者无法感知是否发生变更
+addNodeSelection(markers) {
+    this.node_selecting = new Set([...this.node_selecting, ...markers]);
+}
+```
+
+**例外**：
+- 异步方法（返回 `Promise`）应返回 `Promise<boolean>` 表示变更结果
+- 纯查询方法（getter）返回查询数据本身，不强制此规则
+
 ---
 
-## G010. CSS 规范
+## G008. CSS 规范
 
-[RULE:G010a]
-type: hardcoded-color
-path: css/
-message: G010a: 颜色值必须使用 CSS 变量，禁止硬编码
-severity: warning
-spec-ref: G010a
-[ENDRULE]
+> **强制**: 颜色值必须使用 CSS 变量，禁止硬编码
+> **过渡条款**：存量代码中的硬编码颜色值，修改该文件时须逐步迁移为 CSS 变量引用。
 
-### G010a. 颜色
+### G008a. 颜色
 
 **所有颜色必须通过 CSS 变量引用**，不允许硬编码颜色值：
 
@@ -424,108 +309,68 @@ spec-ref: G010a
 }
 ```
 
-### G010b. 主题变量分类
+### G008b. 主题变量分类
 
 | 命名空间 | 用途 | 示例 |
 |----------|------|------|
 | `--ui-*` | 通用 UI（面板、字体、边框） | `--ui-bg-panel`, `--ui-text-main` |
 | `--cvs-*` | Canvas 渲染（路径、节点、参考线） | `--cvs-path-stroke`, `--cvs-grid-dot` |
 
-### G010c. 暗色模式
+### G008c. 暗色模式
 
 暗色模式在 `[data-theme="dark"]` 选择器中覆盖变量。修改颜色时必须同时更新亮色和暗色模式的变量。
 
-### G010d. 选择器规范
+### G008d. 选择器规范
 
 - 使用 class 选择器，**避免 ID 选择器**（除非是单例元素）
 - 使用 flexbox/grid 布局，**避免 `float`**
 - `!important` 仅在覆盖第三方样式时使用
 
----
+### G008e. 命名规范
 
-## G011. DOM 操作规范
-
-### G011a. UI 组件
-
-- 所有 UI 组件必须是**自定义 Web Component** (`class extends HTMLElement`)
-- 不允许使用框架（React/Vue/Svelte）
-- Shadow DOM 默认关闭（与全局 CSS 变量保持一致）
-
-### G011b. DOM 访问限制
-
-| 层 | 允许的 DOM 操作 |
-|----|----------------|
-| `core/` | **禁止**任何 DOM 访问 |
-| `domain/` | **禁止**任何 DOM 访问 |
-| `app/` | EventBus（通过 CustomEvent）、启动时初始化 |
-| `canvas/` | Canvas 元素、Paper.js 作用域 |
-| `ui/` | 完全 DOM 操作（组件自身元素） |
-| `presentation/` | Canvas 交互事件监听 |
+| 类别 | 风格 | 示例 |
+|------|------|------|
+| CSS 类名 | snake_case | `tool_button`, `prop_toggle_btn`, `core_canvas` |
+| CSS 变量 | `--` + kebab-case | `--ui-bg-base`, `--cvs-path-stroke` |
 
 ---
 
-## G012. AI 代码生成检查清单
+## G009. Emoji 禁令
 
-AI 在**每次修改后**必须逐项检查以下规则。每条规则在本文档中均有详细定义，此处仅引用 ID。
+禁止在任何代码、注释、文档、commit 消息、日志中使用 emoji。使用文本标记替代（如 `[OK]`、`[ERROR]`、`[WARN]`）。
 
-```
-代码风格:
-[ ] G004a — 缩进使用 4 空格，禁止制表符
-[ ] G004a — 行长度不超过 120 字符
-[ ] G004a — K&R 括号风格
-[ ] G004b — 语句末尾有分号
-[ ] G004c — 操作符两侧有空格
-[ ] C008 — 无 emoji 出现在任何文件
-
-类型安全:
-[ ] C001 — 无 as any / @ts-ignore / @ts-expect-error
-[ ] G006b — 导出函数有 JSDoc
-[ ] C002 — 无 console.log 残留
-
-注释:
-[ ] G005b — 文件头有英文注释
-[ ] G005c — 函数有英文注释（描述参数和返回值）
-[ ] G005d — 复杂逻辑有英文注释
-[ ] G005a — 无中文注释残留
-[ ] G005e — 删除过时/错误的注释
-
-设计规范:
-[ ] G003c — 导入路径使用相对路径 + .js 后缀
-[ ] S001 / G011b — 从正确的模块导入（不违反依赖方向）
-[ ] G007a — 状态修改返回 boolean
-[ ] G008a — 事件名使用常量而非字符串
-[ ] G010a — 无硬编码颜色值
-[ ] S009a — 新 UI 文本有对应 i18n 翻译
-[ ] G009 — 空的 catch 块被移除
-
-性能:
-[ ] G012 — 无同步文件读写（此处为文档原则）
-[ ] G012 — 无 O(n²) 或更差的算法在热点路径
-[ ] G012 — rAF 不被不必要操作阻塞
-```
-
----
-
-## G013. Emoji 禁令
-
-### G013a. 硬性规则
-
-**除非是明确应该使用 emoji 的场景（如终端输出中需要跨语言识别的状态标记），禁止在任何文档、注释、代码、commit 消息、日志中使用 emoji。**
+**唯一例外**：用户明确要求的 UI 内容（如字体预览面板显示 emoji 字符）。
 
 ```js
-// ✅ Correct — status symbols that are language-agnostic (explicitly allowed scenarios)
-console.log("[OK] Server started on port 8765");
+// ✅ Correct
+console.warn("[OK] Server started on port 8765");
 
-// ❌ Forbidden — decorative emoji in comments or logs
+// ❌ Forbidden
 // 🚀 Server started on port 8765
 // Return the curve ✅
 ```
 
-### G013b. 允许的例外
+> 替代方案：使用 `[OK]`、`[ERROR]`、`[WARN]` 等文本标记
 
-- 用户明确要求的 UI 内容（如字体预览面板中显示 emoji 字符）
-- 终端输出的跨语言状态符号（`[OK]`、`[ERROR]`、`[WARN]` 等文本标记）— 使用文本标记而非 emoji
+---
 
-### G013c. 规范文件中的 emoji
+## G010. 禁止调试日志输出
 
-本文档中也不应包含 emoji。你正在阅读的这一条就是示例。<!-- 这条规则自我指涉 -->
+禁止在提交的代码中残留 `console.log`、`console.debug`、`console.info`、`console.trace`、`console.table` 等调试输出。
+
+```js
+// ✅ 正确：正式日志（仅允许以下两种）
+console.warn("[WARN] 非预期状态");
+console.error("[ERROR] 操作失败");
+
+// ❌ 错误：调试残留
+console.log("markers:", markers);
+console.debug("vertex data:", v);
+console.info("selection changed");
+console.trace("transform stack");
+console.table(metrics);
+```
+
+> **允许**：`console.warn` 和 `console.error` 用于正式日志。
+> **禁止**：`console.log`、`console.debug`、`console.info`、`console.trace`、`console.table`——仅限临时调试用，提交前必须清除。
+```

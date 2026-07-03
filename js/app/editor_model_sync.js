@@ -1,5 +1,5 @@
 /**
- * 从 CurveManager 投影只读模型切片到 EditorStore（app 适配层，非 UI）。
+ * Project read-only model slices from CurveManager to EditorStore (app adapter layer, not UI).
  */
 import {
     pickClipboardSummary,
@@ -44,7 +44,7 @@ export function pickSequenceModelFields(curveManager) {
     };
 }
 
-/** 对象选区变更时刷新选区包围盒（纯数据，供属性面板） */
+/** Refresh selection bounds on object selection change (pure data, for property panel) */
 export function pickInteractionReadFields(curveManager, storeState) {
     if (!curveManager || !storeState) {
         return { selectionBoundsTransform: null };

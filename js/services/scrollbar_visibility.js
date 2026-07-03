@@ -1,4 +1,4 @@
-// 仅 Windows Firefox：通过 data-scrollbar-visible 属性控制滚动条显示/隐藏
+// Windows Firefox only: control scrollbar visibility via data-scrollbar-visible attribute
 const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-output';
 
 function isFirefoxWindows() {
@@ -9,12 +9,12 @@ function isFirefoxWindows() {
 export function initScrollbarVisibility() {
     if (!isFirefoxWindows()) return;
 
-    // 为 Firefox 设置初始滚动条样式（不在 CSS 中写，避免 Chrome 新版也应用 scrollbar-color）
+    // Set initial scrollbar styles for Firefox (not in CSS, to avoid Chrome new version also applying scrollbar-color)
     document.querySelectorAll(SCROLLABLE).forEach(el => {
         el.style.setProperty('scrollbar-width', 'thin');
         el.style.setProperty('scrollbar-color', 'transparent transparent');
     });
-    // 观察动态添加的元素
+    // Observe dynamically added elements
     const mo = new MutationObserver((records) => {
         for (const rec of records) {
             for (const node of rec.addedNodes) {

@@ -1,8 +1,8 @@
 import { DOMAIN_EVENTS } from "../events/domain_events.js";
 
 /**
- * 编辑器交互选区（Task C：从 CurveManager 物理拆分）
- * host 为 CurveManager，通过 host 访问领域树/曲线与事件发射。
+ * Editor interaction selection (Task C: physically separated from CurveManager)
+ * host is CurveManager; accesses domain tree/curves and event emission through host.
  */
 export class SelectionState {
     constructor(host) {

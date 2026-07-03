@@ -31,7 +31,7 @@ export class ObjectTree extends HTMLElement {
         this.isDragStarting = false;
         /** @type {Map<string, HTMLElement>} */
         this._treeElById = new Map();
-        /** 可见行 id 顺序指纹；未变时跳过 DOM 重排 */
+        /** Visible row id order fingerprint; skip DOM reorder when unchanged */
         this._lastTreeRowKey = "";
     }
     addGlobalListener(target, type, listener, options = false) {
@@ -55,7 +55,7 @@ export class ObjectTree extends HTMLElement {
                 this.interaction.applyEventDetail({ afterState: st });
                 this.renderTree();
             });
-            // draggable 项会先触发 dragstart 并置 dragPreventClick，click 无法选中；用 pointerdown 在拖拽前选中
+            // Draggable items fire dragstart first and set dragPreventClick, so click cannot select; use pointerdown to select before drag
             this.tree.addEventListener("pointerdown", (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest(".tree_toggle")) return;
@@ -461,7 +461,7 @@ export class ObjectTree extends HTMLElement {
         }
         return el;
     }
-    /** 自后向前 insertBefore，保证 reference 节点已在 parent 内（避免正向时 next 尚未挂载） */
+    /** Reverse-order insertBefore, ensuring reference node is already in parent (avoids forward-order when next is not yet mounted) */
     _syncTreeRowOrder(rows, focusedId) {
         const parent = this.treeContent;
         for (let i = rows.length - 1; i >= 0; i--) {
@@ -477,7 +477,7 @@ export class ObjectTree extends HTMLElement {
             }
         }
     }
-    /** 可见行集合与顺序未变：只更新各节点展示，不重排 DOM */
+    /** Visible row set and order unchanged: only update each node display, no DOM reorder */
     _patchVisibleTreeRows(rows, focusedId) {
         const parent = this.treeContent;
         for (const row of rows) {
@@ -489,8 +489,8 @@ export class ObjectTree extends HTMLElement {
         }
     }
     /**
-     * 更新选中/活动组的 CSS 类，并在需要时滚动到目标元素。
-     * @param {string} [actionType] - 触发来源的 action type，用于区分树内操作和外部操作
+     * Update CSS classes for selected/active group, and scroll to target element when needed.
+     * @param {string} [actionType] - Source action type, used to distinguish tree-internal from external operations
      */
     _patchTreeSelectionOnly(actionType) {
         if (!this.treeContent) return;

@@ -3,13 +3,13 @@ import { ensureRuntimeHost } from "./canvas_host_wiring.js";
 import { initScrollbarVisibility } from "../services/scrollbar_visibility.js";
 
 /**
- * 以顶部菜单栏的自然宽度作为页面最小宽度。
- * 当浏览器宽度小于菜单栏时，停止压缩所有组件，改为显示水平滚动条。
+ * Uses the top menu bar's natural width as the page minimum width.
+ * When the browser is narrower than the menu bar, stops compressing all components and shows a horizontal scrollbar instead.
  */
 function constrainPageMinWidth() {
     const topBar = document.querySelector('.top');
     if (!topBar) return;
-    // scrollWidth 包含溢出子元素的完整宽度，不受视口压缩影响
+    // scrollWidth covers the full width of overflow children, unaffected by viewport compression
     const menuWidth = topBar.scrollWidth;
     const viewportWidth = window.innerWidth;
     if (menuWidth > 0) {
@@ -23,7 +23,7 @@ function constrainPageMinWidth() {
     }
 }
 
-// 防抖：resize 高频触发时延迟执行，避免频繁 reflow
+// Debounce: delay execution during high-frequency resize to avoid frequent reflow
 let _resizeTimer = null;
 function debouncedConstrain() {
     if (_resizeTimer) clearTimeout(_resizeTimer);

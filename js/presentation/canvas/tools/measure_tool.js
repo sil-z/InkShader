@@ -1,6 +1,15 @@
-// js/presentation/canvas/tools/measure_tool.js — MEASURE 工具：测量交互
+// js/presentation/canvas/tools/measure_tool.js — MEASURE tool: measurement interaction
 import { BaseTool } from "./base_tool.js";
 
+/**
+ * MEASURE tool: distance measurement.
+ *
+ * Interaction:
+ * - Drag: draws measurement line preview; release (distance > 0.5) creates ruler { id, x1, y1, x2, y2 }
+ * - Click ruler endpoint: drags to adjust position
+ *
+ * Rulers stored in canvas.rulers, persisted as part of canvas state.
+ */
 export class MeasureTool extends BaseTool {
     handleMouseDown(worldX, worldY) {
         const c = this.canvas;

@@ -1,4 +1,4 @@
-// js/core/index.js — 领域几何与命令逻辑（无主题 / 无 DOM）
+// js/core/index.js — Domain geometry and command logic (no theme / no DOM)
 export * from './bezier/utils.js';
 export * from './bezier/node.js';
 export * from './bezier/curve.js';

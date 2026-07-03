@@ -1,10 +1,10 @@
 import { CANVAS_ACTIONS, CANVAS_EVENTS } from "./canvas_events.js";
 
 /**
- * REQUEST_* -> CANVAS_ACTIONS（CanvasController 唯一注册源）
+ * REQUEST_* -> CANVAS_ACTIONS (CanvasController's sole registration source)
  *
- * 带返回值请求：路由项设 assignResult: true；detail 可含 result 作为失败默认值；
- * handler 将 dispatchAction 的返回值写回 detail.result（见 registerRequestListeners）。
+ * Requests with return values: route item sets assignResult: true; detail may contain result as failure default;
+ * handler writes dispatchAction's return value to detail.result (see registerRequestListeners).
  */
 export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_COPY_SELECTED_OBJECTS, action: CANVAS_ACTIONS.COPY_SELECTED_OBJECTS, mapPayload: (d) => ({ ids: d?.ids ?? null }) },

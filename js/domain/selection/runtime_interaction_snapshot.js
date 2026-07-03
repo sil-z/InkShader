@@ -1,5 +1,5 @@
 /**
- * 从 CurveManager 运行时选区集合构建交互快照（无 Store / 无 DOM）。
+ * Builds interaction snapshot from CurveManager runtime selection sets (no Store / no DOM).
  */
 
 export function createEmptyRuntimeInteractionSnapshot() {

@@ -1,5 +1,5 @@
 /**
- * 画布命令运行时辅助（经 commandHostPort，不引用 EditorStore / CanvasDispatcher）。
+ * Canvas command runtime helper (via commandHostPort, does not reference EditorStore / CanvasDispatcher).
  */
 import { EDITOR_ACTIONS } from "../actions/editor_actions.js";
 import { getCanvasCommandPort } from "../ports/canvas_command_host_port.js";
@@ -25,7 +25,7 @@ export function commitInteractionFromCommand(host, action) {
     return getCanvasCommandPort(canvas).commitInteraction(action, { emit: true });
 }
 
-/** 绘制/粘贴前：CM.activeGroupId 与 Store 对齐（渲染层读 Store 快照） */
+/** Before draw/paste: align CM.activeGroupId with Store (render layer reads Store snapshot) */
 export function syncActiveGroupToStore(host, groupId) {
     if (!groupId) return false;
     const canvas = commandCanvas(host);
@@ -51,7 +51,7 @@ export function finishInteractionCommand(host) {
     return true;
 }
 
-/** 领域命令已写 CM 序列态时，经 reducer 镜像到 Store（非 refreshSequenceFromCurveManager 直写） */
+/** When domain command has written CM sequence state, mirror to Store via reducer (not refreshSequenceFromCurveManager direct write) */
 export function refreshStoreSequence(host) {
     const canvas = commandCanvas(host);
     const cm = canvas?.curve_manager;

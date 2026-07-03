@@ -1,6 +1,6 @@
 /**
- * 将领域路径数据写入抽象 path target（Canvas ctx、Paper.js 录制器等）。
- * 无浏览器主题、无 fill/stroke 样式。
+ * Writes domain path data to an abstract path target (Canvas ctx, Paper.js recorder, etc.).
+ * No browser theme, no fill/stroke styles.
  */
 
 export function emitCubicBezierSegments(recorder, segments, mapPoint, { close = false } = {}) {
@@ -47,7 +47,7 @@ function isGap(pA, pB) {
     return Math.hypot(pA.x - pB.x, pA.y - pB.y) > 1e-3;
 }
 
-/** 用偏移段顶点估算闭合环的有向面积（符号保留） */
+/** Estimate signed area of closed loop from offset segment vertices (sign preserved) */
 function estimateOffsetPathsSignedArea(paths) {
     if (!paths?.length) return 0;
     const pts = [];
@@ -98,7 +98,7 @@ function minDistanceToSkeleton(skeleton, x, y) {
     return best;
 }
 
-/** 偏移环采样点到骨架的最短距离均值 */
+/** Average minimum distance from offset ring sample points to skeleton */
 function averageMinDistanceToSkeleton(curve, offsetPaths) {
     const skeleton = sampleSkeletonPoints(curve);
     if (!skeleton.length || !offsetPaths?.length) return 0;
@@ -120,8 +120,8 @@ function averageMinDistanceToSkeleton(curve, offsetPaths) {
 }
 
 /**
- * 闭合环外圈选择：优先离骨架更远的一侧；平局时用绕向 + 有向面积。
- * 仅用 |面积| 会在自交/节点微调时误判，导致参考线内外双线。
+ * Closed loop outer ring selection: prefers the side farther from the skeleton; ties broken by winding + signed area.
+ * Using |area| alone would misjudge during self-intersection/node tweaking, causing double guide lines.
  */
 function pickOuterOffsetPaths(outline, curve) {
     const { forwardPaths, backwardPaths } = outline;

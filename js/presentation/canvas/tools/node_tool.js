@@ -1,4 +1,4 @@
-// js/presentation/canvas/tools/node_tool.js — NODE 工具：节点选择、拖拽、框选、吸附
+// js/presentation/canvas/tools/node_tool.js — NODE tool: node selection, drag, box-select, snap
 import { TransformEngine } from "../../../core/transform_engine.js";
 import { BaseTool } from "./base_tool.js";
 import { CanvasDispatcher } from "../../../app/canvas_dispatcher.js";
@@ -8,9 +8,36 @@ import {
     snapshotIncludesNodeMarker
 } from "../../../app/editor_interaction_state.js";
 
+/**
+ * NODE tool: node selection, box-select, drag nodes (with snapping), handle editing, scroll-wheel spiral selection.
+ *
+ * Click interaction:
+ * - Click main node: no modifier = replace, Ctrl = toggle, Shift = add
+ * - Click blank area: clear
+ * - Drag node: moves selected nodes with POINT SNAPPING (threshold 5/scale);
+ *   Ctrl = AXIS LOCK (keep the larger absolute axis component)
+ * - Drag handle: angle snapping; Ctrl locks to initial angle +/- n*5deg unioned with opposite handle angle
+ * - Box select: blank area drag starts rectangle box-select
+ * - Scroll wheel: when hovering a node, scroll up expands selection range, down contracts
+ * - Release: commits changeSelectedNodesPosition / changeControlNodePosition
+ *
+ * Scroll wheel selection:
+ * When mouse pointer is above a node, scroll UP selects the node, DOWN deselects.
+ * Skips when at sequence end or node already at target state.
+ * Does not affect other nodes' selection state.
+ *
+ * Node snapping (three modes):
+ * - Point snap (default): drag main node, auto-snaps to other visible main nodes'
+ *   horizontal/vertical/coincident alignment. Threshold 5/scale.
+ * - Axis lock: Ctrl + drag main node, displacement keeps only the larger
+ *   absolute horizontal or vertical component.
+ * - Handle angle constraint: Ctrl + drag handle, angle locked to closest among:
+ *   initial angle +/- n*5deg and opposite handle angle.
+ * Releasing Ctrl during drag unlocks constraint, resumes free drag.
+ */
 export class NodeTool extends BaseTool {
     // =========================================================================
-    // MouseDown: 节点命中
+    // MouseDown: node hit
     // =========================================================================
 
     handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, isShiftKey, isCtrlKey) {
@@ -80,7 +107,7 @@ export class NodeTool extends BaseTool {
     }
 
     // =========================================================================
-    // MouseDown: 未命中节点（框选起始）
+    // MouseDown: no node hit (box-select start)
     // =========================================================================
 
     handleNodeMissMouseDown(mouseX, mouseY, isShiftKey) {
@@ -99,7 +126,7 @@ export class NodeTool extends BaseTool {
     }
 
     // =========================================================================
-    // MouseMove: 节点拖拽
+    // MouseMove: node dragging
     // =========================================================================
 
     handleMouseMoveDraggingNode(mouseX, mouseY, isCtrlPressed) {
@@ -144,7 +171,7 @@ export class NodeTool extends BaseTool {
     }
 
     // =========================================================================
-    // MouseUp: 节点拖拽释放
+    // MouseUp: node drag release
     // =========================================================================
 
     handleNodeDragMouseUp(e) {
@@ -203,7 +230,7 @@ export class NodeTool extends BaseTool {
     }
 
     // =========================================================================
-    // Box select: 节点框选
+    // Box select: node selection
     // =========================================================================
 
     handleNodeBoxMouseUp(mouseX, mouseY, isShiftKey) {
@@ -261,7 +288,7 @@ export class NodeTool extends BaseTool {
     }
 
     // =========================================================================
-    // 吸附计算
+    // Snap calculation
     // =========================================================================
 
     calculateAngleSnapping(dragging_node_n, isMainNode, local_dx, local_dy, raw_x, raw_y, dragged_seq_offset) {

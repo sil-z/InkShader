@@ -454,13 +454,17 @@ export class PathPropertyPopup extends HTMLElement {
     }
 
     _restoreDockedState() {
+        let docked = true;
         try {
             const v = localStorage.getItem(DOCK_KEY);
-            if (v === '1') {
-                this._docked = true;
-                appEventBus.emit(PATH_PROPS_DOCKED);
-            }
-        } catch (_) {}
+            if (v === '0') docked = false;
+        } catch (_) {
+            // localStorage unavailable — stay with default (docked)
+        }
+        this._docked = docked;
+        if (docked) {
+            appEventBus.emit(PATH_PROPS_DOCKED);
+        }
     }
 
     _onUndocked(e) {

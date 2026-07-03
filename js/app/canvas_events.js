@@ -1,17 +1,17 @@
 /**
- * 单向数据流约定（非「散乱总线」）：
- * 1. 写意图：CanvasDispatcher → REQUEST_* → CanvasController.dispatchAction → Command 改 runtime
- * 2. 读状态：EditorStore → STATE_CHANGED → UI（唯一 UI 状态出口）
- * 3. 领域副作用：CurveManager 发射 DOMAIN_EVENTS → domain_event_bridge → EventBus → onDomainEffect
- * 4. 命令历史：EditorStore.commitCommand；撤回/重做 restoreFromHistoryMeta → snapshot patch → applyInteractionToRuntime
- * 5. 交互态 SSOT：EditorStore（reduce → applyInteractionFromStore）；CM 仅为投影，禁止反向 absorb
+ * Unidirectional data flow convention (not a "scattered bus"):
+ * 1. Write intent: CanvasDispatcher → REQUEST_* → CanvasController.dispatchAction → Command changes runtime
+ * 2. Read state: EditorStore → STATE_CHANGED → UI (sole UI state outlet)
+ * 3. Domain side effects: CurveManager emits DOMAIN_EVENTS → domain_event_bridge → EventBus → onDomainEffect
+ * 4. Command history: EditorStore.commitCommand; undo/redo restoreFromHistoryMeta → snapshot patch → applyInteractionToRuntime
+ * 5. Interaction SSOT: EditorStore (reduce → applyInteractionFromStore); CM is projection only, do not reverse-absorb
  */
 export const CANVAS_EVENTS = Object.freeze({
     TREE_UPDATED: "tree-updated",
     SEQUENCE_CHANGED: "sequence-changed",
     SEQUENCE_ACTIVE_CHANGED: "sequence-active-changed",
     GLOBAL_SELECTION_UPDATED: "global-selection-updated",
-    /** 仅 activeGroupId 变更（不写历史、不触发属性面板全量刷新） */
+    /** activeGroupId change only (no history write, no full property panel refresh) */
     ACTIVE_GROUP_CHANGED: "active-group-changed",
     FORCE_CANVAS_REDRAW: "force-canvas-redraw",
     MODEL_UPDATED: "model-state-updated",

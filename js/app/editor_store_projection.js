@@ -1,6 +1,6 @@
 /**
- * Store → Canvas / CurveManager 单向投影（接线员）。
- * 禁止从此文件读取 CM 状态写回 Store。
+ * Store → Canvas / CurveManager unidirectional projection (operator).
+ * Do NOT read CM state from this file to write back to Store.
  */
 import { EDITOR_ACTIONS } from "../domain/actions/editor_actions.js";
 import { defaultDrawToolSettings } from "../domain/editor/interaction_reducer.js";
@@ -19,7 +19,7 @@ const SEQUENCE_CM_FROM_EXECUTOR_ONLY = new Set([
     EDITOR_ACTIONS.DELETE_GROUP_AND_UPDATE_SEQUENCE
 ]);
 
-/** 将 Store 交互态投影到 CurveManager / main-canvas */
+/** Project Store interaction state onto CurveManager / main-canvas */
 export function applyInteractionFromStore(canvas, state, { actionType = null } = {}) {
     if (!canvas || !state) return;
     const cm = canvas.curve_manager;
@@ -113,7 +113,7 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
     cm.changeObjectSelection("clear", {});
 }
 
-/** 视口字段：平移/缩放后由 Store.syncViewFromCanvas 写入（非选区逆向同步） */
+/** Viewport fields: written by Store.syncViewFromCanvas after pan/zoom (not selection reverse sync) */
 export function pickViewFieldsFromCanvas(canvas, state = {}) {
     if (!canvas) {
         return {
@@ -141,7 +141,7 @@ export function pickDrawToolFieldsFromCanvas(canvas) {
     };
 }
 
-/** 历史栈深度只读镜像（供 UI 显示，不写选区） */
+/** Read-only history stack depth mirror (for UI display, does not write selection) */
 export function pickHistoryStackFields(canvas) {
     return {
         commandStackSize: Array.isArray(canvas?.commandStack) ? canvas.commandStack.length : 0,

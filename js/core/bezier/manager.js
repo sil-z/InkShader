@@ -1,4 +1,4 @@
-// js/core/bezier/manager.js — 协调器：组合 CurveStore + TreeStore + SequenceService + SnapshotSerializer
+// js/core/bezier/manager.js — Coordinator: compositing CurveStore + TreeStore + SequenceService + SnapshotSerializer
 import { CurveStore } from './curve_store.js';
 import { TreeStore } from './tree_store.js';
 import { SequenceService } from './sequence_service.js';
@@ -9,12 +9,12 @@ import { EMPTY_CURVE_MANAGER_HOST_PORT } from '../../domain/ports/curve_manager_
 import { SelectionState } from '../../domain/selection/selection_state.js';
 
 /**
- * CurveManager：轻量协调器，组合四个专职子模块，保持原有公共 API 不变。
+ * CurveManager: lightweight coordinator, compositing four dedicated sub-modules, preserving existing public API.
  *
- * 子模块：
- * - CurveStore   — 几何数据（curves, domMap, 节点/曲线 CRUD）
- * - TreeStore    — 树层级（treeItems, 分组, 变换, 属性）
- * - SequenceService — 序列文本/解析/字符映射/偏移
+ * Sub-modules:
+ * - CurveStore   — geometry data (curves, domMap, node/curve CRUD)
+ * - TreeStore    — tree hierarchy (treeItems, groups, transforms, properties)
+ * - SequenceService — sequence text/parsing/character mapping/offsets
  * - SnapshotSerializer — JSON I/O
  */
 export class CurveManager {
@@ -31,24 +31,24 @@ export class CurveManager {
     serializer;
 
     // =========================================================================
-    // 选择状态（保持独立）
+    // Selection state (kept independent)
     // =========================================================================
     selection;
 
     // =========================================================================
-    // 事件 / 宿主端口
+    // Events / host port
     // =========================================================================
     eventEmitter = null;
     messageReporter = null;
     _hostPort = EMPTY_CURVE_MANAGER_HOST_PORT;
 
     // =========================================================================
-    // 剪贴板（跨命令共享）
+    // Clipboard (shared across commands)
     // =========================================================================
     clipboard = null;
 
     // =========================================================================
-    // 构造
+    // Construction
     // =========================================================================
 
     constructor() {
@@ -60,7 +60,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // 单例 + 活跃实例
+    // Singleton + active instance
     // =========================================================================
 
     static setActiveResolver(resolver) {
@@ -81,7 +81,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // 事件 / 端口
+    // Events / port
     // =========================================================================
 
     setEventEmitter(emitter) {
@@ -121,7 +121,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // 选择代理（委托 SelectionState）
+    // Selection delegation (delegates to SelectionState)
     // =========================================================================
 
     get selectedTreeIds() { return this.selection.selectedTreeIds; }
@@ -155,7 +155,7 @@ export class CurveManager {
     validateSelection() { return this.selection.validateSelection(); }
 
     // =========================================================================
-    // CurveStore 委托 — 节点操作
+    // CurveStore delegation — node operations
     // =========================================================================
 
     find_curve_by_dom(m) { return this.curveStore.find_curve_by_dom(m); }
@@ -236,7 +236,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // CurveStore 委托 — 曲线 CRUD
+    // CurveStore delegation — curve CRUD
     // =========================================================================
 
     get curves() { return this.curveStore.curves; }
@@ -305,7 +305,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // TreeStore 委托 — 树操作
+    // TreeStore delegation — tree operations
     // =========================================================================
 
     get treeItems() { return this.treeStore.treeItems; }
@@ -365,7 +365,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // TreeStore 委托 — 对象操作
+    // TreeStore delegation — object operations
     // =========================================================================
 
     deleteSingleObject(objectId) {
@@ -406,7 +406,7 @@ export class CurveManager {
     toggleSingleObjectDisplay(id, v) { return this.treeStore.toggleSingleObjectDisplay(id, v); }
 
     // =========================================================================
-    // TreeStore 委托 — 变换预览
+    // TreeStore delegation — transform preview
     // =========================================================================
 
     applyTransformPreview(payload) {
@@ -423,7 +423,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // TreeStore 委托 — 边界编辑
+    // TreeStore delegation — bounds editing
     // =========================================================================
 
     changeSelectedObjectsBounds(prop, val, bounds, geometryBounds, options) {
@@ -458,7 +458,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // TreeStore 委托 — 引用 / 克隆
+    // TreeStore delegation — references / clones
     // =========================================================================
 
     pasteGroupRef(src, tgt, tx) {
@@ -549,7 +549,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // 布尔运算
+    // Boolean operations
     // =========================================================================
 
     executeBooleanUnion(targetCurves, parentGroupId) {
@@ -604,7 +604,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // TreeStore 委托 — 图片
+    // TreeStore delegation — images
     // =========================================================================
 
     importImageToCurrentGroup(img, name) {
@@ -622,7 +622,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // SequenceService 委托
+    // SequenceService delegation
     // =========================================================================
 
     get sequenceText() { return this.seqService.sequenceText; }
@@ -675,7 +675,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // 通知
+    // Notifications
     // =========================================================================
 
     notifyTreeUpdate() {
@@ -689,7 +689,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // SnapshotSerializer 委托
+    // SnapshotSerializer delegation
     // =========================================================================
 
     async loadFromJSON(jsonStr) {
@@ -713,7 +713,7 @@ export class CurveManager {
     }
 
     // =========================================================================
-    // applyTreeChildOrder 委托
+    // applyTreeChildOrder delegation
     // =========================================================================
 
     applyTreeChildOrder(g, o) { this.treeStore.applyTreeChildOrder(g, o); }

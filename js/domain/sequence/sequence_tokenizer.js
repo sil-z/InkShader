@@ -1,7 +1,7 @@
 import { getSequenceDisplayChar } from "./sequence_display.js";
 
 /**
- * 将序列文本解析为 token（纯函数）。
+ * Parses sequence text into tokens (pure function).
  * @param {string} text
  * @param {{ resolveGroupByName?: (name: string) => { id: string } | null, getDisplayChar?: (char: string) => string }} [options]
  */

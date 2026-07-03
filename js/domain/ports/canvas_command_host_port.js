@@ -1,5 +1,5 @@
 /**
- * 画布命令/Store 宿主端口（由 app 注入；domain 不引用 EditorStore / EventBus）。
+ * Canvas command/Store host port (injected by app; domain does not reference EditorStore / EventBus).
  *
  * @typedef {object} CanvasCommandHostPort
  * @property {() => boolean} isStoreDispatching

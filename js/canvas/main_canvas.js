@@ -19,8 +19,8 @@ import {
 } from "../app/editor_interaction_state.js";
 import { appEventBus } from "../app/event_bus.js";
 /**
- * MainCanvas：视图宿主 + 交互瞬时状态 + 显式组合的服务/命令门面。
- * 不再通过 _callServiceMethod 把 service 方法代理为 canvas 顶级 API。
+ * MainCanvas: view host + transient interaction state + explicitly composed service/command facade.
+ * No longer proxies service methods as canvas top-level API via _callServiceMethod.
  */
 class MainCanvasBase extends HTMLElement {
     constructor(env = new EnvironmentAdapter()) {
@@ -30,7 +30,7 @@ class MainCanvasBase extends HTMLElement {
         this.ruler_horizontal = null; this.ruler_vertical = null;
         this.main_canvas = null; this.main_canvas_large = null;
         this.canvas_size_width = 1000; this.canvas_size_height = 1000;
-        /** 与 css/style.css 中 .ruler_horizontal / .ruler_vertical 尺寸一致 */
+        /** Matches .ruler_horizontal / .ruler_vertical dimensions in css/style.css */
         this.ruler_size = 18;
         this.current_state = 'IDLE';
         this.drag_start = { x: 0, y: 0 }; this.painting_handle_start = { x: 0, y: 0 };
@@ -65,7 +65,7 @@ class MainCanvasBase extends HTMLElement {
         wireCanvasHost(this);
         this.curve_manager.setMessageReporter((level, message) => {
             if (level === 'error' || level === 'warn') alert(message);
-            else console.log(message);
+            else console.debug(message);
         });
         this.current_curve = null; this.new_selected_temp = null;
         this.ctrl_click_added_selection = false;
@@ -83,7 +83,7 @@ class MainCanvasBase extends HTMLElement {
         this._hoveredRulerId = null;
         this._hoveredRulerEndpoint = null;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
-        /** 高频编辑期间仅这些曲线 id 走智能描边预览（骨架 + 浏览器 lineWidth） */
+        /** During high-frequency edits, only these curve ids use smart-stroke preview (skeleton + browser lineWidth) */
         this._interactiveStrokePreviewIds = new Set();
         this.commandStack = []; this.redoCommandStack = [];
         this.currentStateObj = null; this.is_restoring = false;
@@ -93,20 +93,20 @@ class MainCanvasBase extends HTMLElement {
         this.max_granular_object_keys = 160;
         this.granular_patch_paths = [["ch"], ["components"], ["editor_guideline_h"], ["editor_guideline_v"], ["editor_active_indices"], ["editor_user_guidelines"]];
         this.coarse_patch_paths = [];
-        /** undo/redo 优先用 snapshotPatches 增量改运行时 */
+        /** undo/redo prefers snapshotPatches for incremental runtime updates */
         this.history_use_patch_runtime = true;
-        /** 补丁无法应用时 console 告警（开发期发现未覆盖命令） */
+        /** Console warning when patch cannot be applied (catches uncovered commands during development) */
         this.history_patch_warnings = true;
-        /** true：运行时补丁失败即抛错，禁止全量降级 */
+        /** true: throw on runtime patch failure, disallow full fallback */
         this.history_strict_patch_runtime = false;
-        /** false：禁止 undo/redo 静默 loadFromSnapshotObject（仅恢复/打开文件可用） */
+        /** false: disallow undo/redo from silently calling loadFromSnapshotObject (restore/open-file only) */
         this.history_allow_snapshot_fallback = false;
         this.drawToolSettings = {
             stroke_width: 1, closed: false, smart_expand: true, show_skeleton: true
         };
         this.viewportService = new CanvasViewportService(this);
         this.renderRuntimeService = new CanvasRenderRuntimeService(this);
-        // EditorStore 在 connectedCallback 中 services 就绪后初始化（history 回调依赖 this.history）
+        // EditorStore initializes in connectedCallback after services are ready (history callback depends on this.history)
         this.editorStore = null;
         this.services = null;
         this.utils = null;
@@ -152,7 +152,7 @@ class MainCanvasBase extends HTMLElement {
         this.is_dirty = true;
     }
     /**
-     * @param {string|null} refId 引用实例 id；与 curveId 组合可只降级该实例
+     * @param {string|null} refId Reference instance id; combined with curveId to degrade only that instance
      */
     isCurveInInteractiveStrokePreview(curveId, refId = null) {
         if (!curveId) return false;
@@ -161,7 +161,7 @@ class MainCanvasBase extends HTMLElement {
         if (refId && set.has(`${curveId}::${refId}`)) return true;
         return set.has(curveId);
     }
-    /** 交互结束后使受影响曲线在下一帧重建布尔缓存 */
+    /** After interaction ends, rebuild boolean cache for affected curves on next frame */
     flushSmartStrokeBooleanCache(curveIds = null) {
         const cm = this.curve_manager;
         if (!cm) return;

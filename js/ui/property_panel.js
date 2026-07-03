@@ -1196,7 +1196,7 @@ export class PropertyPanel extends HTMLElement {
                     commitBoundsSession: isSizeProp && e.type === 'change'
                 });
             } else if (e.type === 'change') {
-                // 失焦/回车时若输入非法，回填当前真实值，避免空值滞留
+                // On blur/enter with invalid input, refill with current actual value to avoid empty value persisting
                 this.render();
             }
             return;

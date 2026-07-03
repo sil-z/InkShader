@@ -1,6 +1,6 @@
 /**
- * 领域层事件名（与 UI / EventBus 字符串解耦）。
- * 应用层通过 domain_event_bridge 映射到 CANVAS_EVENTS。
+ * Domain layer event names (decoupled from UI / EventBus strings).
+ * App layer maps to CANVAS_EVENTS via domain_event_bridge.
  */
 export const DOMAIN_EVENTS = Object.freeze({
     MODEL_UPDATED: "domain:model-updated",

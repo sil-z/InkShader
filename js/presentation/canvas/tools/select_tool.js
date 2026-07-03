@@ -1,10 +1,20 @@
-// js/presentation/canvas/tools/select_tool.js — SELECT 工具：对象选择、框选、启动变换
+// js/presentation/canvas/tools/select_tool.js — SELECT tool: object selection, box select, transform initiation
 import { BaseTool } from "./base_tool.js";
 import {
     snapshotIncludesCurve,
     snapshotIncludesRef
 } from "../../../app/editor_interaction_state.js";
 
+/**
+ * SELECT tool: object selection, box-select, transform initiation.
+ *
+ * Interaction:
+ * - Click hit detection priority: transform handle -> curve segment -> ref instance -> blank
+ * - Selection strategy: no modifier = replace, Shift = add/toggle, blank click = clear
+ * - Drag selected object: starts move transform
+ * - Blank area drag: starts box-select (rect bounds detection)
+ * - Transform handle click: delegates to TransformTool.startTransform
+ */
 export class SelectTool extends BaseTool {
     handleMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, isShiftKey, clientX, clientY) {
         const c = this.canvas;

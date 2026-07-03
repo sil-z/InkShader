@@ -1,6 +1,18 @@
 import { generateMarker } from "../../../core/bezier/utils.js";
 import { CurveNode } from "../../../core/bezier/node.js";
 
+/**
+ * ELLIPSE tool: create ellipse/circle paths.
+ *
+ * Interaction:
+ * - Drag: draws ellipse from start to end point (rectangle diagonal defines bounding box)
+ * - Ctrl + drag: constrains to perfect circle (rx = ry)
+ * - Release (distance >= 0.5): creates 4-node closed cubic Bezier ellipse (0.5522847498 constant)
+ * - Release (distance < 0.5): cancels
+ *
+ * Creation flow: resolve active group -> compute sequence offset -> startAddingPath()
+ * -> 4 symmetric nodes (control_mode=2) -> set handles -> finishAddingPathCommand()
+ */
 export class EllipseTool {
     constructor(canvas, controller) {
         this.canvas = canvas;

@@ -160,7 +160,7 @@ export class StorageUtils {
                 if (!isPersisted) {
                     console.warn("Persistent storage request denied by browser.");
                 } else {
-                    console.log("Persistent storage request succeeded.");
+                    console.info("[Storage] Persistent storage request succeeded.");
                 }
             } catch (error) {
                 console.warn("Persistent storage API error:", error);

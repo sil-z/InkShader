@@ -1,5 +1,5 @@
 /**
- * 编辑器命令 action 类型（领域层 SSOT；app 层 CANVAS_ACTIONS 与此对齐）。
+ * Editor command action types (domain SSOT; app layer CANVAS_ACTIONS aligned with these).
  */
 export const EDITOR_ACTIONS = Object.freeze({
     SET_TOOL_MODE: "SET_TOOL_MODE",

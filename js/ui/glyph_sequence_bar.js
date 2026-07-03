@@ -460,7 +460,7 @@ export class GlyphSequenceBar extends HTMLElement {
         const MENU_PAD = 12;
         let cols = 8;
         let menuW = cols * COLUMN_W + MENU_PAD;
-        // 宽度：优先向左平移，空间不够时才减少列数
+        // Width: prefer shifting left; reduce columns only when space is insufficient
         let left = x;
         if (left + menuW + 10 > window.innerWidth) {
             left = window.innerWidth - menuW - 10;
@@ -471,7 +471,7 @@ export class GlyphSequenceBar extends HTMLElement {
             cols = Math.max(4, Math.floor((availW - MENU_PAD) / COLUMN_W));
             menuW = cols * COLUMN_W + MENU_PAD;
         }
-        // 高度：延伸到页面底部，留出间距
+        // Height: extend to page bottom with padding
         const GAP = 24;
         let top = y;
         const maxH = window.innerHeight - top - GAP;

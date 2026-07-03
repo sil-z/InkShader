@@ -1,5 +1,5 @@
 /**
- * 撤回/重做：历史 meta ↔ EditorStore 交互态（与 snapshot patch 栈对齐）。
+ * Undo/Redo: history meta ↔ EditorStore interaction state (aligned with snapshot patch stack).
  */
 export function interactionMetaFromCanvas(canvas) {
     const store = canvas?.editorStore?.getState?.();
@@ -29,7 +29,7 @@ export function interactionMetaFromCanvas(canvas) {
     };
 }
 
-/** 将命令条目的 beforeMeta/afterMeta 转为 Store 交互字段 */
+/** Converts command entry beforeMeta/afterMeta to Store interaction fields */
 export function storeInteractionFromHistoryMeta(meta = {}) {
     const patch = {
         selectedTreeIds: [...(meta.selection?.treeIds || [])],

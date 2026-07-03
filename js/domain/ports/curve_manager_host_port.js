@@ -1,5 +1,5 @@
 /**
- * CurveManager 宿主端口：由 app/presentation 注入，领域层不依赖 main-canvas / EditorStore。
+ * CurveManager host port: injected by app/presentation, domain layer does not depend on main-canvas / EditorStore.
  *
  * @typedef {object} CurveManagerHostPort
  * @property {() => boolean} [isRestoring]

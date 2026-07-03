@@ -1,10 +1,24 @@
-// js/presentation/canvas/tools/draw_tool.js — DRAW/钢笔工具：路径创建、控制柄绘制
+// js/presentation/canvas/tools/draw_tool.js — DRAW/pen tool: path creation, handle drawing
 import { BaseTool } from "./base_tool.js";
 import { CanvasDispatcher } from "../../../app/canvas_dispatcher.js";
 import {
     snapshotIncludesNodeMarker
 } from "../../../app/editor_interaction_state.js";
 
+/**
+ * DRAW (pen) tool: Bezier path creation, handle drawing.
+ *
+ * Interaction:
+ * - Click canvas (no current path): creates new path
+ * - Click canvas (has path): adds main node
+ * - Click + drag: pulls out symmetric handles, sets smooth mode on release
+ * - Click path start point: closes path + commits history
+ * - Right-click: completes path (closes if drawToolSettings.closed)
+ * - Ctrl+Z (during draw): reverts last main node (no history write)
+ * - Tool switch: auto-completes current path
+ *
+ * Default properties: stroke_width=1, closed=false, smart_expand=true, show_skeleton=true
+ */
 export class DrawTool extends BaseTool {
     // =========================================================================
     // MouseDown
@@ -57,7 +71,7 @@ export class DrawTool extends BaseTool {
     }
 
     // =========================================================================
-    // Node hit（绘制中点击起点闭合路径）
+    // Node hit (click start point during drawing to close path)
     // =========================================================================
 
     handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker) {
@@ -73,7 +87,7 @@ export class DrawTool extends BaseTool {
     }
 
     // =========================================================================
-    // MouseMove: 控制柄拖拽
+    // MouseMove: handle dragging
     // =========================================================================
 
     handleMouseMovePaintingHandle(mouseX, mouseY) {
@@ -107,7 +121,7 @@ export class DrawTool extends BaseTool {
     }
 
     // =========================================================================
-    // MouseUp: 控制柄释放
+    // MouseUp: handle release
     // =========================================================================
 
     handlePaintHandleMouseUp(e) {
@@ -135,7 +149,7 @@ export class DrawTool extends BaseTool {
     }
 
     // =========================================================================
-    // 右键完成路径
+    // Right-click complete path
     // =========================================================================
 
     handleContextMenu() {

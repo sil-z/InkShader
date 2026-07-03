@@ -1,6 +1,6 @@
 /**
- * 编辑器交互态：UI 只读快照（SSOT = EditorStore.state，经 mergeInteractionFromStoreState 适配字段名）。
- * CurveManager.selection 仅为运行时投影，不作为读路径。
+ * Editor interaction state: UI read-only snapshot (SSOT = EditorStore.state, field names adapted via mergeInteractionFromStoreState).
+ * CurveManager.selection is runtime projection only, not a read path.
  */
 import {
     createEmptyRuntimeInteractionSnapshot,
@@ -21,7 +21,7 @@ export { hasObjectSelection, resolveCurvesFromSnapshot, resolveRefsFromSnapshot 
 export { resolveMarkerById, resolveMarkersFromCanvas };
 
 /**
- * NODE 工具切走时：由 Store 节点选区推导对象选区（不扫 CM 选区集合）。
+ * When NODE tool is deselected: derive object selection from Store node selection (do not scan CM selection set).
  */
 export function deriveObjectSelectionFromStoreState(storeState, curveManager) {
     const curveIds = new Set();
@@ -56,29 +56,29 @@ export function createEmptyInteractionSnapshot() {
     return createEmptyRuntimeInteractionSnapshot();
 }
 
-/** UI 初始交互态（不绑定 CM） */
+/** UI initial interaction state (not bound to CM) */
 export function createEmptyEditorInteractionState() {
     return EditorInteractionState.fromStoreState({});
 }
 
-/** 当前工具：仅读 EditorStore */
+/** Current tool: read-only from EditorStore */
 export function resolveActiveCanvasTool(canvas) {
     return canvas?.editorStore?.getState?.()?.currentTool || "DRAW";
 }
 
 /**
- * @internal 仅 main-canvas 未挂载 / 宿主端口 bootstrap；UI 应读 EditorStore + STATE_CHANGED。
+ * @internal Only for main-canvas not mounted / host port bootstrap; UI should read EditorStore + STATE_CHANGED.
  */
 export function readInteractionSnapshotFromRuntime(curveManager) {
     return readInteractionSnapshotFromCurveManager(curveManager);
 }
 
-/** @deprecated 别名 */
+/** @deprecated alias */
 export function readInteractionSnapshot(curveManager) {
     return readInteractionSnapshotFromCurveManager(curveManager);
 }
 
-/** 从 EditorStore 状态构建 UI 交互快照 */
+/** Build UI interaction snapshot from EditorStore state */
 export function mergeInteractionFromStoreState(storeState = {}) {
     if (!storeState || typeof storeState !== "object") {
         return createEmptyInteractionSnapshot();
@@ -176,7 +176,7 @@ export function snapshotActiveGroupIs(snapshot, groupId) {
 }
 
 /**
- * 绘制中是否应在该 sequence 组下渲染 current_curve（Store 未同步时回退 curve.groupId）。
+ * Whether to render current_curve under this sequence group while drawing (falls back to curve.groupId when Store not synced).
  */
 export function shouldIncludeCurrentDrawingCurve(canvas, snapshot, groupId) {
     if (!canvas?.current_curve || resolveActiveCanvasTool(canvas) !== "DRAW") return false;
@@ -184,7 +184,7 @@ export function shouldIncludeCurrentDrawingCurve(canvas, snapshot, groupId) {
     return snapshotActiveGroupIs(snapshot, groupId);
 }
 
-/** @deprecated 使用 resolveMarkersFromCanvas */
+/** @deprecated use resolveMarkersFromCanvas */
 export function resolveMarkersFromStore(canvas) {
     return resolveMarkersFromCanvas(canvas);
 }

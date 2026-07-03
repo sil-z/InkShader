@@ -1,5 +1,5 @@
 /**
- * 序列「添加组」菜单候选（纯数据 DTO，无 DOM / 无 CurveManager）。
+ * Sequence "add group" menu candidates (pure data DTO, no DOM / no CurveManager).
  * @param {Map<string, object>} treeItems
  */
 export function listRootGroupsForSequenceMenu(treeItems) {

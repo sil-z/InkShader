@@ -1,10 +1,10 @@
 /**
- * 历史补丁策略：哪些命令仅改交互态、哪些为文档几何变更。
+ * History patch policy: which commands change only interaction state vs document geometry.
  */
 
 import { CANVAS_ACTIONS } from "./canvas_events.js";
 
-/** 撤回时无 snapshotPatches 属正常（仅选区/工具），勿告警 */
+/** No snapshotPatches on undo is normal (selection/tool only); do not warn */
 export const META_ONLY_HISTORY_COMMANDS = new Set([
     CANVAS_ACTIONS.CHANGE_NODE_SELECTION,
     CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION,
@@ -17,7 +17,7 @@ export const META_ONLY_HISTORY_COMMANDS = new Set([
     "HISTORY_REVISION"
 ]);
 
-/** 应产生文档几何补丁的命令（用于校验漏记） */
+/** Commands that should generate document geometry patches (used to validate missed records) */
 export const DOCUMENT_GEOMETRY_COMMANDS = new Set([
     "insertMainNode",
     "deleteSelectedNodes",

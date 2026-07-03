@@ -1,5 +1,5 @@
 /**
- * 交互快照查询（纯数据，无 DOM）。
+ * Interaction snapshot queries (pure data, no DOM).
  */
 
 export function hasObjectSelection(snapshot) {

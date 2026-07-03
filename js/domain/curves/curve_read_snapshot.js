@@ -1,6 +1,6 @@
 import { resolveMarkerById } from "../selection/marker_resolution.js";
 
-/** 曲线只读字段（供 EditorStore → UI，无 Curve 实例） */
+/** Curve read-only fields (for EditorStore → UI, no Curve instances) */
 export function pickCurvesReadSnapshot(curveManager) {
     if (!curveManager?.curves) return {};
     const curvesById = {};
@@ -30,7 +30,7 @@ export function pickCurvesReadSnapshot(curveManager) {
     return curvesById;
 }
 
-/** 当前节点选区的只读几何（markerId → 坐标） */
+/** Read-only geometry of current node selection (markerId → coordinates) */
 export function pickNodesReadSnapshot(curveManager, markerIds = []) {
     if (!curveManager || !markerIds?.length) return {};
     const nodesByMarkerId = {};

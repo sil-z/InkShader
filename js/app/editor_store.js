@@ -22,8 +22,8 @@ import { storeInteractionFromHistoryMeta } from "./editor_history_state.js";
 import { snapshotStoreState, storeStatesEqual } from "./editor_store_snapshot.js";
 
 /**
- * EditorStore：UI 交互态唯一 SSOT。
- * 写路径：reduce(payload) → finalize → applyInteractionFromStore（CM 仅为投影）。
+ * EditorStore: sole SSOT for UI interaction state.
+ * Write path: reduce(payload) → finalize → applyInteractionFromStore (CM is projection only).
  */
 export class EditorStore {
     constructor({
@@ -128,7 +128,7 @@ export class EditorStore {
     }
 
     /**
-     * 不经 dispatch 的交互态写入（绘制插点、工具内选区等）：Store 为唯一真相源。
+     * Interaction state writes without dispatch (draw point insertion, tool-internal selection, etc.): Store is the single source of truth.
      */
     commitInteraction(action, { emit = true } = {}) {
         if (!action?.type || this._isHistoryApplying()) return false;
@@ -164,7 +164,7 @@ export class EditorStore {
     }
 
     /**
-     * CM.validateSelection 等内部修剪选区后：经 commitInteraction 写入（禁止 reconcile/absorb）。
+     * After CM.validateSelection etc. trim the selection: write via commitInteraction (no reconcile/absorb allowed).
      */
     commitRuntimeSelectionPatch() {
         if (this._isHistoryApplying()) return false;
@@ -227,7 +227,7 @@ export class EditorStore {
         this._mergeViewAfterDispatch();
     }
 
-    /** 平移/缩放后把视口写入 Store（不触发 UI 全量刷新） */
+    /** Write viewport into Store after pan/zoom (does not trigger full UI refresh) */
     syncViewFromCanvas() {
         const canvas = this._getCanvas();
         if (!canvas) return;

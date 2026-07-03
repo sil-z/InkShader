@@ -1,4 +1,4 @@
-// js/presentation/canvas/tools/transform_tool.js — 变换逻辑（拖拽/缩放/旋转，Select 和 Node 共用）
+// js/presentation/canvas/tools/transform_tool.js — Transform logic (drag/scale/rotate, shared by Select and Node)
 import { TransformEngine } from "../../../core/transform_engine.js";
 import { CanvasDispatcher } from "../../../app/canvas_dispatcher.js";
 import {
@@ -7,8 +7,15 @@ import {
 } from "../../../app/editor_interaction_state.js";
 
 /**
- * TransformTool：管理对象变换的完整生命周期（启动 → 预览 → 终止）。
- * 被 SelectTool 和 NodeTool 共用。
+ * TransformTool: manages the complete lifecycle of object transforms (initiate -> preview -> finalize).
+ * Shared by SelectTool and NodeTool.
+ *
+ * Supported transforms:
+ * - Drag move: translate selected paths/refs in any direction
+ * - Scale (8 handles: tl/tr/bl/br/tc/bc/ml/mr): scale around pivot point, optional proportional (Shift)
+ * - Rotate (rot handle): rotate around pivot point, Ctrl locks to 5deg increments
+ *
+ * Flow: startTransform -> handleMouseMoveTransform* (live preview) -> changeSelectedObjectsTransform (finalize history)
  */
 export class TransformTool {
     constructor(canvas, interactionController) {

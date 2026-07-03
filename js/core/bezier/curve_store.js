@@ -1,23 +1,23 @@
-// js/core/bezier/curve_store.js — 几何存储：曲线、节点、DOM Marker 映射
+// js/core/bezier/curve_store.js — Geometry storage: curves, nodes, DOM marker mapping
 import { Curve } from './curve.js';
 import { CurveNode } from './node.js';
 import { generateMarker } from './utils.js';
 
 /**
- * CurveStore：管理曲线数组、domMap 全局节点索引、节点/曲线 CRUD。
- * 职责边界：仅几何数据，不涉及树/序列/序列化。
+ * CurveStore: manages curve array, domMap global node index, node/curve CRUD.
+ * Scope: geometry data only; does not involve tree/sequence/serialization.
  */
 export class CurveStore {
     static _instance = null;
     static _activeResolver = null;
 
-    /** 曲线数组（原始引用） */
+    /** Curve array (raw reference) */
     curves = [];
-    /** marker → CurveNode 全局索引 */
+    /** marker → CurveNode global index */
     domMap = new Map();
 
     // =========================================================================
-    // 单例 + 活跃实例解析
+    // Singleton + active instance resolution
     // =========================================================================
 
     static setActiveResolver(resolver) {
@@ -36,7 +36,7 @@ export class CurveStore {
     }
 
     // =========================================================================
-    // 节点查找
+    // Node lookup
     // =========================================================================
 
     find_curve_by_dom(main_node) {
@@ -55,7 +55,7 @@ export class CurveStore {
     }
 
     // =========================================================================
-    // DOM Marker 注册/注销
+    // DOM Marker registration/unregistration
     // =========================================================================
 
     unregisterCurveDomMarkers(curve) {
@@ -95,7 +95,7 @@ export class CurveStore {
     }
 
     // =========================================================================
-    // 节点操作
+    // Node operations
     // =========================================================================
 
     adjustControlNode(marker, x, y) {
@@ -297,7 +297,7 @@ export class CurveStore {
     }
 
     // =========================================================================
-    // 曲线 CRUD
+    // Curve CRUD
     // =========================================================================
 
     createCurve(id) {
@@ -361,7 +361,7 @@ export class CurveStore {
     }
 
     // =========================================================================
-    // 快照反序列化辅助（从 JSON 重建节点）
+    // Snapshot deserialization helper (rebuild nodes from JSON)
     // =========================================================================
 
     reconstructCurveFromSnapshotData(curveId, pData, groupId) {

@@ -1,7 +1,7 @@
 import { resolveTreeIdForCurve } from "./tree_catalog.js";
 
 /**
- * 由 Store 选区字段推导树选区（纯逻辑；catalog 仅用于 id 解析）。
+ * Derives tree selection from Store selection fields (pure logic; catalog used only for id resolution).
  * @param {object} state
  * @param {import("./tree_catalog.js").TreeCatalog|null} catalog
  */

@@ -1,5 +1,5 @@
 /**
- * 序列文本变更后，根据 LCS 映射继承「激活列」索引（纯函数）。
+ * After sequence text changes, inherits "active column" indices via LCS mapping (pure function).
  * @param {Array<{ raw: string }>} oldTokens
  * @param {Array<{ raw: string }>} newTokens
  * @param {Set<number>|Iterable<number>} oldActiveIndices

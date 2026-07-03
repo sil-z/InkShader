@@ -1,8 +1,11 @@
 {
   // InkShader 项目级 opencode 配置
-  // AGENTS.md 定义了完整的 AI 工作流程
+  // AGENTS.md 定义了完整的 AI 工作流程和模块索引
+  // CODEGUIDE.md 定义编码规范，SPECIFICATION.md 定义功能规约
 
   "instructions": [
-    "AGENTS.md"
+    "AGENTS.md",
+    "CODEGUIDE.md",
+    "SPECIFICATION.md"
   ]
 }

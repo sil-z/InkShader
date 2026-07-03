@@ -1,7 +1,7 @@
 import { appendCurveFillPath, curveGeneratesFillArea } from "../../canvas/rendering/curve_renderer.js";
 
 /**
- * 序列菜单缩略图（呈现层：允许 Canvas API，UI 组件只调用此模块）。
+ * Sequence menu thumbnail (presentation layer: may use Canvas API; UI components call only this module).
  */
 export function drawSequenceGroupPreview(ctx, curveManager, groupId) {
     if (!ctx || !curveManager) return;

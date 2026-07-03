@@ -65,7 +65,7 @@ export class CanvasIOService {
                     c.currentStateObj = c.history.getHistoryState();
                     if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
                     c.history.saveCurrentViewState(true);
-                    console.log("[CommandDebug] loaded snapshot from file");
+                    console.debug("[CommandDebug] loaded snapshot from file");
                     c.notifyPropertiesUpdate();
                     c.is_dirty = true;
                     c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
@@ -95,7 +95,7 @@ export class CanvasIOService {
         c.env.revokeObjectURL(url);
         c.currentStateObj = c.history.getHistoryState();
         if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
-        console.log("[CommandDebug] manual save snapshot persisted");
+        console.debug("[CommandDebug] manual save snapshot persisted");
     }
     exportToUFO() {
         const c = this.canvas;

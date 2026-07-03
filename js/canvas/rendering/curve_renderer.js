@@ -1,5 +1,5 @@
 /**
- * 曲线 Canvas 呈现：读取领域几何，应用主题与视口，调用 Canvas API。
+ * Curve Canvas rendering: reads domain geometry, applies theme and viewport, calls Canvas API.
  */
 import { getCanvasTheme } from "./canvas_theme.js";
 import {
@@ -13,7 +13,7 @@ export function isCurveStrokePreview(canvas, curveId, refId = null) {
     return !!canvas?.isCurveInInteractiveStrokePreview?.(curveId, refId ?? null);
 }
 
-/** 布尔缓存有效（空数组 [] 视为未缓存，须走扩张描边回退路径） */
+/** Boolean cache usable (empty array [] = not cached, must fall back to expanded stroke path) */
 export function hasUsableBooleanCache(curve) {
     return Array.isArray(curve?.cached_boolean_geometry) && curve.cached_boolean_geometry.length > 0;
 }
@@ -31,8 +31,8 @@ export function isCurveClosedRing(curve) {
 }
 
 /**
- * 是否进入「按组批填充」pass。
- * 交互预览：智能描边（含开放路径）仍批填充扩张轮廓；仅非智能的闭合环可用骨架预览。
+ * Whether to enter the "batch-fill by group" pass.
+ * Interactive preview: smart stroke (including open paths) still batch-fills expanded outline; only non-smart closed rings use skeleton preview.
  */
 export function shouldBatchFillCurve(curve, { strokePreview = false } = {}) {
     if (!curveGeneratesFillArea(curve)) return false;
@@ -43,7 +43,7 @@ export function shouldBatchFillCurve(curve, { strokePreview = false } = {}) {
     return true;
 }
 
-/** 批填充时是否仅用中心骨架（跳过布尔/扩张）；智能描边预览不走此分支 */
+/** Whether to use only center skeleton for batch fill (skips boolean/expand); smart-stroke preview does not use this branch */
 export function usePreviewSkeletonForBatchFill(curve, { strokePreview = false } = {}) {
     if (!strokePreview || (curve.smart_stroke && curve.stroke_width > 0)) return false;
     return isCurveClosedRing(curve);
@@ -77,9 +77,9 @@ function ensureBooleanCache(curve) {
 }
 
 /**
- * 骨架参考线几何：智能描边 + 有宽度 → 布尔熔合外轮廓；否则 → 中心骨架线。
- * 对八字形等自交路径，直接用布尔缓存（两侧偏移 + 原始填充的 union），
- * 而非 pickOuterOffsetPaths（只能选一侧，在另一侧会陷入内部）。
+ * Skeleton reference line geometry: smart-stroke + width → boolean-merged outer outline; otherwise → center skeleton line.
+ * For self-intersecting paths (e.g. figure-eight shapes), use boolean cache directly (union of both-side offsets + original fill),
+ * instead of pickOuterOffsetPaths (which can only pick one side and would enter the interior on the other).
  */
 function emitSkeletonReferencePath(ctx, curve, mapPoint) {
     if (!ctx || !curve?.startNode) return;
@@ -96,7 +96,7 @@ function emitSkeletonReferencePath(ctx, curve, mapPoint) {
 }
 
 /**
- * 批处理填充：向当前 path 追加轮廓（不 beginPath / 不 fill）。
+ * Batch fill: appends outline to current path (does not beginPath / fill).
  */
 export function appendCurveFillPath(ctx, curve, viewport, { refId = null, strokePreview = false } = {}) {
     if (!ctx || !curve?.startNode) return;
@@ -135,7 +135,7 @@ export function appendCurveFillPath(ctx, curve, viewport, { refId = null, stroke
 }
 
 /**
- * 描边层：填充（可选）、描边宽度、骨架预览线。
+ * Stroke layer: fill (optional), stroke width, skeleton preview line.
  */
 export function drawCurveStroke(
     ctx,
@@ -165,7 +165,7 @@ export function drawCurveStroke(
     const scale = viewport.scale ?? 1;
 
     if (strokePreview) {
-        // 智能描边轮廓已在批填充 pass 画出；勿用中心线 + lineWidth 冒充描边
+        // Smart-stroke outline already drawn in batch-fill pass; do not fake stroke with center-line + lineWidth
         if (!(curve.smart_stroke && curve.stroke_width > 0) && (renderMode === "stroke" || renderMode === "all")) {
             ctx.lineWidth = curve.stroke_width > 0 ? curve.stroke_width * scale : 1;
             ctx.strokeStyle = curve.stroke_width > 0 ? theme.path_fill_color : theme.path_stroke_color;
@@ -188,7 +188,7 @@ export function drawCurveStroke(
     }
 }
 
-/** 命中测试 / 导出：完整轮廓 path */
+/** Hit-test / export: full outline path */
 export function appendCurveOutlinePath(ctx, curve, viewport, { pass = "all", refId = null, strokePreview = false } = {}) {
     if (!ctx || !curve?.startNode) return;
     if (pass === "fill") {

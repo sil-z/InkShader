@@ -1,4 +1,4 @@
-// js/glyph_sequence_editor.js — DOM/事件；领域逻辑 domain；预览 presentation
+// js/glyph_sequence_editor.js — DOM/events; domain logic domain; preview presentation
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { appEventBus } from "../app/event_bus.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";

@@ -1,10 +1,10 @@
-// js/core/bezier/tree_store.js — 树结构存储：分组层级、对象 CRUD、缓存
+// js/core/bezier/tree_store.js — Tree structure storage: group hierarchy, object CRUD, cache
 import { TransformEngine } from '../transform_engine.js';
 import { DOMAIN_EVENTS } from '../../domain/events/domain_events.js';
 
 /**
- * TreeStore：管理 treeItems、rootChildren、groupFlatCache、对象变换/属性。
- * 依赖 CurveStore 做曲线查找，通过 EventEmitter 发射领域事件。
+ * TreeStore: manages treeItems, rootChildren, groupFlatCache, object transforms/properties.
+ * Depends on CurveStore for curve lookup, emits domain events through EventEmitter.
  */
 export class TreeStore {
     /** @type {import('./curve_store.js').CurveStore} */
@@ -27,7 +27,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 树基础操作
+    // Basic tree operations
     // =========================================================================
 
     initTree() {
@@ -153,7 +153,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 组展平 + 缓存
+    // Group flattening + cache
     // =========================================================================
 
     getCurvesForGroup(groupId) {
@@ -243,7 +243,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 对象操作
+    // Object operations
     // =========================================================================
 
     deleteSingleObject(objectId) {
@@ -433,7 +433,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 变换预览
+    // Transform preview
     // =========================================================================
 
     applyTransformPreview(payload = {}, sequenceCtx = {}) {
@@ -539,7 +539,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 边界编辑
+    // Bounds editing
     // =========================================================================
 
     _getBoundsSelectionSignature(selectedCurves, selectedRefs) {
@@ -790,7 +790,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 引用 / 克隆 / 取消引用
+    // References / clones / unlink
     // =========================================================================
 
     pasteGroupRef(sourceGroupId, targetGroupId, transform = null) {
@@ -915,7 +915,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 图片导入
+    // Image import
     // =========================================================================
 
     importImageToCurrentGroup(imgObj, fileName, activeGroupId) {
@@ -963,7 +963,7 @@ export class TreeStore {
     }
 
     // =========================================================================
-    // 应用树层级顺序
+    // Apply tree child order
     // =========================================================================
 
     applyTreeChildOrder(groupId, nameOrder) {

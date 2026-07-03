@@ -1,4 +1,4 @@
-// js/presentation/canvas/canvas_interaction_controller.js — 工具调度器（委派给专职工具）
+// js/presentation/canvas/canvas_interaction_controller.js — Tool dispatcher (delegates to specialized tools)
 import {
     resolveCurvesFromSnapshot,
     resolveRefsFromSnapshot,
@@ -12,9 +12,19 @@ import { MeasureTool } from "./tools/measure_tool.js";
 import { EllipseTool } from "./tools/ellipse_tool.js";
 
 /**
- * CanvasInteractionController：薄调度层，将鼠标事件委派给对应工具。
- * 每个工具（Select/Draw/Node/Measure）独立管理自己的交互逻辑。
- * TransformTool 被 Select 和 Node 共用。
+ * CanvasInteractionController: thin dispatcher layer, delegates mouse events to corresponding tools.
+ * Each tool (Select/Draw/Node/Measure) manages its own interaction logic independently.
+ * TransformTool is shared by Select and Node.
+ *
+ * Hover system (hit detection and visual feedback):
+ * - Nodes: hitTestNode() -> highlight + hovered_node_marker
+ * - Curve segments: hitTestCurve() -> highlight + hovered_curve_segment
+ * - Transform handles: hitTestTransformHandles() -> cursor (nwse/nesw/ns/ew/crosshair)
+ * - Curves: hit -> move cursor if selected, default otherwise
+ * - User guidelines: hitTestUserGuides() -> ew-resize / ns-resize cursor
+ * - Dividers: hitTestDividerLines() -> ew-resize cursor
+ * - Measure ruler endpoints: _hitTestRulerEndpoint() -> draggable indicator
+ * - Measure ruler lines: _hitTestRulerLine() -> actionable indicator
  */
 export class CanvasInteractionController {
     constructor(canvas) {
@@ -29,7 +39,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // 预览键收集（跨工具共享）
+    // Preview key collection (shared across tools)
     // =========================================================================
 
     _pushPreviewKeys(keys, curveId, refId = null) {
@@ -88,7 +98,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // 框选矩形（跨工具共享）
+    // Box-select rectangle (shared across tools)
     // =========================================================================
 
     getBoxSelectRectWorld() {
@@ -96,7 +106,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // 绘制重置
+    // Drawing reset
     // =========================================================================
 
     resetCurveDrawing() {
@@ -106,7 +116,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // MouseDown 委派
+    // MouseDown delegation
     // =========================================================================
 
     handleMeasureMouseDown(worldX, worldY) {
@@ -129,13 +139,13 @@ export class CanvasInteractionController {
         const c = this.canvas;
         const tool = c.getActiveTool();
 
-        // DRAW 工具点击起点 → 闭合路径
+        // DRAW tool click on start point → close path
         if (tool === "DRAW" && c.current_curve && hitMarker === c.current_curve.startNode.main_node) {
             this.drawTool.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker);
             return;
         }
 
-        // NODE 工具或 DRAW 工具的节点拖拽
+        // NODE tool or DRAW tool node dragging
         this.nodeTool.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, isShiftKey, isCtrlKey);
     }
 
@@ -160,7 +170,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // MouseMove 委派
+    // MouseMove delegation
     // =========================================================================
 
     handleMouseMovePaintingHandle(mouseX, mouseY) {
@@ -176,7 +186,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // MouseUp 委派
+    // MouseUp delegation
     // =========================================================================
 
     handleTransformMouseUp() {
@@ -200,7 +210,7 @@ export class CanvasInteractionController {
     }
 
     // =========================================================================
-    // Wheel 委派
+    // Wheel delegation
     // =========================================================================
 
     actionSpiralMove(anchorNode, isExpanding) {

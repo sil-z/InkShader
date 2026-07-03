@@ -9,7 +9,7 @@ export class CanvasRenderRuntimeService {
         if (!c.viewportService.syncCanvasBitmapToDisplay()) return;
         const newVP = c.viewportConfig;
 
-        // 视口大小变化时按比例调整偏移，保持画纸在视口中的视觉位置稳定
+        // Adjust offset proportionally on viewport size change to keep canvas paper visually stable in viewport
         if (oldVP && newVP) {
             if (oldVP.viewportWidth !== newVP.viewportWidth && oldVP.viewportWidth > 0) {
                 const delta = newVP.viewportWidth - oldVP.viewportWidth;

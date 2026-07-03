@@ -1,5 +1,5 @@
 /**
- * 画布呈现主题（仅 canvas / UI 层使用，领域 core 不依赖）。
+ * Canvas rendering theme (canvas / UI layer only; domain core does not depend on it).
  */
 import { param_set, updateThemeParams } from "../../services/theme.js";
 

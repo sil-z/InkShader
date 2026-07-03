@@ -52,7 +52,7 @@ export function setupCanvasResizeBehavior(canvas) {
     canvas.resizeObserver = new ResizeObserver(onViewportChange);
     if (canvas.main_canvas_large) canvas.resizeObserver.observe(canvas.main_canvas_large);
     if (canvas.canvasObj) canvas.resizeObserver.observe(canvas.canvasObj);
-    // Chrome 页面缩放（Ctrl +/-）主要触发 visualViewport，而非 layout resize
+    // Chrome page zoom (Ctrl +/-) primarily triggers visualViewport, not layout resize
     if (typeof window !== "undefined" && window.visualViewport) {
         const vv = window.visualViewport;
         vv.addEventListener("resize", onViewportChange);

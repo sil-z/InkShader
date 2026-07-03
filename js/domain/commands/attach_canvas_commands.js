@@ -5,7 +5,7 @@ const commandMethodNames = Object.getOwnPropertyNames(CanvasCommands.prototype).
 );
 
 /**
- * 命令执行宿主：原型方法（含 _commitHistory）走 host，画布状态字段走 canvas。
+ * Command execution host: prototype methods (including _commitHistory) go through host, canvas state fields go through canvas.
  */
 function createCommandHost(canvas) {
     const host = Object.create(CanvasCommands.prototype);
@@ -25,7 +25,7 @@ function createCommandHost(canvas) {
             return typeof v === "function" ? v.bind(canvas) : v;
         },
         set(_target, prop, value) {
-            // 画布状态必须写在 canvas 上；交互/渲染直接读 c.current_curve 等字段
+            // Canvas state must be written on canvas; interaction/rendering directly reads c.current_curve etc.
             if (commandMethodNames.includes(prop) && typeof host[prop] === "function") {
                 return true;
             }
@@ -64,7 +64,7 @@ function createCommandHost(canvas) {
 }
 
 /**
- * 命令门面：挂在 canvas.commands，不再把数十个方法铺到 MainCanvas 实例上。
+ * Command facade: mounted on canvas.commands, no longer spills dozens of methods onto the MainCanvas instance.
  */
 export function attachCanvasCommands(canvas) {
     if (!canvas || canvas.__commandsAttached === true) return;

@@ -204,12 +204,17 @@ export class GroupSettingsPopup extends HTMLElement {
     }
 
     _restoreDockedState() {
+        let docked = true;
         try {
             const v = localStorage.getItem(DOCK_KEY);
-            if (v === '1') {
-                this._docked = true;
-            }
-        } catch (_) {}
+            if (v === '0') docked = false;
+        } catch (_) {
+            // localStorage unavailable — stay with default (docked)
+        }
+        this._docked = docked;
+        if (docked) {
+            appEventBus.emit(GRP_DOCKED, { groupId: this._groupId });
+        }
     }
 
     _restorePosition() {

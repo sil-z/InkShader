@@ -1,4 +1,4 @@
-// js/core/bezier/curve.js — 领域几何（无 Canvas / 无主题）
+// js/core/bezier/curve.js — Domain geometry (no Canvas / no theme)
 import { generateMarker } from './utils.js';
 import { CurveNode } from './node.js';
 import { CurveStore } from './curve_store.js';
@@ -74,8 +74,8 @@ export class Curve {
         return { minX: minX - expandD, minY: minY - expandD, maxX: maxX + expandD, maxY: maxY + expandD };
     }
 
-    // 变换/属性面板使用的边界口径：
-    // 仅 smart_stroke 路径把描边宽度计入 W/H；普通描边仅作为视觉效果不参与几何缩放口径。
+    // Bounds used by transform/property panel:
+    // only smart_stroke paths include stroke width in W/H; normal stroke is visual-only, not part of geometry scale bounds.
     getTransformBounds(matrix = null) {
         return this.getBounds(matrix, { strokeMode: 'transform' });
     }
@@ -322,7 +322,7 @@ export class Curve {
         return this;
     }
 
-    /** 骨架贝塞尔段（模型坐标，供呈现层变换后绘制） */
+    /** Skeleton Bezier segments (model coordinates, rendered by presentation layer after transform) */
     getSkeletonBezierSegments() {
         if (!this.startNode) return [];
         const segments = [];
@@ -346,8 +346,8 @@ export class Curve {
     }
 
     /**
-     * 智能描边扩张轮廓（模型坐标下的 offset 贝塞尔列表）
-     * @param {number} halfWidth 半宽（模型单位；呈现时用 stroke_width * scale / 2）
+     * Smart stroke expanded outline (offset Bezier list in model coordinates)
+     * @param {number} halfWidth half-width (model units; rendered using stroke_width * scale / 2)
      */
     computeExpandedStrokeOutline(halfWidth) {
         const absD = halfWidth;

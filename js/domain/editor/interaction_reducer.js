@@ -119,7 +119,7 @@ export function finalizeInteractionState(state, curveManager = null, actionType 
 }
 
 /**
- * Store 交互态 reducer（纯函数；curveManager 仅用于 id 推导，不读 CM 选区集合）。
+ * Store interaction state reducer (pure function; curveManager used only for id derivation, does not read CM selection set).
  */
 export function reduceInteractionState(state, action, curveManager = null) {
     const payload = action?.payload || {};
