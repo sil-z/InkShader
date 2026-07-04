@@ -1206,7 +1206,8 @@ export class PropertyPanel extends HTMLElement {
             if (isNaN(numVal)) return;
             let marker;
             if (this._nodePropsDocked && this._nodePropsAnchorId) {
-                marker = this._nodePropsAnchorId;
+                marker = EditorModel.resolveNodeMarker(this._nodePropsAnchorId);
+                if (!marker) return;
             } else {
                 marker = this._resolvePrimaryNodeMarker();
             }

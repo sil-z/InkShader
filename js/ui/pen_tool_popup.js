@@ -3,21 +3,21 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
 
 const POPUP_HTML = `
-<div class="pen-tool-popup-header" data-i18n="prop.pen_settings">Pen Tool Settings</div>
-<div class="pen-tool-popup-body">
-    <div class="pen-tool-row">
+<div class="property_group_title" data-i18n="prop.pen_settings">Pen Tool Settings</div>
+<div class="npp-fields">
+    <div class="npp-row">
         <label data-i18n="prop.weight">Weight</label>
         <input type="number" min="0" step="1" id="pen_popup_stroke">
     </div>
-    <div class="pen-tool-row">
+    <div class="npp-row">
         <label data-i18n="prop.closed">Closed</label>
         <input type="checkbox" id="pen_popup_closed">
     </div>
-    <div class="pen-tool-row">
+    <div class="npp-row">
         <label data-i18n="prop.smart">Smart</label>
         <input type="checkbox" id="pen_popup_smart_stroke">
     </div>
-    <div class="pen-tool-row">
+    <div class="npp-row">
         <label data-i18n="prop.skel">Skeleton</label>
         <input type="checkbox" id="pen_popup_show_skel">
     </div>

@@ -257,12 +257,19 @@ export class CanvasInputController {
                 }
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-                const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
-                const newId = hit ? hit.guide.id : null;
-                if (c._hoveredUserGuideId !== newId) {
-                    c._hoveredUserGuideId = newId;
-                    c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
-                    c.is_dirty = true;
+                if (c.guideline_lock) {
+                    if (c._hoveredUserGuideId !== null) {
+                        c._hoveredUserGuideId = null;
+                        c.is_dirty = true;
+                    }
+                } else {
+                    const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
+                    const newId = hit ? hit.guide.id : null;
+                    if (c._hoveredUserGuideId !== newId) {
+                        c._hoveredUserGuideId = newId;
+                        c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                        c.is_dirty = true;
+                    }
                 }
                 const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
                 const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + "-r" : null;
@@ -513,9 +520,9 @@ export class CanvasInputController {
                 const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
-                if (guideHit && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
+                if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                if (divHit && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
+                if (divHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
@@ -791,12 +798,19 @@ export class CanvasInputController {
             }
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-            const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
-            const newId = hit ? hit.guide.id : null;
-            if (c._hoveredUserGuideId !== newId) {
-                c._hoveredUserGuideId = newId;
-                c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
-                c.is_dirty = true;
+            if (c.guideline_lock) {
+                if (c._hoveredUserGuideId !== null) {
+                    c._hoveredUserGuideId = null;
+                    c.is_dirty = true;
+                }
+            } else {
+                const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
+                const newId = hit ? hit.guide.id : null;
+                if (c._hoveredUserGuideId !== newId) {
+                    c._hoveredUserGuideId = newId;
+                    c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                    c.is_dirty = true;
+                }
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + "-r" : null;

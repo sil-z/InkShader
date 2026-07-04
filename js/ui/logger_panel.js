@@ -142,13 +142,13 @@ function formatCommandDetail(commandName, payload = {}) {
 
 export class LoggerPanel extends HTMLElement {
     connectedCallback() {
+        // One-time DOM setup — survives disconnect/reconnect cycles
         if (!this._domReady) {
             this._domReady = true;
             this.innerHTML = TEMPLATE_HTML;
             this.output = this.querySelector('#logger_output');
             this.input = this.querySelector('#logger_input');
             this.scrollEl = this.querySelector('.logger-scroll');
-            this._cleanups = [];
 
             this.input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && this.input.value.trim()) {
@@ -163,31 +163,30 @@ export class LoggerPanel extends HTMLElement {
             this.scrollEl.addEventListener('mouseleave', () => {
                 this.scrollEl.classList.remove('show-scrollbar');
             });
-
-            // Listen for commit commands from EditorStore
-            this._cleanups.push(appEventBus.on('COMMAND_COMMITTED', (e) => {
-                const detail = e.detail || {};
-                if (detail.commandName === 'CHANGE_NODE_SELECTION') return;
-                this.logCommand(detail.commandName, detail.payload);
-            }));
-
-            // Listen for undo/redo navigation
-            this._cleanups.push(appEventBus.on('canvas-state-changed', (e) => {
-                const action = e.detail?.action;
-                if (!action || action?.meta?.source !== 'history') return;
-                if (action.type === 'UNDO') {
-                    this.logHistory('Undo', action.meta.commandName);
-                } else if (action.type === 'REDO') {
-                    this.logHistory('Redo', action.meta.commandName);
-                }
-            }));
         }
+
+        // Always re-attach appEventBus listeners (cleaned up in disconnectedCallback)
+        this._cleanups = [];
+        this._cleanups.push(appEventBus.on('COMMAND_COMMITTED', (e) => {
+            const detail = e.detail || {};
+            if (detail.commandName === 'CHANGE_NODE_SELECTION') return;
+            this.logCommand(detail.commandName, detail.payload);
+        }));
+        this._cleanups.push(appEventBus.on('canvas-state-changed', (e) => {
+            const action = e.detail?.action;
+            if (!action || action?.meta?.source !== 'history') return;
+            if (action.type === 'UNDO') {
+                this.logHistory('Undo', action.meta.commandName);
+            } else if (action.type === 'REDO') {
+                this.logHistory('Redo', action.meta.commandName);
+            }
+        }));
     }
 
     disconnectedCallback() {
         this._cleanups.forEach(fn => fn());
         this._cleanups = [];
-        this._domReady = false;
+        // Do NOT reset _domReady — preserve DOM and log content across reconnect
     }
 
     log(message, type = 'info') {

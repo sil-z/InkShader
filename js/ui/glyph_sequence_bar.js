@@ -598,7 +598,8 @@ export class GlyphSequenceBar extends HTMLElement {
         addBtn.addEventListener("click", () => {
             const nameVal = nameInput.value.trim();
             let codeVal = codeInput.value.trim();
-            const advVal = parseInt(advInput.value) || 1000;
+            const advVal = parseInt(advInput.value);
+            const finalAdv = isNaN(advVal) ? 1000 : advVal;
             nameInput.classList.remove("seq-menu-input-error");
             codeInput.classList.remove("seq-menu-input-error");
             let charStr = null;
@@ -680,7 +681,7 @@ export class GlyphSequenceBar extends HTMLElement {
                     if (charStr && charStr.length > 1) {
                         CanvasDispatcher.requestSetGroupCharCode(gid, charStr);
                     }
-                    if (advVal !== 1000) CanvasDispatcher.requestSetGroupAdvance(gid, advVal);
+                    if (finalAdv !== 1000) CanvasDispatcher.requestSetGroupAdvance(gid, finalAdv);
                 }
             }
             nameInput.value = "";
