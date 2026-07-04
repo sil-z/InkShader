@@ -120,11 +120,12 @@ export function appendCurveFillPath(ctx, curve, viewport, { refId = null, stroke
     const needsSkeletonFill =
         isClosedRing && (!curve.smart_stroke || curve.stroke_width === 0);
     if (needsSkeletonFill) {
-        ensureBooleanCache(curve);
-        if (hasUsableBooleanCache(curve)) {
-            emitBooleanSubpaths(ctx, curve.cached_boolean_geometry, mapPoint);
-            return;
-        }
+        // Draw skeleton bezier segments directly instead of going through boolean cache.
+        // Paper.js resolveCrossings in the boolean cache splits self-intersecting paths
+        // into subpaths. When the start point's subpath ends up with only the start
+        // point as an original node (all other points being intersection division points),
+        // that subpath may form a degenerate shape with near-zero area and render blank.
+        // The nonzero fill rule handles self-intersections correctly without splitting.
         emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: true });
         return;
     }

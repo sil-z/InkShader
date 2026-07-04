@@ -32,7 +32,7 @@ function buildPaperPaths(pScope, recorder) {
     const pathList = [];
     for (const sub of recorder.paths) {
         if (sub.length === 0) continue;
-        const p = new pScope.Path();
+        let p = new pScope.Path();
         for (const cmd of sub) {
             if (cmd.t === "M") p.moveTo(new pScope.Point(cmd.x, cmd.y));
             else if (cmd.t === "L") p.lineTo(new pScope.Point(cmd.x, cmd.y));
@@ -47,6 +47,18 @@ function buildPaperPaths(pScope, recorder) {
         for (const seg of p.segments) {
             if (seg.handleIn && seg.handleIn.length < 0.001) seg.handleIn.set(0, 0);
             if (seg.handleOut && seg.handleOut.length < 0.001) seg.handleOut.set(0, 0);
+        }
+        // Resolve self-intersections to prevent degenerate boundaries at sharp bends
+        if (typeof p.resolveCrossings === "function") {
+            try {
+                const resolved = p.resolveCrossings();
+                if (resolved && resolved !== p) {
+                    p.remove();
+                    p = resolved;
+                }
+            } catch (e) {
+                console.warn("resolveCrossings failed for offset path", e);
+            }
         }
         pathList.push(p);
     }
@@ -100,6 +112,19 @@ export function refreshCurveBooleanCache(curve) {
         } catch (e) {
             console.warn("Boolean melting step failed for a sub-path", e);
             nextPiece.remove();
+        }
+    }
+
+    // Resolve any remaining self-intersections in the united result
+    if (resultPath && typeof resultPath.resolveCrossings === "function") {
+        try {
+            const resolved = resultPath.resolveCrossings();
+            if (resolved && resolved !== resultPath) {
+                resultPath.remove();
+                resultPath = resolved;
+            }
+        } catch (e) {
+            console.warn("resolveCrossings on united result failed", e);
         }
     }
 

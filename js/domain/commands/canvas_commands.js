@@ -816,6 +816,8 @@ export class CanvasCommands {
 
     /**
      * Command: expand stroke (batch)
+     * Follows proven patterns from cloneCurveToGroup (direct add_node_by_curve + changeSmoothModeOnSingleNode)
+     * and executeBooleanUnion (unregisterCurveDomMarkers for proper domMap cleanup).
      */
     expandSelectedStroke() {
         const cm = this.curve_manager;
@@ -854,10 +856,7 @@ export class CanvasCommands {
                 newCurve.smart_stroke = true;
                 newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise !== false;
 
-                let prev_curve = this.current_curve;
-                let prev_last = this.last_on_curve_node_marker;
-                this.current_curve = newCurve;
-                this.last_on_curve_node_marker = null;
+                let last_main_node = null;
 
                 for (let i = 0; i < sub.segments.length; i++) {
                     let seg = sub.segments[i];
@@ -876,29 +875,57 @@ export class CanvasCommands {
                         }
                     }
 
-                    let marker = this.addMainNode(seg.x, seg.y);
+                    // Direct add_node_by_curve (same pattern as cloneCurveToGroup)
+                    let marker = generateMarker("vertex");
+                    cm.add_node_by_curve(marker, "vertex", seg.x, seg.y, null, last_main_node, newCurve, String(marker.id));
+                    last_main_node = marker;
                     let node = cm.find_node_by_curve(marker);
-                    let controlMode = (seg.inX !== 0 || seg.inY !== 0 || seg.outX !== 0 || seg.outY !== 0) ? 1 : 0;
-                    if (controlMode !== 0) cm.changeSmoothModeOnSingleNode(marker, controlMode, true);
-                    if (node.control1) {
-                        node.control1.x = seg.x + (seg.outX || 0);
-                        node.control1.y = seg.y + (seg.outY || 0);
+
+                    // Create handles for segments with offset geometry;
+                    // changeSmoothModeOnSingleNode internally calls applyMode which creates
+                    // both handles at default 30px offset - we must delete degenerate handles
+                    // (zero-length) to keep them from corrupting the curve shape.
+                    const outLen = Math.hypot(seg.outX || 0, seg.outY || 0);
+                    const inLen = Math.hypot(seg.inX || 0, seg.inY || 0);
+                    const hasOut = outLen >= 0.001;
+                    const hasIn = inLen >= 0.001;
+
+                    if (hasOut || hasIn) {
+                        cm.changeSmoothModeOnSingleNode(marker, 1, true);
+                        if (node.control1) {
+                            if (hasOut) {
+                                node.control1.x = seg.x + (seg.outX || 0);
+                                node.control1.y = seg.y + (seg.outY || 0);
+                            } else {
+                                cm.deleteControlNode(node.control1.main_node);
+                            }
+                        }
+                        if (node.control2) {
+                            if (hasIn) {
+                                node.control2.x = seg.x + (seg.inX || 0);
+                                node.control2.y = seg.y + (seg.inY || 0);
+                            } else {
+                                cm.deleteControlNode(node.control2.main_node);
+                            }
+                        }
                     }
-                    if (node.control2) {
-                        node.control2.x = seg.x + (seg.inX || 0);
-                        node.control2.y = seg.y + (seg.inY || 0);
-                    }
+
                     newCurve.endNode = node;
                 }
-
-                this.current_curve = prev_curve;
-                this.last_on_curve_node_marker = prev_last;
 
                 cm.addPath(newCurve, parentGroupId);
                 expandedCurves.push(newCurve);
             }
 
-            cm.remove_curve(curve.id);
+            // Proper cleanup matching executeBooleanUnion pattern:
+            // remove DOM markers first, then tree item, then splice from curves array.
+            // remove_curve() alone doesn't clean domMap, leaving stale markers that
+            // confuse resolveMarkerById and corrupt undo/redo state.
+            cm.curveStore.unregisterCurveDomMarkers(curve);
+            cm.treeStore.deleteTreeItem(curve.id, false);
+            const curveIdx = cm.curves.findIndex(c => c.id === curve.id);
+            if (curveIdx !== -1) cm.curves.splice(curveIdx, 1);
+            cm.notifyTreeUpdate();
             changed = true;
         }
 

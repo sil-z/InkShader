@@ -514,36 +514,61 @@ export class Curve {
 
                     let q0 = { x: p0.x + d * n0.x, y: p0.y + d * n0.y };
                     let q3 = { x: p3.x + d * n3.x, y: p3.y + d * n3.y };
+                    let offsetChord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
 
                     let v0 = { x: p1.x - p0.x, y: p1.y - p0.y };
                     let v1 = { x: p2.x - p3.x, y: p2.y - p3.y }; 
                     
                     if (Math.hypot(v0.x, v0.y) < 1e-5) v0 = { x: p2.x - p0.x, y: p2.y - p0.y };
-                    if (Math.hypot(v1.x, v1.y) < 1e-5) v1 = { x: p1.x - p3.x, y: p1.y - p3.y };
+                    if (Math.hypot(v1.x, v1.y) < 1e-5) v1 = { x: p1.x - p3.x, y: p1.y - p3.x };
 
-                    let n_mid = getNormal(0.5, p0, p1, p2, p3) || n0;
-                    let true_mid_orig = evalBezier(0.5, p0, p1, p2, p3);
-                    let M_true = { x: true_mid_orig.x + d * n_mid.x, y: true_mid_orig.y + d * n_mid.y };
+                    let n_mid = getNormal(0.5, p0, p1, p2, p3);
+                    let q1, q2;
 
-                    let targetX = (M_true.x - 0.125*q0.x - 0.125*q3.x - 0.375*q0.x - 0.375*q3.x) / 0.375;
-                    let targetY = (M_true.y - 0.125*q0.y - 0.125*q3.y - 0.375*q0.y - 0.375*q3.y) / 0.375;
-                    
-                    let V_sum = { x: v0.x + v1.x, y: v0.y + v1.y };
-                    let V_sum_sq = V_sum.x*V_sum.x + V_sum.y*V_sum.y;
-                    
-                    let scaleFactor = 1;
-                    if (V_sum_sq > 1e-5) {
-                        scaleFactor = (targetX * V_sum.x + targetY * V_sum.y) / V_sum_sq;
+                    if (n_mid) {
+                        let true_mid_orig = evalBezier(0.5, p0, p1, p2, p3);
+                        let M_true = { x: true_mid_orig.x + d * n_mid.x, y: true_mid_orig.y + d * n_mid.y };
+
+                        let targetX = (M_true.x - 0.125*q0.x - 0.125*q3.x - 0.375*q0.x - 0.375*q3.x) / 0.375;
+                        let targetY = (M_true.y - 0.125*q0.y - 0.125*q3.y - 0.375*q0.y - 0.375*q3.y) / 0.375;
+                        
+                        // Solve 2×2 linear system for per-handle scale factors s₀, s₁:
+                        //   B(0.5) = 0.5·q₀ + 0.5·q₃ + 0.375·(v₀·s₀ + v₁·s₁) = M_true
+                        //   ⇒  v₀·s₀ + v₁·s₁ = target   (x and y components → 2 eqns)
+                        // Cramer's rule:
+                        //   s₀ = det(target, v₁) / det(v₀, v₁)
+                        //   s₁ = det(v₀, target) / det(v₀, v₁)
+                        let det = v0.x * v1.y - v0.y * v1.x;
+                        let s0, s1;
+
+                        if (Math.abs(det) > 1e-10) {
+                            s0 = (targetX * v1.y - targetY * v1.x) / det;
+                            s1 = (v0.x * targetY - v0.y * targetX) / det;
+                            s0 = Math.max(0.01, Math.min(50, s0));
+                            s1 = Math.max(0.01, Math.min(50, s1));
+                        } else {
+                            // Near-parallel handles — fall back to single scale factor
+                            let V_sum_sq = (v0.x+v1.x)*(v0.x+v1.x) + (v0.y+v1.y)*(v0.y+v1.y);
+                            if (V_sum_sq > 1e-5) {
+                                let s = (targetX * (v0.x+v1.x) + targetY * (v0.y+v1.y)) / V_sum_sq;
+                                s0 = s1 = Math.max(0.01, Math.min(50, s));
+                            } else {
+                                let oldChord = chordLen; 
+                                let newChord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
+                                s0 = s1 = oldChord > 1e-5 ? newChord / oldChord : 1;
+                            }
+                        }
+
+                        q1 = { x: q0.x + v0.x * s0, y: q0.y + v0.y * s0 };
+                        q2 = { x: q3.x + v1.x * s1, y: q3.y + v1.y * s1 };
                     } else {
-                        let oldChord = chordLen; 
-                        let newChord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
-                        scaleFactor = oldChord > 1e-5 ? newChord / oldChord : 1;
+                        // Normal at midpoint undefined (P'(t) ≈ 0 at tight bend).
+                        // Skip midpoint matching — the error-check below will force
+                        // subdivision, and each half will have well-defined normals.
+                        let s = Math.max(0.01, Math.min(50, 1));
+                        q1 = { x: q0.x + v0.x * s, y: q0.y + v0.y * s };
+                        q2 = { x: q3.x + v1.x * s, y: q3.y + v1.y * s };
                     }
-
-                    scaleFactor = Math.max(0.01, Math.min(scaleFactor, 5.0));
-
-                    let q1 = { x: q0.x + v0.x * scaleFactor, y: q0.y + v0.y * scaleFactor };
-                    let q2 = { x: q3.x + v1.x * scaleFactor, y: q3.y + v1.y * scaleFactor };
 
                     let shouldSubdivide = false;
                     let splitT = 0.5; 
@@ -553,7 +578,15 @@ export class Curve {
                         let maxError = 0; let maxErrorT = 0.5;
 
                         for (let st of samples) {
-                            let n_st = getNormal(st, p0, p1, p2, p3) || n0;
+                            let n_st = getNormal(st, p0, p1, p2, p3);
+                            if (!n_st) {
+                                // Normal undefined at this sample (derivative ≈ 0 at
+                                // tight bend). Force subdivision — each sub-segment
+                                // will have well-defined normals.
+                                shouldSubdivide = true;
+                                splitT = st;
+                                break;
+                            }
                             let orig_st = evalBezier(st, p0, p1, p2, p3);
                             let true_offset_st = { x: orig_st.x + d * n_st.x, y: orig_st.y + d * n_st.y };
                             let cand_st = evalBezier(st, q0, q1, q2, q3);
@@ -561,9 +594,11 @@ export class Curve {
                             if (err > maxError) { maxError = err; maxErrorT = st; }
                         }
 
-                        let thicknessScale = Math.max(1.0, Math.abs(d));
-                        let dynamicTolerance = config.baseErrorTolerance * thicknessScale;
-                        if (maxError > dynamicTolerance) { shouldSubdivide = true; splitT = maxErrorT; }
+                        if (!shouldSubdivide) {
+                            let thicknessScale = Math.max(1.0, Math.abs(d));
+                            let dynamicTolerance = config.baseErrorTolerance * thicknessScale;
+                            if (maxError > dynamicTolerance) { shouldSubdivide = true; splitT = maxErrorT; }
+                        }
 
                         let dot = n0.x * n3.x + n0.y * n3.y;
                         if (dot < config.sharpBendThreshold) { shouldSubdivide = true; splitT = 0.5; }
