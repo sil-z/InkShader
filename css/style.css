@@ -1499,13 +1499,97 @@ font-popup {
     border: 1px solid var(--ui-border);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
-    min-width: 180px;
+    min-width: 320px;
+    max-width: 400px;
+    max-height: 80vh;
     display: none;
 }
 pen-tool-popup.visible,
 ellipse-tool-popup.visible,
 font-popup.visible {
     display: block;
+}
+font-popup .pen-tool-popup-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ui-text-muted);
+    padding: 10px 12px 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: default;
+}
+font-popup .pen-tool-popup-body {
+    padding: 4px 10px 10px;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+font-popup .pen-tool-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+    min-height: 24px;
+}
+font-popup .pen-tool-row label {
+    width: 110px;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+font-popup .pen-tool-row input,
+font-popup .pen-tool-row select {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+}
+font-popup .pen-tool-row input:focus,
+font-popup .pen-tool-row select:focus {
+    border-color: var(--ui-accent);
+}
+font-popup .pen-tool-row textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    padding: 3px 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+    outline: none;
+    resize: vertical;
+}
+font-popup .pen-tool-row textarea:focus {
+    border-color: var(--ui-accent);
+}
+font-popup .pen-tool-separator {
+    height: 1px;
+    background: var(--ui-border);
+    margin: 6px 0;
+    opacity: 0.4;
+}
+/* Hide number input spinners in font-popup */
+font-popup .pen-tool-row input[type="number"]::-webkit-outer-spin-button,
+font-popup .pen-tool-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+font-popup .pen-tool-row input[type="number"] {
+    -moz-appearance: textfield;
 }
 pen-tool-popup .npp-row input[type="checkbox"],
 ellipse-tool-popup .npp-row input[type="checkbox"] {

@@ -102,7 +102,7 @@ class MainCanvasBase extends HTMLElement {
         /** false: disallow undo/redo from silently calling loadFromSnapshotObject (restore/open-file only) */
         this.history_allow_snapshot_fallback = false;
         this.drawToolSettings = {
-            stroke_width: 1, closed: false, smart_expand: true, show_skeleton: true
+            stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
         };
         this.viewportService = new CanvasViewportService(this);
         this.renderRuntimeService = new CanvasRenderRuntimeService(this);

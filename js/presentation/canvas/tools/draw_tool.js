@@ -17,7 +17,7 @@ import {
  * - Ctrl+Z (during draw): reverts last main node (no history write)
  * - Tool switch: auto-completes current path
  *
- * Default properties: stroke_width=1, closed=false, smart_expand=true, show_skeleton=true
+ * Default properties: stroke_width=0, closed=true, smart_expand=true, show_skeleton=true
  */
 export class DrawTool extends BaseTool {
     // =========================================================================

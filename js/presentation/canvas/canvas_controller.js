@@ -303,16 +303,10 @@ export class CanvasController {
                         c.offset.y = newCenterY + panY;
                     }
                 }
-                if (viewState.draw_tool_settings) {
-                    c.drawToolSettings = viewState.draw_tool_settings;
-                    c.editorStore?.commitInteraction?.(
-                        {
-                            type: "SET_DRAW_TOOL_SETTINGS",
-                            payload: { ...viewState.draw_tool_settings }
-                        },
-                        { emit: true }
-                    );
-                }
+                // draw_tool_settings intentionally NOT restored from localStorage:
+                // tool defaults come from code (interaction_reducer.js / main_canvas.js),
+                // restoring stale settings (e.g. stroke_width: 1) would silently override
+                // code-default changes.  User adjusts these per-session via the popup UI.
                 c.editorStore?.syncViewFromCanvas?.();
 
                 // Old fixed-width restoration (right_width) is now handled by dock layout; removed to avoid

@@ -3,7 +3,7 @@ import { EDITOR_ACTIONS } from "../actions/editor_actions.js";
 export function defaultDrawToolSettings() {
     return {
         stroke_width: 0,
-        closed: false,
+        closed: true,
         smart_expand: true,
         show_skeleton: true
     };

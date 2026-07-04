@@ -36,7 +36,14 @@ export const translations = {
         "color.path_stroke": "Path Stroke", "color.path_fill": "Path Fill", "color.preview": "Preview Curve", "color.hover_stroke": "Hovered Curve", "color.oncurve_stroke": "Node Stroke", "color.oncurve_fill": "Node Fill", "color.selected_stroke": "Selected Node Stroke", "color.selected_fill": "Selected Node Fill", "color.ctrl_stroke": "Handle Line", "color.ctrl_fill": "Handle Point", "color.ctrl_ahead": "Handle Ahead", "color.ctrl_back": "Handle Back", "color.guideline": "Guideline Color", "color.measure": "Measure Tool Color", "color.select_box": "Select Box Color", "color.body_bg": "Canvas Background",
 
         "pref.font": "Font Info", "font.family": "Family Name", "font.style": "Style Name", 
-        "font.upm": "Units Per Em (UPM)", "font.ascender": "Ascender", "font.descender": "Descender", 
+        "font.postscript_name": "PostScript Name", "font.preferred_family": "Preferred Family", "font.preferred_subfamily": "Preferred Subfamily",
+        "font.copyright": "Copyright", "font.designer": "Designer", "font.designer_url": "Designer URL",
+        "font.manufacturer": "Manufacturer", "font.manufacturer_url": "Manufacturer URL",
+        "font.license": "License", "font.license_url": "License URL",
+        "font.trademark": "Trademark", "font.description": "Description", "font.sample_text": "Sample Text",
+        "font.upm": "Units Per Em (UPM)", "font.weight_class": "Weight Class", "font.width_class": "Width Class",
+        "font.ascender": "Ascender", "font.descender": "Descender", 
+        "font.x_height": "x-Height", "font.cap_height": "Cap Height",
         "font.version": "Version",
 
         "menu.import": "Import",
@@ -73,8 +80,15 @@ export const translations = {
         "tree.menu.delete": "删除", "tree.menu.copy": "复制", "tree.menu.copy_ref": "复制为引用", "tree.menu.paste": "粘贴", "tree.menu.duplicate": "建立副本", "tree.menu.unlink": "取消引用链接", "tree.menu.go_source": "跳转至源对象",
 
         "color.path_stroke": "路径描边", "color.path_fill": "路径填充", "color.preview": "预览曲线", "color.hover_stroke": "悬停高亮", "color.oncurve_stroke": "节点描边", "color.oncurve_fill": "节点填充", "color.selected_stroke": "选中边缘", "color.selected_fill": "选中填充", "color.ctrl_stroke": "控制柄连线", "color.ctrl_fill": "控制柄端点", "color.ctrl_ahead": "出场手柄", "color.ctrl_back": "入场手柄", "color.guideline": "参考线", "color.measure": "测量工具", "color.select_box": "选中包围盒", "color.body_bg": "画布底色",
-        "pref.font": "字体信息", "font.family": "字体家族名称", "font.style": "字重/样式名称", 
-        "font.upm": "UPM (Em 框大小)", "font.ascender": "升部 (Ascender)", "font.descender": "降部 (Descender)", 
+        "pref.font": "字体信息", "font.family": "字体家族名称", "font.style": "字重/样式名称",
+        "font.postscript_name": "PostScript 名称", "font.preferred_family": "首选家族名称", "font.preferred_subfamily": "首选子家族名称",
+        "font.copyright": "版权信息", "font.designer": "设计师", "font.designer_url": "设计师网址",
+        "font.manufacturer": "制造商", "font.manufacturer_url": "制造商网址",
+        "font.license": "授权协议", "font.license_url": "授权协议网址",
+        "font.trademark": "商标信息", "font.description": "字体描述", "font.sample_text": "示例文本",
+        "font.upm": "UPM (Em 框大小)", "font.weight_class": "字重等级", "font.width_class": "字宽等级",
+        "font.ascender": "升部 (Ascender)", "font.descender": "降部 (Descender)",
+        "font.x_height": "x-高度 (x-Height)", "font.cap_height": "大写高度 (Cap Height)",
         "font.version": "字体版本",
 
         "menu.import": "导入",
