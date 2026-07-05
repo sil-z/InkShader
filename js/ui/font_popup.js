@@ -206,7 +206,6 @@ export class FontPopup extends HTMLElement {
 
         document.addEventListener('mousedown', (e) => {
             if (!this._visible) return;
-            if (e.button !== 0) return;
             if (!this.contains(e.target)) this.hide();
         }, true);
     }
@@ -289,13 +288,21 @@ export class FontPopup extends HTMLElement {
         if (projectName && this._projectManager) {
             const oldName = this._projectManager.getActiveProjectName();
             if (oldName && oldName !== projectName) {
+                // Immediately update the brand title for instant feedback
+                const el = document.getElementById('brand_title');
+                if (el) el.textContent = `${projectName} - InkShader`;
+                // Rename the underlying storage properly:
+                // activeProjectName stays 'oldName' throughout the save+rename to
+                // prevent any concurrent save from creating a duplicate entry.
                 this._projectManager.saveToCache(oldName).then(() => {
                     this._canvas?.history?._idbPut?.("projects", undefined);
-                    import('./storage.js').then(({ StorageUtils }) => {
-                        StorageUtils.renameProject(oldName, projectName).then(() => {
-                            this._projectManager.setActiveProjectName(projectName);
-                        });
+                    return import('./storage.js').then(({ StorageUtils }) => {
+                        return StorageUtils.renameProject(oldName, projectName);
                     });
+                }).then(() => {
+                    this._projectManager.setActiveProjectName(projectName);
+                }).catch(err => {
+                    console.warn('FontPopup rename error:', err);
                 });
             } else if (!oldName) {
                 this._projectManager.setActiveProjectName(projectName);

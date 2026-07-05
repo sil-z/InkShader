@@ -5,8 +5,10 @@ export class StorageUtils {
     static STORE_NAME = "AppState";
     static SAVE_KEY = "last_edit_state";
     static PROJECTS_KEY = "projects";
+    static PROJECT_ORDER_KEY = "project_order";
     static ACTIVE_PROJECT_KEY = "active_project";
     static VIEW_SAVE_KEY = "last_view_state";
+    static MAX_CACHED_PROJECTS = 5;
 
     static async initDB() {
         return new Promise((resolve, reject) => {
@@ -82,15 +84,55 @@ export class StorageUtils {
         return this._idbPut(this.PROJECTS_KEY, map);
     }
 
+    static async _getProjectOrder() {
+        return (await this._idbGet(this.PROJECT_ORDER_KEY)) || [];
+    }
+
+    static async _setProjectOrder(order) {
+        return this._idbPut(this.PROJECT_ORDER_KEY, order);
+    }
+
+    static async _touchProjectOrder(projectName) {
+        let order = await this._getProjectOrder();
+        // Remove if exists, then push to end (most recent)
+        const idx = order.indexOf(projectName);
+        if (idx !== -1) order.splice(idx, 1);
+        order.push(projectName);
+        await this._setProjectOrder(order);
+        return order;
+    }
+
     static async saveProject(projectName, data) {
         const map = await this._getProjectsMap();
+        const isNew = !(projectName in map);
         map[projectName] = data;
-        return this._setProjectsMap(map);
+        await this._setProjectsMap(map);
+        const order = await this._touchProjectOrder(projectName);
+        // Enforce max cache limit: evict oldest non-current project
+        if (isNew && order.length > this.MAX_CACHED_PROJECTS) {
+            const activeName = this.loadActiveProject();
+            while (order.length > this.MAX_CACHED_PROJECTS) {
+                const evictCandidate = order[0];
+                if (evictCandidate === projectName || evictCandidate === activeName) {
+                    // Never evict the project just saved or the active project
+                    order.splice(0, 1);
+                    continue;
+                }
+                const evicted = order.shift();
+                delete map[evicted];
+            }
+            await this._setProjectsMap(map);
+            await this._setProjectOrder(order);
+        }
     }
 
     static async loadProject(projectName) {
         const map = await this._getProjectsMap();
-        return map[projectName] || null;
+        const data = map[projectName] || null;
+        if (data) {
+            await this._touchProjectOrder(projectName);
+        }
+        return data;
     }
 
     static async listProjects() {
@@ -102,7 +144,14 @@ export class StorageUtils {
         const map = await this._getProjectsMap();
         if (projectName in map) {
             delete map[projectName];
-            return this._setProjectsMap(map);
+            await this._setProjectsMap(map);
+        }
+        // Also remove from order tracking
+        let order = await this._getProjectOrder();
+        const idx = order.indexOf(projectName);
+        if (idx !== -1) {
+            order.splice(idx, 1);
+            await this._setProjectOrder(order);
         }
     }
 
@@ -111,7 +160,15 @@ export class StorageUtils {
         if (oldName in map && !(newName in map)) {
             map[newName] = map[oldName];
             delete map[oldName];
-            return this._setProjectsMap(map);
+            await this._setProjectsMap(map);
+            // Update order: replace old name with new name
+            let order = await this._getProjectOrder();
+            const idx = order.indexOf(oldName);
+            if (idx !== -1) {
+                order[idx] = newName;
+                await this._setProjectOrder(order);
+            }
+            return true;
         }
         return false;
     }

@@ -264,6 +264,10 @@ div, span, label, p, button {
 .item:active, .tool_button:active {
     background-color: var(--ui-active-bg);
 }
+.item.active {
+    background-color: var(--ui-active-bg);
+    color: var(--ui-text-strong);
+}
 .canvas-wrap {
     flex: 1;
     display: flex;
@@ -1489,6 +1493,7 @@ bounding-box-popup .npp-drag-handle,
 group-settings-popup .npp-drag-handle {
     border-radius: 6px 6px 0 0;
 }
+preferences-popup,
 pen-tool-popup,
 ellipse-tool-popup,
 font-popup {
@@ -1505,6 +1510,7 @@ font-popup {
     max-height: 80vh;
     display: none;
 }
+preferences-popup.visible,
 pen-tool-popup.visible,
 ellipse-tool-popup.visible,
 font-popup.visible {
@@ -1519,18 +1525,21 @@ font-popup .pen-tool-popup-header {
     text-transform: uppercase;
     cursor: default;
 }
+preferences-popup .pen-tool-popup-body,
 font-popup .pen-tool-popup-body {
     padding: 4px 10px 10px;
     overflow-y: auto;
     max-height: 60vh;
 }
 /* Scrollbar for tool popups: match other panel scrollbar style */
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar,
 font-popup .pen-tool-popup-body::-webkit-scrollbar,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-button,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-button,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button {
@@ -1538,11 +1547,13 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button {
     width: 0;
     height: 0;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner {
     background: transparent;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
@@ -1550,18 +1561,21 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
     border-radius: 10px;
     transition: background 0.35s ease 0.5s;
 }
+preferences-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
 font-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
 pen-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
 ellipse-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-track,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
 ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track {
@@ -1569,6 +1583,7 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track {
     border: none;
 }
 
+preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
     display: flex;
     align-items: center;
@@ -1576,6 +1591,7 @@ font-popup .pen-tool-row {
     margin-bottom: 3px;
     min-height: 24px;
 }
+preferences-popup .pen-tool-row label,
 font-popup .pen-tool-row label {
     width: 110px;
     font-size: 11px;
@@ -1585,6 +1601,8 @@ font-popup .pen-tool-row label {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+preferences-popup .pen-tool-row input,
+preferences-popup .pen-tool-row select,
 font-popup .pen-tool-row input,
 font-popup .pen-tool-row select {
     flex: 1;
@@ -1600,6 +1618,8 @@ font-popup .pen-tool-row select {
     box-sizing: border-box;
     outline: none;
 }
+preferences-popup .pen-tool-row input:focus,
+preferences-popup .pen-tool-row select:focus,
 font-popup .pen-tool-row input:focus,
 font-popup .pen-tool-row select:focus {
     border-color: var(--ui-accent);
@@ -1622,13 +1642,14 @@ font-popup .pen-tool-row textarea {
 font-popup .pen-tool-row textarea:focus {
     border-color: var(--ui-accent);
 }
+preferences-popup .pen-tool-separator,
 font-popup .pen-tool-separator {
     height: 1px;
     background: var(--ui-border);
     margin: 6px 0;
     opacity: 0.4;
 }
-/* Hide number input spinners in font-popup */
+/* Hide number input spinners */
 font-popup .pen-tool-row input[type="number"]::-webkit-outer-spin-button,
 font-popup .pen-tool-row input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -2371,29 +2392,57 @@ dropdown-menu {
     display: none;
     flex-direction: column;
     z-index: 9999;
-    background: var(--ui-bg-panel);
+    background: var(--ui-bg-overlay);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--ui-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08);
-    min-width: 180px;
-    padding: 4px 0;
-    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+    min-width: 210px;
+    padding: 6px 0;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 .save-dropdown.show { display: flex; }
+/* Always-visible scrollbar for file dropdown */
+.save-dropdown::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.save-dropdown::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.save-dropdown::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.save-dropdown::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    border-radius: 10px;
+}
+.save-dropdown::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+}
+.save-dropdown::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
 .save-dropdown-item {
     color: var(--ui-text-main);
     transition: background-color 0.08s;
     white-space: nowrap;
-    padding: 5px 12px 5px 10px;
+    padding: 6px 14px 6px 12px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     gap: 8px;
     position: relative;
+    flex-shrink: 0;
 }
 .save-dropdown-item:hover { background: var(--ui-accent); color: #fff; }
-.save-dropdown-item.disabled { color: var(--ui-text-muted); cursor: default; }
+.save-dropdown-item.disabled { color: var(--ui-text-muted); cursor: default; opacity: 0.6; }
 .save-dropdown-item.disabled:hover { background: transparent; color: var(--ui-text-muted); }
 .save-dropdown-label {
     flex: 1;
@@ -2414,20 +2463,50 @@ dropdown-menu {
     height: 1px;
     background: var(--ui-border);
     margin: 4px 8px;
+    flex-shrink: 0;
+    opacity: 0.5;
 }
 .save-dropdown-sub {
     position: fixed;
     display: none;
     flex-direction: column;
     z-index: 10000;
-    background: var(--ui-bg-panel);
+    background: var(--ui-bg-overlay);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--ui-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08);
-    padding: 4px 0;
-    min-width: 160px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+    padding: 6px 0;
+    min-width: 210px;
+    max-height: 60vh;
+    overflow-y: auto;
 }
 .save-dropdown-sub.show { display: flex; }
+/* Submenu scrollbar */
+.save-dropdown-sub::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.save-dropdown-sub::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.save-dropdown-sub::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.save-dropdown-sub::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    border-radius: 10px;
+}
+.save-dropdown-sub::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+}
+.save-dropdown-sub::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
 .font-popup-input {
     width: 120px;
     height: 22px;

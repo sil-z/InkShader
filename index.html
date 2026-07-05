@@ -17,12 +17,8 @@
 </head>
 <body>
     <div class="top">
-        <div class="item brand_title">InkShader</div>
-        <div class="item" data-i18n="menu.load">Load</div>
-        <div class="item" data-i18n="menu.new">New</div>
-        <div class="item" data-i18n="menu.import">Import</div>
-        <div class="item" data-i18n="menu.save">Save</div>
-        <div class="item" data-i18n="menu.export">Export As</div>
+        <div class="item brand_title" id="brand_title">InkShader</div>
+        <div class="item" id="menu_file" data-i18n="menu.file">File</div>
         <div class="item" data-i18n="menu.font">Font</div>
         <div class="item" data-i18n="menu.prefs">Preferences</div>
         <div class="item" data-i18n="menu.help">Help</div>
@@ -83,7 +79,7 @@
         </div>
     </div>
     <script type="module" src="./js/ui/preferences_modal.js"></script>
-    <preferences-modal id="app_preferences_modal"></preferences-modal>
+    <preferences-popup id="app_preferences_popup"></preferences-popup>
     <script type="module" src="./js/ui/help_modal.js"></script>
     <help-modal id="app_help_modal"></help-modal>
     <script>

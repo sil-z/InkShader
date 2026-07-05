@@ -16,6 +16,7 @@ export class DropdownMenu extends HTMLElement {
     }
 
     show(anchorEl, items = []) {
+        this._removeSubmenus();
         this.innerHTML = '';
         this._buildItems(items, this);
         this.classList.add('show');
@@ -39,7 +40,7 @@ export class DropdownMenu extends HTMLElement {
         });
 
         this._cleanup = (e) => {
-            if (!this.contains(e.target)) this.hide();
+            if (!this.contains(e.target) && !e.target.closest('[data-dropdown-sub]')) this.hide();
         };
         document.addEventListener('mousedown', this._cleanup, true);
     }
@@ -47,11 +48,19 @@ export class DropdownMenu extends HTMLElement {
     hide() {
         this.classList.remove('show');
         this._visible = false;
-        this.querySelectorAll('.save-dropdown-sub.show').forEach(s => s.classList.remove('show'));
+        this._removeSubmenus();
         if (this._cleanup) {
             document.removeEventListener('mousedown', this._cleanup, true);
             this._cleanup = null;
         }
+    }
+
+    /** Remove all body-level submenu elements tagged with [data-dropdown-sub] */
+    _removeSubmenus() {
+        document.querySelectorAll('[data-dropdown-sub]').forEach(el => {
+            el.classList.remove('show');
+            el.remove();
+        });
     }
 
     _positionSub(sub, parentItem) {
@@ -107,7 +116,9 @@ export class DropdownMenu extends HTMLElement {
                 const sub = document.createElement('div');
                 sub.className = 'save-dropdown save-dropdown-sub';
                 this._buildItems(item.children, sub);
-                div.appendChild(sub);
+                sub.dataset.dropdownSub = '';
+                // Append to body to avoid clipping by parent's overflow-y scrollbar
+                document.body.appendChild(sub);
 
                 let hideTimer = null;
                 div.addEventListener('mouseenter', () => {

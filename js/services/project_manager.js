@@ -8,20 +8,18 @@ export class ProjectManager {
     }
 
     generateProjectName() {
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const base = `InkShader_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-        return base;
+        return "New Font";
     }
 
-    async ensureUniqueName(name) {
-        let candidate = name;
-        let counter = 1;
-        while (await StorageUtils.projectExists(candidate)) {
-            candidate = `${name}_${counter}`;
+    async ensureUniqueName(name, startCounter = 1) {
+        let counter = startCounter;
+        while (true) {
+            const candidate = `${name} ${counter}`;
+            if (!await StorageUtils.projectExists(candidate)) {
+                return candidate;
+            }
             counter++;
         }
-        return candidate;
     }
 
     _buildSnapshotData() {
@@ -52,6 +50,10 @@ export class ProjectManager {
         await StorageUtils.saveProject(name, data);
     }
 
+    async ensureMaxCacheLimit() {
+        // Delegate to storage which enforces the limit on saveProject
+    }
+
     async createNewProject() {
         if (this._isEmptyProject()) return null;
 
@@ -59,7 +61,9 @@ export class ProjectManager {
             await this.saveToCache(this.activeProjectName);
         }
 
-        const name = await this.ensureUniqueName(this.generateProjectName());
+        // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
+        const name = await this.ensureUniqueName("New Font");
+
         const c = this.canvas;
 
         const emptySnapshot = JSON.stringify({
@@ -94,6 +98,11 @@ export class ProjectManager {
     }
 
     async loadFromCache(projectName) {
+        // Save current project before switching
+        if (this.activeProjectName && this.activeProjectName !== projectName) {
+            await this.saveToCache(this.activeProjectName);
+        }
+
         const data = await StorageUtils.loadProject(projectName);
         if (!data) throw new Error(`Project "${projectName}" not found in cache`);
 
@@ -128,6 +137,60 @@ export class ProjectManager {
         return projectName;
     }
 
+    /**
+     * Load a project from a JSON string (e.g. from file).
+     * Before loading, saves the current project to cache.
+     * If the loaded project's name conflicts with a cached project,
+     * prompts the user for overwrite confirmation.
+     * Returns the project name used, or null if cancelled.
+     */
+    async loadFromFile(jsonStr) {
+        // Parse the JSON to get the project name
+        let data;
+        try {
+            data = JSON.parse(jsonStr);
+        } catch (e) {
+            data = null;
+        }
+        // Save current project before switching
+        if (this.activeProjectName) {
+            await this.saveToCache(this.activeProjectName);
+        }
+
+        // Use the project name from the file, or generate a unique fallback
+        let targetName = data?.project_name || await this.ensureUniqueName("New Font");
+        if (await StorageUtils.projectExists(targetName)) {
+            const msg = `Project "${targetName}" already exists in cache. Overwrite?`;
+            if (!confirm(msg)) {
+                return null; // User cancelled
+            }
+            // Overwrite: delete the existing one first
+            await StorageUtils.deleteProject(targetName);
+        }
+
+        const c = this.canvas;
+        try {
+            await c.commands.loadSnapshotCommand(jsonStr);
+            c.commandStack = [];
+            c.redoCommandStack = [];
+            c.currentStateObj = c.history.getHistoryState();
+            if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+            c.history.saveCurrentViewState(true);
+            c.notifyPropertiesUpdate();
+            c.is_dirty = true;
+            c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+        } catch (err) {
+            alert("Critical error during file loading: " + err.message);
+            return null;
+        }
+
+        // Save to cache under the project name
+        const saveData = this._buildSnapshotData();
+        await StorageUtils.saveProject(targetName, saveData);
+        this.setActiveProjectName(targetName);
+        return targetName;
+    }
+
     async listCachedProjects() {
         const all = await StorageUtils.listProjects();
         if (!this.activeProjectName) return all;
@@ -149,6 +212,15 @@ export class ProjectManager {
     setActiveProjectName(name) {
         this.activeProjectName = name;
         StorageUtils.saveActiveProject(name || "");
+        this._updateBrandTitle(name);
+    }
+
+    /** Update the top-left brand title to "project_name - InkShader" */
+    _updateBrandTitle(name) {
+        const el = document.getElementById('brand_title');
+        if (el) {
+            el.textContent = name ? `${name} - InkShader` : 'InkShader';
+        }
     }
 
     async init() {
@@ -156,6 +228,13 @@ export class ProjectManager {
         const active = StorageUtils.loadActiveProject();
         if (active) {
             this.activeProjectName = active;
+        }
+        this._updateBrandTitle(this.activeProjectName);
+    }
+
+    async saveCurrentProject() {
+        if (this.activeProjectName) {
+            await this.saveToCache(this.activeProjectName);
         }
     }
 }

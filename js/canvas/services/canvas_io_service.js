@@ -58,19 +58,29 @@ export class CanvasIOService {
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const jsonStr = event.target.result;
-                try {
-                    await c.commands.loadSnapshotCommand(jsonStr);
-                    c.commandStack = [];
-                    c.redoCommandStack = [];
-                    c.currentStateObj = c.history.getHistoryState();
-                    if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
-                    c.history.saveCurrentViewState(true);
-                    console.debug("[CommandDebug] loaded snapshot from file");
-                    c.notifyPropertiesUpdate();
-                    c.is_dirty = true;
-                    c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
-                } catch (err) {
-                    alert("Critical error during file loading: " + err.message);
+                // Use ProjectManager to handle save-before-switch and name conflict
+                const pm = c.projectManager;
+                if (pm) {
+                    const result = await pm.loadFromFile(jsonStr);
+                    if (result) {
+                        console.debug("[CommandDebug] loaded snapshot from file via ProjectManager: " + result);
+                    }
+                } else {
+                    // Fallback: direct load (no ProjectManager)
+                    try {
+                        await c.commands.loadSnapshotCommand(jsonStr);
+                        c.commandStack = [];
+                        c.redoCommandStack = [];
+                        c.currentStateObj = c.history.getHistoryState();
+                        if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+                        c.history.saveCurrentViewState(true);
+                        console.debug("[CommandDebug] loaded snapshot from file");
+                        c.notifyPropertiesUpdate();
+                        c.is_dirty = true;
+                        c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+                    } catch (err) {
+                        alert("Critical error during file loading: " + err.message);
+                    }
                 }
             };
             reader.readAsText(file);
