@@ -1,5 +1,5 @@
 // Windows Firefox only: control scrollbar visibility via data-scrollbar-visible attribute
-const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-output';
+const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-output, .pen-tool-popup-body';
 
 function isFirefoxWindows() {
     return navigator.userAgent.toLowerCase().includes('firefox')

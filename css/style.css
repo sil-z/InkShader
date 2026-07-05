@@ -961,7 +961,8 @@ logger-panel {
 .sequence-add-menu[data-scrollbar-visible],
 .pref_modal_body[data-scrollbar-visible],
 .pref_content_area[data-scrollbar-visible],
-.logger-output[data-scrollbar-visible] {
+.logger-output[data-scrollbar-visible],
+.pen-tool-popup-body[data-scrollbar-visible] {
     scrollbar-color: var(--ui-border-light) transparent;
 }
 .placeholder span, .property_panel label {
@@ -1523,6 +1524,51 @@ font-popup .pen-tool-popup-body {
     overflow-y: auto;
     max-height: 60vh;
 }
+/* Scrollbar for tool popups: match other panel scrollbar style */
+font-popup .pen-tool-popup-body::-webkit-scrollbar,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+font-popup .pen-tool-popup-body::-webkit-scrollbar-button,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+font-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner {
+    background: transparent;
+}
+font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
+}
+font-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+pen-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+ellipse-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
+}
+font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
+font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+
 font-popup .pen-tool-row {
     display: flex;
     align-items: center;

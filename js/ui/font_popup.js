@@ -188,6 +188,13 @@ export class FontPopup extends HTMLElement {
 
         this.addEventListener('mousedown', (e) => e.stopPropagation());
 
+        // Toggle scrollbar visibility on mouse enter/leave
+        const body = this.querySelector('.pen-tool-popup-body');
+        if (body) {
+            body.addEventListener('mouseenter', () => body.classList.add('show-scrollbar'));
+            body.addEventListener('mouseleave', () => body.classList.remove('show-scrollbar'));
+        }
+
         // Auto-save on focusout: when any input/select/textarea loses focus
         this.addEventListener('focusout', (e) => {
             if (!this._visible) return;
@@ -303,6 +310,10 @@ export class FontPopup extends HTMLElement {
         this.classList.add('visible');
         this._visible = true;
 
+        // Show scrollbar initially (popup may appear under cursor, so mouseenter may not fire)
+        const body = this.querySelector('.pen-tool-popup-body');
+        if (body) body.classList.add('show-scrollbar');
+
         requestAnimationFrame(() => {
             const btnRect = anchorEl.getBoundingClientRect();
             let left = btnRect.left;
@@ -324,6 +335,8 @@ export class FontPopup extends HTMLElement {
     hide() {
         this.classList.remove('visible');
         this._visible = false;
+        const body = this.querySelector('.pen-tool-popup-body');
+        if (body) body.classList.remove('show-scrollbar');
     }
 }
 
