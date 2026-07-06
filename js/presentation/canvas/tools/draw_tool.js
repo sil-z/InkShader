@@ -27,9 +27,22 @@ export class DrawTool extends BaseTool {
     handleMouseDown(mouseX, mouseY, worldX_raw, worldY) {
         const c = this.canvas;
         // Read from Store first (source of truth); CM projection may lag behind async event bus
-        let activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId
-            ?? c.curve_manager.ensureActiveGroup();
-        if (!activeGroupId) return;
+        let activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        // Verify the group still exists in the current tree.  The store's activeGroupId
+        // can be stale (from a previous project) if seedFromCanvas hasn't completed yet,
+        // or after createNewProject — using a non-existent group leads to a phantom
+        // preview that never commits on mouse-up.
+        if (activeGroupId && !c.curve_manager.treeItems.has(activeGroupId)) {
+            activeGroupId = null;
+        }
+        activeGroupId = activeGroupId ?? c.curve_manager.ensureActiveGroup();
+        if (!activeGroupId) {
+            // No group to draw in — reset stale state to prevent phantom preview
+            c.previewData = null;
+            c.last_on_curve_node_marker = null;
+            c.is_dirty = true;
+            return;
+        }
         // Do not draw on a locked group
         const activeGroup = c.curve_manager.treeItems.get(activeGroupId);
         if (activeGroup && activeGroup.locked) return;
@@ -63,9 +76,9 @@ export class DrawTool extends BaseTool {
 
         c.current_state = 'PAINTING_HANDLE';
         c.painting_handle_start = { x: mouseX, y: mouseY };
-        if (c.current_curve?.id) {
-            c.setInteractiveStrokePreviewCurveIds?.([c.current_curve.id]);
-        }
+        // Don't set interactive stroke preview for the current drawing curve:
+        // curves with stroke_width=0 rely on the skeleton line for visibility,
+        // but the skeleton is suppressed during interactive preview mode.
         c.renderer.update_previewData(mouseX, mouseY);
         c.is_dirty = true;
     }

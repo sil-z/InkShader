@@ -10,6 +10,9 @@ export class StorageUtils {
     static VIEW_SAVE_KEY = "last_view_state";
     static MAX_CACHED_PROJECTS = 5;
 
+    /** Ensures migration from old projects map runs at most once */
+    static _migrated = false;
+
     static async initDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.DB_NAME, 1);
@@ -74,15 +77,10 @@ export class StorageUtils {
         return this._idbGet(this.SAVE_KEY);
     }
 
-    // ── Multi-project API ──
+    // ── Multi-project API (individual keys to avoid read-modify-write races) ──
 
-    static async _getProjectsMap() {
-        return (await this._idbGet(this.PROJECTS_KEY)) || {};
-    }
-
-    static async _setProjectsMap(map) {
-        return this._idbPut(this.PROJECTS_KEY, map);
-    }
+    /** Prefix for per-project IndexedDB keys */
+    static _PROJ_PREFIX = "proj::";
 
     static async _getProjectOrder() {
         return (await this._idbGet(this.PROJECT_ORDER_KEY)) || [];
@@ -92,9 +90,9 @@ export class StorageUtils {
         return this._idbPut(this.PROJECT_ORDER_KEY, order);
     }
 
+    /** Push projectName to end of order list (most recent) */
     static async _touchProjectOrder(projectName) {
         let order = await this._getProjectOrder();
-        // Remove if exists, then push to end (most recent)
         const idx = order.indexOf(projectName);
         if (idx !== -1) order.splice(idx, 1);
         order.push(projectName);
@@ -102,11 +100,37 @@ export class StorageUtils {
         return order;
     }
 
+    static async _ensureMigrated() {
+        if (this._migrationPromise) return this._migrationPromise;
+        if (this._migrated) return;
+        this._migrationPromise = (async () => {
+            const oldMap = await this._idbGet(this.PROJECTS_KEY);
+            if (!oldMap || typeof oldMap !== 'object') {
+                this._migrated = true;
+                return;
+            }
+            // Migrate each entry from the old projects map to individual keys
+            for (const [name, data] of Object.entries(oldMap)) {
+                const key = this._PROJ_PREFIX + name;
+                const existing = await this._idbGet(key);
+                if (!existing) {
+                    await this._idbPut(key, data);
+                    await this._touchProjectOrder(name);
+                }
+            }
+            // Remove old map after migration
+            await this._idbDelete(this.PROJECTS_KEY);
+            this._migrated = true;
+        })();
+        return this._migrationPromise;
+    }
+
     static async saveProject(projectName, data) {
-        const map = await this._getProjectsMap();
-        const isNew = !(projectName in map);
-        map[projectName] = data;
-        await this._setProjectsMap(map);
+        await this._ensureMigrated();
+        const key = this._PROJ_PREFIX + projectName;
+        const existing = await this._idbGet(key);
+        const isNew = !existing;
+        await this._idbPut(key, data);
         const order = await this._touchProjectOrder(projectName);
         // Enforce max cache limit: evict oldest non-current project
         if (isNew && order.length > this.MAX_CACHED_PROJECTS) {
@@ -114,38 +138,36 @@ export class StorageUtils {
             while (order.length > this.MAX_CACHED_PROJECTS) {
                 const evictCandidate = order[0];
                 if (evictCandidate === projectName || evictCandidate === activeName) {
-                    // Never evict the project just saved or the active project
                     order.splice(0, 1);
                     continue;
                 }
                 const evicted = order.shift();
-                delete map[evicted];
+                await this._idbDelete(this._PROJ_PREFIX + evicted);
             }
-            await this._setProjectsMap(map);
             await this._setProjectOrder(order);
         }
     }
 
     static async loadProject(projectName) {
-        const map = await this._getProjectsMap();
-        const data = map[projectName] || null;
+        await this._ensureMigrated();
+        const data = await this._idbGet(this._PROJ_PREFIX + projectName);
         if (data) {
             await this._touchProjectOrder(projectName);
         }
-        return data;
+        return data ?? null;
     }
 
     static async listProjects() {
-        const map = await this._getProjectsMap();
-        return Object.keys(map);
+        await this._ensureMigrated();
+        const allKeys = await this._idbKeys();
+        return allKeys
+            .filter(k => typeof k === 'string' && k.startsWith(this._PROJ_PREFIX))
+            .map(k => k.slice(this._PROJ_PREFIX.length));
     }
 
     static async deleteProject(projectName) {
-        const map = await this._getProjectsMap();
-        if (projectName in map) {
-            delete map[projectName];
-            await this._setProjectsMap(map);
-        }
+        await this._ensureMigrated();
+        await this._idbDelete(this._PROJ_PREFIX + projectName);
         // Also remove from order tracking
         let order = await this._getProjectOrder();
         const idx = order.indexOf(projectName);
@@ -156,26 +178,28 @@ export class StorageUtils {
     }
 
     static async renameProject(oldName, newName) {
-        const map = await this._getProjectsMap();
-        if (oldName in map && !(newName in map)) {
-            map[newName] = map[oldName];
-            delete map[oldName];
-            await this._setProjectsMap(map);
-            // Update order: replace old name with new name
-            let order = await this._getProjectOrder();
-            const idx = order.indexOf(oldName);
-            if (idx !== -1) {
-                order[idx] = newName;
-                await this._setProjectOrder(order);
-            }
-            return true;
+        await this._ensureMigrated();
+        const oldKey = this._PROJ_PREFIX + oldName;
+        const newKey = this._PROJ_PREFIX + newName;
+        const existing = await this._idbGet(oldKey);
+        if (!existing) return false;
+        if (await this._idbGet(newKey)) return false;
+        await this._idbPut(newKey, existing);
+        await this._idbDelete(oldKey);
+        // Update order: replace old name with new name
+        let order = await this._getProjectOrder();
+        const idx = order.indexOf(oldName);
+        if (idx !== -1) {
+            order[idx] = newName;
+            await this._setProjectOrder(order);
         }
-        return false;
+        return true;
     }
 
     static async projectExists(projectName) {
-        const map = await this._getProjectsMap();
-        return projectName in map;
+        await this._ensureMigrated();
+        const data = await this._idbGet(this._PROJ_PREFIX + projectName);
+        return data !== undefined && data !== null;
     }
 
     // ── Active project (localStorage) ──

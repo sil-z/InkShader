@@ -146,7 +146,19 @@ export class CanvasController {
             c._ellipseWorldEndY = undefined;
         } else {
             const gid = c.curve_manager.ensureActiveGroup();
-            if (gid) c.commands.syncActiveGroupForDraw(gid);
+            if (gid) {
+                c.commands.syncActiveGroupForDraw(gid);
+            } else {
+                // No active group in sequence — clear stale drawing state so
+                // a leftover last_on_curve_node_marker can't produce a preview
+                c.current_curve = null;
+                c.previewData = null;
+                c.last_on_curve_node_marker = null;
+                c.new_curve_handle = null;
+                c.drawing_seq_offset = undefined;
+                c.closing_path_on_mouseup = false;
+                c.current_state = "IDLE";
+            }
         }
 
         if (unchanged) {
@@ -448,6 +460,12 @@ export class CanvasController {
         await pm.init();
 
         await this.restoreState();
+
+        // Auto-create a default project on fresh startup (no name, no cached data)
+        if (!pm.getActiveProjectName()) {
+            await pm.createNewProject();
+        }
+
         this.canvas.currentStateObj = this.canvas.history.getHistoryState();
         if (typeof this.canvas.history._reconcileRuntimeHistoryStacks === 'function') this.canvas.history._reconcileRuntimeHistoryStacks();
     }

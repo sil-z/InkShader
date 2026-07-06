@@ -22,15 +22,22 @@ export class ProjectManager {
         }
     }
 
+    _deepClone(obj) {
+        try { return JSON.parse(JSON.stringify(obj)); }
+        catch (_) { return obj; }
+    }
+
     _buildSnapshotData() {
         const c = this.canvas;
         const historyService = c.history;
         const state = historyService.getHistoryState();
+        // Deep-clone to prevent shared-reference contamination:
+        // commandStack entries hold snapshotPatches that mutate during undo/redo
         return {
             runtimeVersion: 2,
-            latestSnapshot: state.snapshotObj,
-            commandStack: c.commandStack || [],
-            redoCommandStack: c.redoCommandStack || []
+            latestSnapshot: this._deepClone(state.snapshotObj),
+            commandStack: this._deepClone(c.commandStack || []),
+            redoCommandStack: this._deepClone(c.redoCommandStack || [])
         };
     }
 
@@ -55,10 +62,17 @@ export class ProjectManager {
     }
 
     async createNewProject() {
-        if (this._isEmptyProject()) return null;
+        const hasContent = !this._isEmptyProject();
 
-        if (this.activeProjectName) {
-            await this.saveToCache(this.activeProjectName);
+        // Save current work before creating new project
+        if (hasContent) {
+            if (this.activeProjectName) {
+                await this.saveToCache(this.activeProjectName);
+            } else {
+                // Unnamed canvas content — save with a generated name first
+                const tempName = await this.ensureUniqueName("New Font");
+                await this.saveToCache(tempName);
+            }
         }
 
         // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
@@ -84,14 +98,26 @@ export class ProjectManager {
         c.redoCommandStack = [];
         c.currentStateObj = c.history.getHistoryState();
 
+        // Clear stale selection state (activeGroupId, node/curve selections) that
+        // carried over from the previous project — loadSnapshotCommand does NOT
+        // reset the SelectionState's activeGroupId.
+        c.curve_manager.clearAllSelection();
+        c.curve_manager.activeGroupId = null;
+
         const data = {
             runtimeVersion: 2,
-            latestSnapshot: c.currentStateObj.snapshotObj,
+            // Deep-clone snapshot to avoid shared-ref corruption via history service's _saveRuntimeState
+            latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
             commandStack: [],
             redoCommandStack: []
         };
         await StorageUtils.saveProject(name, data);
         this.setActiveProjectName(name);
+
+        // Sync editor store to the new (empty) canvas state so stale activeGroupId
+        // from the previous project doesn't leak into handleMouseDown.
+        c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+
         c.is_dirty = true;
         c.notifyPropertiesUpdate();
         return name;
@@ -122,6 +148,18 @@ export class ProjectManager {
         c.redoCommandStack = Array.isArray(data.redoCommandStack) ? data.redoCommandStack : [];
         c.currentStateObj = c.history.getHistoryState();
 
+        // MUST set active project name BEFORE _flushRuntimeStateSave / _saveRuntimeState,
+        // because _saveRuntimeState reads getActiveProjectName() to decide which project
+        // to write to. If we set it after, the auto-save would overwrite the OLD project's
+        // IndexedDB entry with the new project's canvas content, corrupting it.
+        this.setActiveProjectName(projectName);
+
+        // Reset stale selection state from the previous project so that seedFromCanvas
+        // (called below) reads a null activeGroupId from the curve manager, which
+        // prevents handleMouseDown from using an invalid group id for the new project.
+        c.curve_manager.clearAllSelection();
+        c.curve_manager.activeGroupId = null;
+
         if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') {
             c.history._reconcileRuntimeHistoryStacks();
         }
@@ -129,8 +167,6 @@ export class ProjectManager {
             c.history._flushRuntimeStateSave();
         }
         c.history.saveCurrentViewState(true);
-
-        this.setActiveProjectName(projectName);
         c.is_dirty = true;
         c.notifyPropertiesUpdate();
         c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
@@ -174,20 +210,30 @@ export class ProjectManager {
             c.commandStack = [];
             c.redoCommandStack = [];
             c.currentStateObj = c.history.getHistoryState();
+
+            // Reset stale selection state before seedFromCanvas so the store
+            // gets a clean activeGroupId (null) that reflects the loaded project.
+            c.curve_manager.clearAllSelection();
+            c.curve_manager.activeGroupId = null;
+
+            // Set active project BEFORE _flushRuntimeStateSave so that _saveRuntimeState
+            // writes to the correct project key, not the old project's key.
+            this.setActiveProjectName(targetName);
             if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
             c.history.saveCurrentViewState(true);
             c.notifyPropertiesUpdate();
             c.is_dirty = true;
             c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
         } catch (err) {
-            alert("Critical error during file loading: " + err.message);
+            if (err) {
+                alert("Critical error during file loading: " + err.message);
+            }
             return null;
         }
 
         // Save to cache under the project name
         const saveData = this._buildSnapshotData();
         await StorageUtils.saveProject(targetName, saveData);
-        this.setActiveProjectName(targetName);
         return targetName;
     }
 
