@@ -47,6 +47,14 @@ function isGap(pA, pB) {
     return Math.hypot(pA.x - pB.x, pA.y - pB.y) > 1e-3;
 }
 
+/** Degenerate cubic used as a straight segment (e.g. flat stroke cap). */
+function isLineLikeSegment(sub) {
+    const eps = 1e-4;
+    const inDeg = Math.hypot(sub.p1.x - sub.p0.x, sub.p1.y - sub.p0.y) < eps;
+    const outDeg = Math.hypot(sub.p2.x - sub.p3.x, sub.p2.y - sub.p3.y) < eps;
+    return sub.isLineCap === true || (inDeg && outDeg);
+}
+
 /** Estimate signed area of closed loop from offset segment vertices (sign preserved) */
 function estimateOffsetPathsSignedArea(paths) {
     if (!paths?.length) return 0;
@@ -173,10 +181,14 @@ function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, 
                 const sub = subSegs[j];
                 const sp0 = mapPoint(sub.p0.x, sub.p0.y);
                 if (isGap(currentPen, sub.p0)) recorder.lineTo(sp0.x, sp0.y);
-                const cp1 = mapPoint(sub.p1.x, sub.p1.y);
-                const cp2 = mapPoint(sub.p2.x, sub.p2.y);
                 const p3 = mapPoint(sub.p3.x, sub.p3.y);
-                recorder.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p3.x, p3.y);
+                if (isLineLikeSegment(sub)) {
+                    recorder.lineTo(p3.x, p3.y);
+                } else {
+                    const cp1 = mapPoint(sub.p1.x, sub.p1.y);
+                    const cp2 = mapPoint(sub.p2.x, sub.p2.y);
+                    recorder.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p3.x, p3.y);
+                }
                 currentPen = sub.p3;
             }
         }
@@ -196,10 +208,14 @@ function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, 
             const sub = subSegs[j];
             const sp3 = mapPoint(sub.p3.x, sub.p3.y);
             if (isGap(currentPen, sub.p3)) recorder.lineTo(sp3.x, sp3.y);
-            const cp2 = mapPoint(sub.p2.x, sub.p2.y);
-            const cp1 = mapPoint(sub.p1.x, sub.p1.y);
             const p0 = mapPoint(sub.p0.x, sub.p0.y);
-            recorder.bezierCurveTo(cp2.x, cp2.y, cp1.x, cp1.y, p0.x, p0.y);
+            if (isLineLikeSegment(sub)) {
+                recorder.lineTo(p0.x, p0.y);
+            } else {
+                const cp2 = mapPoint(sub.p2.x, sub.p2.y);
+                const cp1 = mapPoint(sub.p1.x, sub.p1.y);
+                recorder.bezierCurveTo(cp2.x, cp2.y, cp1.x, cp1.y, p0.x, p0.y);
+            }
             currentPen = sub.p0;
         }
     }

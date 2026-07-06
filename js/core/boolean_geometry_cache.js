@@ -64,6 +64,27 @@ function buildPaperPaths(pScope, recorder, { resolveCrossings = true } = {}) {
     return pathList;
 }
 
+/** Remove consecutive segments whose on-curve points coincide (cap/boolean artifacts). */
+function mergeCoincidentPathSegments(path, eps = 0.5) {
+    if (!path?.segments || path.segments.length < 2) return;
+    for (let i = path.segments.length - 1; i > 0; i--) {
+        const cur = path.segments[i];
+        const prev = path.segments[i - 1];
+        if (cur.point.getDistance(prev.point) <= eps) {
+            prev.handleOut = cur.handleOut.clone();
+            cur.remove();
+        }
+    }
+    if (path.closed && path.segments.length > 1) {
+        const first = path.segments[0];
+        const last = path.segments[path.segments.length - 1];
+        if (first.point.getDistance(last.point) <= eps) {
+            first.handleIn = last.handleIn.clone();
+            last.remove();
+        }
+    }
+}
+
 /** Refresh cached_boolean_geometry based on current curve geometry */
 export function refreshCurveBooleanCache(curve) {
     const pScope = getPaperScope();
@@ -139,6 +160,7 @@ export function refreshCurveBooleanCache(curve) {
     const paths = resultPath instanceof pScope.CompoundPath ? resultPath.children : [resultPath];
     for (const p of paths) {
         if (!(p instanceof pScope.Path) || p.segments.length < 2) continue;
+        mergeCoincidentPathSegments(p);
         const subGeom = [];
         for (const seg of p.segments) {
             subGeom.push({

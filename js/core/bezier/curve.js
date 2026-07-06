@@ -450,6 +450,26 @@ export class Curve {
                 return (d1.x * d2.y - d1.y * d2.x) / denominator;
             };
 
+            const trueOffsetPoint = (t, p0, p1, p2, p3, dist) => {
+                const n = getNormal(t, p0, p1, p2, p3);
+                if (!n) return null;
+                const pt = evalBezier(t, p0, p1, p2, p3);
+                return { x: pt.x + dist * n.x, y: pt.y + dist * n.y };
+            };
+
+            const offsetTangent = (t, p0, p1, p2, p3, dist) => {
+                const eps = 0.03;
+                const t0 = Math.max(0, t - eps);
+                const t1 = Math.min(1, t + eps);
+                const o0 = trueOffsetPoint(t0, p0, p1, p2, p3, dist);
+                const o1 = trueOffsetPoint(t1, p0, p1, p2, p3, dist);
+                if (!o0 || !o1) return null;
+                const dx = o1.x - o0.x;
+                const dy = o1.y - o0.y;
+                const len = Math.hypot(dx, dy);
+                return len > 1e-10 ? { x: dx / len, y: dy / len } : null;
+            };
+
             const splitBezier = (t, p0, p1, p2, p3) => {
                 let mt = 1 - t;
                 let p01 = {x: p0.x*mt + p1.x*t, y: p0.y*mt + p1.y*t};
@@ -576,6 +596,32 @@ export class Curve {
                         q2 = { x: q3.x + v1.x * s, y: q3.y + v1.y * s };
                     }
 
+                    // Tight outer-convex sub-pieces: skeleton-locked scaling collapses
+                    // handles. Retarget along sampled offset tangents (bounded, no LS fit).
+                    {
+                        const kMid = getCurvature(0.5, p0, p1, p2, p3);
+                        const radiusMid = Math.abs(kMid) > 1e-5 ? 1 / Math.abs(kMid) : Infinity;
+                        const isOuterConvex = kMid * d < 0;
+                        const segLen = Math.hypot(q3.x - q0.x, q3.y - q0.y);
+                        const h0len = Math.hypot(q1.x - q0.x, q1.y - q0.y);
+                        const h3len = Math.hypot(q2.x - q3.x, q2.y - q3.y);
+                        const minHandleRatio = segLen > 1e-6 ? Math.min(h0len, h3len) / segLen : 1;
+                        const handleTooShort = segLen > 1e-6 && (h0len < segLen * 0.28 || h3len < segLen * 0.28);
+                        if (depth > 0 && isOuterConvex && radiusMid < Math.abs(d) && (minHandleRatio < 0.25 || handleTooShort)) {
+                            const minHandle = segLen / 3;
+                            const tan0 = offsetTangent(0, p0, p1, p2, p3, d);
+                            const tan1 = offsetTangent(1, p0, p1, p2, p3, d);
+                            if (tan0 && tan1) {
+                                if (h0len < segLen * 0.28) {
+                                    q1 = { x: q0.x + tan0.x * minHandle, y: q0.y + tan0.y * minHandle };
+                                }
+                                if (h3len < segLen * 0.28) {
+                                    q2 = { x: q3.x - tan1.x * minHandle, y: q3.y - tan1.y * minHandle };
+                                }
+                            }
+                        }
+                    }
+
                     let shouldSubdivide = false;
                     let splitT = 0.5; 
                     
@@ -666,6 +712,7 @@ export class Curve {
                         tail.p1 = anchor;
                         tail.p2 = { ...cap };
                         tail.p3 = { ...cap };
+                        tail.isLineCap = true;
                     };
                     trimTail(forwardPaths, plus);
                     trimTail(backwardPaths, minus);
