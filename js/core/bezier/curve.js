@@ -488,7 +488,13 @@ export class Curve {
                 
                 const subdivideAndOffset = (p0, p1, p2, p3, depth) => {
                     let n0 = getNormal(0, p0, p1, p2, p3) || { x: 0, y: 1 };
-                    let n3 = getNormal(1, p0, p1, p2, p3) || { x: 0, y: 1 };
+                    const endHandleDegenerate = Math.hypot(p2.x - p3.x, p2.y - p3.y) < 1e-5;
+                    let n3 = getNormal(1, p0, p1, p2, p3);
+                    if (!n3 || endHandleDegenerate) {
+                        n3 = getNormal(0.95, p0, p1, p2, p3)
+                            || getNormal(0.9, p0, p1, p2, p3)
+                            || { x: n0.x, y: n0.y };
+                    }
 
                     let k0 = getCurvature(0, p0, p1, p2, p3);
                     let k3 = getCurvature(1, p0, p1, p2, p3);
@@ -520,7 +526,7 @@ export class Curve {
                     let v1 = { x: p2.x - p3.x, y: p2.y - p3.y }; 
                     
                     if (Math.hypot(v0.x, v0.y) < 1e-5) v0 = { x: p2.x - p0.x, y: p2.y - p0.y };
-                    if (Math.hypot(v1.x, v1.y) < 1e-5) v1 = { x: p1.x - p3.x, y: p1.y - p3.x };
+                    if (Math.hypot(v1.x, v1.y) < 1e-5) v1 = { x: p1.x - p3.x, y: p1.y - p3.y };
 
                     let n_mid = getNormal(0.5, p0, p1, p2, p3);
                     let q1, q2;
@@ -623,7 +629,52 @@ export class Curve {
         const backwardPaths = generateOffsetPaths(-absD);
         const ringClosed = this.closed && this.startNode !== this.endNode;
 
-        return { closed: ringClosed, forwardPaths, backwardPaths };
+        const outline = { closed: ringClosed, forwardPaths, backwardPaths };
+        if (!ringClosed && segments.length > 0 && this.endNode) {
+            const lastSk = segments[segments.length - 1];
+            const eps = 1e-5;
+            const endHandleAtNode = Math.hypot(
+                lastSk.p2.x - lastSk.p3.x, lastSk.p2.y - lastSk.p3.y
+            ) < eps;
+            if (endHandleAtNode) {
+                const mt = 0.95;
+                const dx = 3 * mt * mt * (lastSk.p1.x - lastSk.p0.x)
+                    + 6 * mt * (1 - mt) * (lastSk.p2.x - lastSk.p1.x)
+                    + 3 * (1 - mt) * (1 - mt) * (lastSk.p3.x - lastSk.p2.x);
+                const dy = 3 * mt * mt * (lastSk.p1.y - lastSk.p0.y)
+                    + 6 * mt * (1 - mt) * (lastSk.p2.y - lastSk.p1.y)
+                    + 3 * (1 - mt) * (1 - mt) * (lastSk.p3.y - lastSk.p2.y);
+                const len = Math.hypot(dx, dy);
+                if (len > 1e-8) {
+                    const nx = -dy / len;
+                    const ny = dx / len;
+                    const P = lastSk.p3;
+                    const plus = { x: P.x + absD * nx, y: P.y + absD * ny };
+                    const minus = { x: P.x - absD * nx, y: P.y - absD * ny };
+                    const trimTail = (groups, cap) => {
+                        if (!groups?.length) return;
+                        const g = groups[groups.length - 1];
+                        const trimDist = Math.max(1e-3, absD * 0.5);
+                        while (g.length > 1) {
+                            const tail = g[g.length - 1];
+                            if (Math.hypot(tail.p3.x - cap.x, tail.p3.y - cap.y) < trimDist) g.pop();
+                            else break;
+                        }
+                        const anchor = g.length > 1 ? { ...g[g.length - 2].p3 } : { ...g[0].p0 };
+                        const tail = g[g.length - 1];
+                        tail.p0 = anchor;
+                        tail.p1 = anchor;
+                        tail.p2 = { ...cap };
+                        tail.p3 = { ...cap };
+                    };
+                    trimTail(forwardPaths, plus);
+                    trimTail(backwardPaths, minus);
+                    outline.openCuspCaps = { endPlus: plus, endMinus: minus };
+                }
+            }
+        }
+
+        return outline;
     }
 
     getSkeletonVertices() {

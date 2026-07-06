@@ -28,7 +28,7 @@ class LocalRecorder {
     }
 }
 
-function buildPaperPaths(pScope, recorder) {
+function buildPaperPaths(pScope, recorder, { resolveCrossings = true } = {}) {
     const pathList = [];
     for (const sub of recorder.paths) {
         if (sub.length === 0) continue;
@@ -48,8 +48,7 @@ function buildPaperPaths(pScope, recorder) {
             if (seg.handleIn && seg.handleIn.length < 0.001) seg.handleIn.set(0, 0);
             if (seg.handleOut && seg.handleOut.length < 0.001) seg.handleOut.set(0, 0);
         }
-        // Resolve self-intersections to prevent degenerate boundaries at sharp bends
-        if (typeof p.resolveCrossings === "function") {
+        if (resolveCrossings && typeof p.resolveCrossings === "function") {
             try {
                 const resolved = p.resolveCrossings();
                 if (resolved && resolved !== p) {
@@ -90,7 +89,7 @@ export function refreshCurveBooleanCache(curve) {
         if (outline) {
             const strokeRec = new LocalRecorder();
             emitExpandedStrokeOutline(strokeRec, outline, identity);
-            allSolidPieces.push(...buildPaperPaths(pScope, strokeRec));
+            allSolidPieces.push(...buildPaperPaths(pScope, strokeRec, { resolveCrossings: false }));
         }
     }
 

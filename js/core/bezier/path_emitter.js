@@ -157,8 +157,9 @@ function pickOuterOffsetPaths(outline, curve) {
     return Math.abs(af) >= Math.abs(ab) ? forwardPaths : backwardPaths;
 }
 
-function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, isClosedRing = false) {
+function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, isClosedRing = false, options = {}) {
     if (!offsetSegs?.length) return;
+    const skipInitialLineTo = options.skipInitialLineTo === true;
 
     if (!reverse) {
         const firstSub = offsetSegs[0][0];
@@ -186,7 +187,7 @@ function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, 
     const lastPiece = lastSub[lastSub.length - 1];
     const lp3 = mapPoint(lastPiece.p3.x, lastPiece.p3.y);
     if (isClosedRing) recorder.moveTo(lp3.x, lp3.y);
-    else recorder.lineTo(lp3.x, lp3.y);
+    else if (!skipInitialLineTo) recorder.lineTo(lp3.x, lp3.y);
     let currentPen = lastPiece.p3;
 
     for (let i = offsetSegs.length - 1; i >= 0; i--) {
@@ -222,7 +223,13 @@ export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerCo
         recorder.closePath();
     } else {
         emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);
-        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+        if (outline.openCuspCaps?.endMinus) {
+            const endCap = mapPoint(outline.openCuspCaps.endMinus.x, outline.openCuspCaps.endMinus.y);
+            recorder.lineTo(endCap.x, endCap.y);
+            emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false, { skipInitialLineTo: true });
+        } else {
+            emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+        }
         const firstSub = forwardPaths[0][0];
         const p0 = mapPoint(firstSub.p0.x, firstSub.p0.y);
         recorder.lineTo(p0.x, p0.y);
