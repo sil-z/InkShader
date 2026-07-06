@@ -43,7 +43,6 @@ export class CanvasController {
     }
 
     handleAction(action) {
-        console.warn("[HANDLE_ACTION] type:", action?.type, "SET_PEN eq:", action?.type === CANVAS_ACTIONS.SET_PEN_PROPERTIES);
         const c = this.canvas;
         const payload = action?.payload || {};
         switch (action?.type) {
@@ -290,6 +289,7 @@ export class CanvasController {
             c.guideline_lock = !c.guideline_lock;
             if(c.guideline_lock) { c.lock_guideline_icon.classList.add('is-visible'); c.lock_guideline_icon_unlocked.classList.remove('is-visible'); }
             else { c.lock_guideline_icon.classList.remove('is-visible'); c.lock_guideline_icon_unlocked.classList.add('is-visible'); }
+            c.history?.saveCurrentViewState?.();
         });
     }
 

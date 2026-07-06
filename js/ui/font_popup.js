@@ -245,6 +245,8 @@ export class FontPopup extends HTMLElement {
         });
         document.addEventListener('mousedown', (e) => {
             if (!this._visible) return;
+            // Allow menu bar items to handle toggle/switch via their click handlers
+            if (e.target.closest('.top .item')) return;
             if (!this.contains(e.target)) this.hide();
         }, true);
     }

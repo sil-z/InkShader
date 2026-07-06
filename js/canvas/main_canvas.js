@@ -68,7 +68,6 @@ class MainCanvasBase extends HTMLElement {
         wireCanvasHost(this);
         this.curve_manager.setMessageReporter((level, message) => {
             if (level === 'error' || level === 'warn') alert(message);
-            else console.debug(message);
         });
         this.current_curve = null; this.new_selected_temp = null;
         this.ctrl_click_added_selection = false;

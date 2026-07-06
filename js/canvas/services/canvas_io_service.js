@@ -63,9 +63,6 @@ export class CanvasIOService {
                 const pm = c.projectManager;
                 if (pm) {
                     const result = await pm.loadFromFile(jsonStr);
-                    if (result) {
-                        console.debug("[CommandDebug] loaded snapshot from file via ProjectManager: " + result);
-                    }
                 } else {
                     // Fallback: direct load (no ProjectManager)
                     try {
@@ -75,7 +72,6 @@ export class CanvasIOService {
                         c.currentStateObj = c.history.getHistoryState();
                         if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
                         c.history.saveCurrentViewState(true);
-                        console.debug("[CommandDebug] loaded snapshot from file");
                         c.notifyPropertiesUpdate();
                         c.is_dirty = true;
                         c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
@@ -110,7 +106,6 @@ export class CanvasIOService {
         c.env.revokeObjectURL(url);
         c.currentStateObj = c.history.getHistoryState();
         if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
-        console.debug("[CommandDebug] manual save snapshot persisted");
     }
     exportToUFO() {
         const c = this.canvas;

@@ -48,7 +48,6 @@ export function createSequenceLayoutFromCurveManager(cm) {
 
 export function computeSelectionBounds(cm, interactionSnapshot, mode = "transform") {
     if (!cm || !interactionSnapshot || !hasObjectSelection(interactionSnapshot)) {
-        console.warn('[IMG_DEBUG] computeSelectionBounds: null early return', { cm: !!cm, snap: !!interactionSnapshot, hasSel: interactionSnapshot ? hasObjectSelection(interactionSnapshot) : 'N/A', refIds: interactionSnapshot?.selectedRefIds, curveIds: interactionSnapshot?.selectedCurveIds });
         return null;
     }
 
@@ -77,28 +76,17 @@ export function computeSelectionBounds(cm, interactionSnapshot, mode = "transfor
     }
 
     const refs = resolveRefsFromSnapshot(interactionSnapshot, cm);
-    console.warn('[IMG_DEBUG] resolveRefsFromSnapshot results', { count: refs.length, items: refs.map(r => ({ id: r.id, type: r.type, isRef: r.isRef, visible: r.visible, parentId: r.parentId, w: r.width, h: r.height })) });
     for (const ref of refs) {
-        if (!ref.isRef && ref.type !== "image") {
-            console.warn('[IMG_DEBUG] skip ref (not image/ref)', ref.id, ref.type, ref.isRef);
-            continue;
-        }
-        if (ref.visible === false) {
-            console.warn('[IMG_DEBUG] skip ref (not visible)', ref.id);
-            continue;
-        }
+        if (!ref.isRef && ref.type !== "image") continue;
+        if (ref.visible === false) continue;
 
         const refGroupId =
             ref.type === "image"
                 ? ref.parentId || cm.getRootGroupId(ref.id)
                 : cm.getRootGroupId(ref.id);
         const seqIdx = getSeqIdxForGroupId(layout, refGroupId, focusedSeqIdx);
-        if (seqIdx !== -1 && !layout.activeIndices.has(seqIdx)) {
-            console.warn('[IMG_DEBUG] skip ref (inactive group)', ref.id, { refGroupId, seqIdx });
-            continue;
-        }
+        if (seqIdx !== -1 && !layout.activeIndices.has(seqIdx)) continue;
         const seqOff = seqIdx !== -1 ? layout.getSeqOffset(seqIdx) : 0;
-        console.warn('[IMG_DEBUG] processing ref', ref.id, ref.type, { refGroupId, seqIdx, seqOff });
 
         if (ref.type === "image") {
             const points = [
@@ -131,10 +119,6 @@ export function computeSelectionBounds(cm, interactionSnapshot, mode = "transfor
         }
     }
 
-    if (minX === Infinity) {
-        console.warn('[IMG_DEBUG] no items processed, bounds null');
-        return null;
-    }
-    console.warn('[IMG_DEBUG] returning bounds', { minX, minY, maxX, maxY });
+    if (minX === Infinity) return null;
     return { minX, minY, maxX, maxY };
 }

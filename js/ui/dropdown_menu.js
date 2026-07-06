@@ -4,6 +4,7 @@ export class DropdownMenu extends HTMLElement {
     constructor() {
         super();
         this._visible = false;
+        this._anchorEl = null;
         this._cleanup = null;
     }
 
@@ -21,6 +22,7 @@ export class DropdownMenu extends HTMLElement {
         this._buildItems(items, this);
         this.classList.add('show');
         this._visible = true;
+        this._anchorEl = anchorEl;
 
         requestAnimationFrame(() => {
             const btnRect = anchorEl.getBoundingClientRect();
@@ -40,6 +42,8 @@ export class DropdownMenu extends HTMLElement {
         });
 
         this._cleanup = (e) => {
+            // Allow menu bar items to handle toggle/switch via their click handlers
+            if (e.target.closest('.top .item')) return;
             if (!this.contains(e.target) && !e.target.closest('[data-dropdown-sub]')) this.hide();
         };
         document.addEventListener('mousedown', this._cleanup, true);
@@ -48,6 +52,7 @@ export class DropdownMenu extends HTMLElement {
     hide() {
         this.classList.remove('show');
         this._visible = false;
+        this._anchorEl = null;
         this._removeSubmenus();
         if (this._cleanup) {
             document.removeEventListener('mousedown', this._cleanup, true);

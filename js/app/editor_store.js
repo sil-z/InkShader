@@ -112,10 +112,6 @@ export class EditorStore {
 
     getState() {
         const snap = this._snapshotState(this.state);
-        if (!this.__loggedGetState && snap.selectedRefIds?.length) {
-            this.__loggedGetState = true;
-            console.warn('[IMG_DEBUG] getState WITH refs:', [...snap.selectedRefIds]);
-        }
         return snap;
     }
 
@@ -142,9 +138,6 @@ export class EditorStore {
         }
         if (this._stateEquals(this.state, next)) return false;
         this.state = next;
-        if (action.type === 'CHANGE_OBJECT_SELECTION') {
-            console.warn('[IMG_DEBUG] commitInteraction change selection', { selectedRefIds: this.state.selectedRefIds, selectedCurveIds: this.state.selectedCurveIds });
-        }
         this._applyInteractionToRuntime(action.type);
         if (emit) {
             this._emitPayload(action, beforeState, true);
@@ -284,10 +277,6 @@ export class EditorStore {
 
     _preDispatchInteraction(action) {
         if (!INTERACTION_PAYLOAD_ACTIONS.has(action?.type)) return;
-        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
-            console.warn('[IMG_DEBUG] _preDispatch CHANGE_OBJECT_SELECTION', 
-                { refIds: action.payload?.refIds, hasLength: action.payload?.refIds?.length > 0 });
-        }
         if (action?.type === CANVAS_ACTIONS.SET_TOOL_MODE) {
             action.meta = { ...(action.meta || {}), previousTool: this.state.currentTool };
         }
@@ -307,9 +296,6 @@ export class EditorStore {
         let next = reduceInteractionState(this.state, action, cm);
         next = finalizeInteractionState(next, cm, action.type);
         this.state = next;
-        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
-            console.warn('[IMG_DEBUG] _preDispatch AFTER state update, selectedRefIds:', [...(this.state.selectedRefIds || [])]);
-        }
         if (canvas) {
             canvas.__storeDispatchDepth = (canvas.__storeDispatchDepth || 0) + 1;
             this._applyInteractionToRuntime(action.type);
@@ -366,11 +352,6 @@ export class EditorStore {
             this.commitCommand(action);
         }
         const afterSnapshot = this._snapshotState(this.state);
-        if (action?.type === CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION) {
-            console.warn('[IMG_DEBUG] _finalizeDispatch CHANGE_OBJECT_SELECTION',
-                { beforeRefIds: [...(beforeSnapshot.selectedRefIds || [])],
-                  afterRefIds: [...(afterSnapshot.selectedRefIds || [])] });
-        }
         if (!this._stateEquals(beforeSnapshot, afterSnapshot)) {
             this._emitStateChanged(action, beforeSnapshot, afterSnapshot, result);
         }

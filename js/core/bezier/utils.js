@@ -1,7 +1,3 @@
-export function logAtomicOperation(actionName, details) {
-    console.debug(`[Atom Action Test] ${actionName}:`, details);
-}
-
 export function generateMarker(type) { 
     return { 
         id: `m_${type}_${Date.now().toString(36)}_${Math.floor(Math.random()*10000)}`, 

@@ -24,15 +24,7 @@ export class CanvasHistoryService {
         }));
     }
 
-    _formatDebugPayload(payload = {}) {
-        const keys = Object.keys(payload || {});
-        if (keys.length === 0) return "";
-        return ` payload=${JSON.stringify(payload)}`;
-    }
-
-    _debugCommand(message, payload = {}) {
-        console.debug(`[CommandDebug] ${message}${this._formatDebugPayload(payload)}`);
-    }
+    /** @private */ _debugCommand() {}
 
     _deepClone(value) {
         return snapshotDeepClone(value);
@@ -115,10 +107,7 @@ export class CanvasHistoryService {
      * Patch integrity warning; throws when history_strict_patch_runtime=true (dev toggle).
      */
     _reportPatchIssue(code, detail = {}, { throwIfStrict = true } = {}) {
-        const payload = { code, ...detail };
-        if (this.canvas.history_patch_warnings !== false) {
-            console.warn("[HistoryPatch]", payload);
-        }
+        // History patch warning disabled
         if (throwIfStrict && this.canvas.history_strict_patch_runtime) {
             throw new Error(`[HistoryPatch] ${code}: ${JSON.stringify(detail)}`);
         }

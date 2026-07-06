@@ -281,13 +281,13 @@ export class ProjectManager {
     setActiveProjectName(name) {
         this.activeProjectName = name;
         StorageUtils.saveActiveProject(name || "");
-        this._updateBrandTitle(name);
+        this._updateBrandTitle();
     }
 
     async syncActiveProjectNameFromCanvas() {
         const nextName = (this.canvas?.fontSettings?.project_name || "").trim();
         if (!nextName || nextName === this.activeProjectName) {
-            this._updateBrandTitle(this.activeProjectName);
+            this._updateBrandTitle();
             return true;
         }
 
@@ -305,12 +305,12 @@ export class ProjectManager {
         return true;
     }
 
-    /** Update the top-left brand title to "project_name - InkShader" */
-    _updateBrandTitle(name) {
+    /** Update the top-left brand title from canvas.fontSettings.project_name */
+    _updateBrandTitle() {
         const el = document.getElementById('brand_title');
-        if (el) {
-            el.textContent = name ? `${name} - InkShader` : 'InkShader';
-        }
+        if (!el) return;
+        const name = this.canvas?.fontSettings?.project_name?.trim() || '';
+        el.textContent = name ? `${name} - InkShader` : 'InkShader';
     }
 
     async init() {
@@ -319,7 +319,10 @@ export class ProjectManager {
         if (active) {
             this.activeProjectName = active;
         }
-        this._updateBrandTitle(this.activeProjectName);
+        // Brand title will be updated from canvas.fontSettings.project_name
+        // once restoreState() loads the snapshot.
+        // Do NOT call _updateBrandTitle here — canvas.fontSettings is not yet
+        // populated, so we'd show the IndexedDB cache key instead of the file field.
     }
 
     async saveCurrentProject() {

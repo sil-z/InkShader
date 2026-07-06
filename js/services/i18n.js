@@ -32,6 +32,7 @@ export const translations = {
         
         "help.title": "Help & Shortcuts", "help.close": "Close", "help.shortcuts": "Keyboard Shortcuts",
         "help.s.undo": "Ctrl + Z : Undo", "help.s.redo": "Ctrl + Y / Ctrl + Shift + Z : Redo", "help.s.pan": "Space + Drag / Mid-Click : Pan Canvas", "help.s.del": "Del : Delete Selected", "help.s.save": "Ctrl + S : Quick Save",
+        "help.about": "About", "help.documentation": "Documentation",
         
         "log.title": "Log Console",
         "tree.title": "Objects", "seq.title": "Sequence", "seq.placeholder": "Type characters here...", "seq.add_tip": "Add created group",
@@ -94,6 +95,7 @@ export const translations = {
         
         "help.title": "帮助与快捷键", "help.close": "关闭", "help.shortcuts": "键盘快捷键",
         "help.s.undo": "Ctrl + Z : 撤销", "help.s.redo": "Ctrl + Y / Ctrl + Shift + Z : 重做", "help.s.pan": "空格 + 拖拽 / 鼠标中键 : 平移画布", "help.s.del": "Del : 删除选中项", "help.s.save": "Ctrl + S : 快速保存",
+        "help.about": "关于", "help.documentation": "使用文档",
         
         "log.title": "运行日志",
         "tree.title": "对象", "seq.title": "序列", "seq.placeholder": "输入字符...", "seq.add_tip": "添加已创建的组",

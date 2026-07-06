@@ -105,12 +105,29 @@ export function initializeLayoutShell() {
         document.body.appendChild(document.createElement('font-popup'));
     }
 
+    // ── Close any open menu/popup and sync active classes ──
+    function closeAnyOpenMenu() {
+        const dd = document.querySelector('dropdown-menu');
+        if (dd && dd._visible) dd.hide();
+        const fp = document.querySelector('font-popup');
+        if (fp && fp._visible) fp.hide();
+        const pp = document.querySelector('preferences-popup');
+        if (pp && pp._visible) pp.hide();
+    }
+
     // ── File menu dropdown ──
     btnFile?.addEventListener("click", (e) => {
         e.stopPropagation();
         const menu = document.querySelector('dropdown-menu');
         if (!menu) return;
-        if (menu._visible) { menu.hide(); btnFile.classList.remove('active'); return; }
+
+        // Toggle off if this item's menu is already showing
+        if (btnFile.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
 
         const I18nManager = window.I18n || { t: (k) => k };
 
@@ -171,7 +188,14 @@ export function initializeLayoutShell() {
         e.stopPropagation();
         const menu = document.querySelector('dropdown-menu');
         if (!menu) return;
-        if (menu._visible) { menu.hide(); btnEdit.classList.remove('active'); return; }
+
+        // Toggle off if this item's menu is already showing
+        if (btnEdit.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
 
         const c = window.__canvas;
         const I18nManager = window.I18n || { t: (k) => k };
@@ -233,12 +257,20 @@ export function initializeLayoutShell() {
     btnFont?.addEventListener("click", (e) => {
         e.stopPropagation();
         const popup = document.querySelector('font-popup');
-        if (popup) {
-            popup.setProjectManager(window.__canvas?.projectManager || null);
-            popup.setCanvas(window.__canvas || null);
-            popup.show(btnFont);
-            btnFont.classList.add('active');
+        if (!popup) return;
+
+        // Toggle off if already open
+        if (btnFont.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
         }
+
+        closeAnyOpenMenu();
+
+        popup.setProjectManager(window.__canvas?.projectManager || null);
+        popup.setCanvas(window.__canvas || null);
+        popup.show(btnFont);
+        btnFont.classList.add('active');
     });
 
     // ── Preferences popup active class sync ──
@@ -256,25 +288,89 @@ export function initializeLayoutShell() {
         e.stopPropagation();
         const popup = document.querySelector('preferences-popup');
         if (!popup) return;
-        if (popup._visible) { popup.hide(); btnPreferences.classList.remove('active'); return; }
+
+        // Toggle off if already open
+        if (btnPreferences.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
+
         popup.show(btnPreferences);
         btnPreferences.classList.add('active');
     });
-    const helpModal = document.getElementById("app_help_modal");
-    btnHelp?.addEventListener("click", () => {
-        if (helpModal) helpModal.open();
+    // ── Help menu dropdown ──
+    btnHelp?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const menu = document.querySelector('dropdown-menu');
+        if (!menu) return;
+
+        // Toggle off if already showing
+        if (btnHelp.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
+
+        const I18nManager = window.I18n || { t: (k) => k };
+
+        const items = [
+            {
+                label: I18nManager.t('help.about'),
+                i18n: 'help.about',
+                action: null  // No action yet
+            },
+            {
+                label: I18nManager.t('help.documentation'),
+                i18n: 'help.documentation',
+                action: null  // No action yet
+            }
+        ];
+
+        menu.show(btnHelp, items);
+        btnHelp.classList.add('active');
     });
 
-    // ── Sync active class on File/Edit button when dropdown hides/closes ──
-    // Hide active class when dropdown hides
+    // ── Sync active class on menu buttons when dropdown hides/closes ──
     const dropdown = document.querySelector('dropdown-menu');
     if (dropdown) {
         const origHide = dropdown.hide.bind(dropdown);
         dropdown.hide = function() {
             btnFile?.classList.remove('active');
             btnEdit?.classList.remove('active');
+            btnHelp?.classList.remove('active');
             return origHide();
         };
+    }
+
+    // ── Hover-to-switch: when a menu is open, hovering another item auto-switches ──
+    let _hoverTimer = null;
+    const topBarItems = document.querySelectorAll('.top > .item');
+    topBarItems.forEach(item => {
+        if (item.id === 'brand_title') return;
+        item.addEventListener('mouseenter', () => {
+            // Only act when a menu is open
+            const activeItem = document.querySelector('.top > .item.active');
+            if (!activeItem || activeItem === item) return;
+
+            clearTimeout(_hoverTimer);
+            _hoverTimer = setTimeout(() => {
+                closeAnyOpenMenu();
+                item.click();
+            }, 150);
+        });
+        item.addEventListener('mouseleave', () => {
+            clearTimeout(_hoverTimer);
+        });
+    });
+    // Cancel hover timer when mouse leaves the entire menu bar
+    const topBar = document.querySelector('.top');
+    if (topBar) {
+        topBar.addEventListener('mouseleave', () => {
+            clearTimeout(_hoverTimer);
+        });
     }
 }
 
