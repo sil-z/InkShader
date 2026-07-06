@@ -4,7 +4,7 @@ import { appEventBus } from "../app/event_bus.js";
 
 export const translations = {
     en: {
-        "menu.file": "File", "menu.prefs": "Preferences", "menu.help": "Help",
+        "menu.file": "File", "menu.edit": "Edit", "menu.prefs": "Preferences", "menu.help": "Help",
         "menu.font": "Font",
         "file.new_project": "New Project",
         "file.load_json": "Load Project (JSON)",
@@ -16,6 +16,13 @@ export const translations = {
         "file.save_ufo": "Save as UFO Project",
         "file.save_svg": "Save as SVG File",
         "file.no_cache": "No cached projects",
+        "edit.copy": "Copy",
+        "edit.paste": "Paste",
+        "edit.duplicate": "Duplicate",
+        "edit.delete": "Delete",
+        "edit.snap_alignment": "Snap to Alignment",
+        "edit.snap_coincident": "Snap to Coincident",
+        "edit.divider_visible": "Show Group Dividers",
         "font.project_name": "Project Name",
         "tool.select": "Select and transform objects", "tool.node": "Edit paths by nodes", "tool.draw": "Draw Bezier curves", "tool.ellipse": "Create Ellipses", "tool.measure": "Measure objects",
         "mode.corner": "Make selected nodes corner", "mode.smooth": "Make selected nodes smooth", "mode.symmetric": "Make selected nodes symmetric",
@@ -59,7 +66,7 @@ export const translations = {
         "prop.image_details": "Image Details"
     },
     zh: {
-        "menu.file": "文件", "menu.prefs": "首选项", "menu.help": "帮助",
+        "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
         "menu.font": "字体",
         "file.new_project": "新建项目",
         "file.load_json": "加载本地项目 (JSON)",
@@ -71,6 +78,13 @@ export const translations = {
         "file.save_ufo": "保存为 UFO 项目",
         "file.save_svg": "保存为 SVG 文件",
         "file.no_cache": "没有缓存的项目",
+        "edit.copy": "复制",
+        "edit.paste": "粘贴",
+        "edit.duplicate": "建立副本",
+        "edit.delete": "删除",
+        "edit.snap_alignment": "吸附到对齐线",
+        "edit.snap_coincident": "吸附到重合位置",
+        "edit.divider_visible": "显示分组分隔线",
         "font.project_name": "项目名称",
         "tool.select": "选择与变换对象", "tool.node": "编辑路径节点", "tool.draw": "绘制贝塞尔曲线", "tool.ellipse": "创建椭圆", "tool.measure": "测量对象",
         "mode.corner": "使选中节点成为角点", "mode.smooth": "使选中节点平滑", "mode.symmetric": "使选中节点对称",

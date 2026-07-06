@@ -43,6 +43,7 @@ export class CanvasController {
     }
 
     handleAction(action) {
+        console.warn("[HANDLE_ACTION] type:", action?.type, "SET_PEN eq:", action?.type === CANVAS_ACTIONS.SET_PEN_PROPERTIES);
         const c = this.canvas;
         const payload = action?.payload || {};
         switch (action?.type) {
@@ -72,7 +73,17 @@ export class CanvasController {
             case CANVAS_ACTIONS.SET_GROUP_ADVANCE: return c.commands.setGroupAdvance(payload.id, payload.value, payload.options || {});
             case CANVAS_ACTIONS.UPDATE_NODE_PROPERTY:
                 return c.commands.updateSingleNodeProperty(payload.marker, payload.propId, payload.value, payload.options || {});
-            case CANVAS_ACTIONS.SET_PEN_PROPERTIES: return c.commands.setPenProperties(payload.updates || {}, payload.options || {});
+            case CANVAS_ACTIONS.SET_PEN_PROPERTIES: {
+                const penResult = c.commands.setPenProperties(payload.updates || {}, payload.options || {});
+                // Persist drawToolSettings immediately (same pattern as applyToolMode)
+                c.history?.saveCurrentViewState?.(true);
+                return penResult;
+            }
+            case CANVAS_ACTIONS.SET_ELLIPSE_PROPERTIES: {
+                const ellipseResult = c.commands.setEllipseProperties(payload.updates || {}, payload.options || {});
+                c.history?.saveCurrentViewState?.(true);
+                return ellipseResult;
+            }
             case CANVAS_ACTIONS.SET_FONT_SETTINGS: return c.commands.setFontSettings(payload.updates || {}, payload.options || {});
             case CANVAS_ACTIONS.SET_GROUP_CHAR_CODE: return c.commands.setGroupCharCode(payload.id, payload.value, payload.options || {});
             case CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE:
@@ -322,9 +333,22 @@ export class CanvasController {
                     if (c.guideline_lock) { c.lock_guideline_icon?.classList.add('is-visible'); c.lock_guideline_icon_unlocked?.classList.remove('is-visible'); }
                     else { c.lock_guideline_icon?.classList.remove('is-visible'); c.lock_guideline_icon_unlocked?.classList.add('is-visible'); }
                 }
+                // Restore snap toggle states from viewState
+                if (viewState.snap_alignment_enabled !== undefined) {
+                    c.snap_alignment_enabled = viewState.snap_alignment_enabled;
+                }
+                if (viewState.snap_coincident_enabled !== undefined) {
+                    c.snap_coincident_enabled = viewState.snap_coincident_enabled;
+                }
+                if (viewState.divider_visible !== undefined) {
+                    c.divider_visible = viewState.divider_visible;
+                }
                 // Restore draw_tool_settings from viewState (persisted tool preferences)
                 if (viewState.draw_tool_settings) {
                     Object.assign(c.drawToolSettings, viewState.draw_tool_settings);
+                }
+                if (viewState.ellipse_tool_settings) {
+                    Object.assign(c.ellipseToolSettings, viewState.ellipse_tool_settings);
                 }
                 c.editorStore?.syncViewFromCanvas?.();
 

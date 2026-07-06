@@ -3,7 +3,7 @@
  * Do NOT read CM state from this file to write back to Store.
  */
 import { EDITOR_ACTIONS } from "../domain/actions/editor_actions.js";
-import { defaultDrawToolSettings } from "../domain/editor/interaction_reducer.js";
+import { defaultDrawToolSettings, defaultEllipseToolSettings } from "../domain/editor/interaction_reducer.js";
 import { resolveMarkersByIds } from "../domain/selection/marker_resolution.js";
 
 const SEQUENCE_APPLY_ACTIONS = new Set([
@@ -25,9 +25,23 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
     const cm = canvas.curve_manager;
     if (!cm) return;
 
-    if (state.drawToolSettings && canvas.drawToolSettings) {
+    // Only sync drawToolSettings from store when the action explicitly changes them.
+    // Other action types (e.g. SET_SEQUENCE_EDITOR_STATE during restore) would
+    // overwrite canvas values with stale store defaults, breaking view state persistence.
+    if (state.drawToolSettings && canvas.drawToolSettings &&
+        actionType === EDITOR_ACTIONS.SET_DRAW_TOOL_SETTINGS) {
         const d = state.drawToolSettings;
         const t = canvas.drawToolSettings;
+        if (t.stroke_width !== d.stroke_width) t.stroke_width = d.stroke_width;
+        if (t.closed !== d.closed) t.closed = d.closed;
+        if (t.smart_expand !== d.smart_expand) t.smart_expand = d.smart_expand;
+        if (t.show_skeleton !== d.show_skeleton) t.show_skeleton = d.show_skeleton;
+    }
+
+    if (state.ellipseToolSettings && canvas.ellipseToolSettings &&
+        actionType === EDITOR_ACTIONS.SET_ELLIPSE_TOOL_SETTINGS) {
+        const d = state.ellipseToolSettings;
+        const t = canvas.ellipseToolSettings;
         if (t.stroke_width !== d.stroke_width) t.stroke_width = d.stroke_width;
         if (t.closed !== d.closed) t.closed = d.closed;
         if (t.smart_expand !== d.smart_expand) t.smart_expand = d.smart_expand;
@@ -132,6 +146,18 @@ export function pickViewFieldsFromCanvas(canvas, state = {}) {
 export function pickDrawToolFieldsFromCanvas(canvas) {
     const raw = canvas?.drawToolSettings;
     const defaults = defaultDrawToolSettings();
+    if (!raw) return { ...defaults };
+    return {
+        stroke_width: raw.stroke_width ?? defaults.stroke_width,
+        closed: raw.closed ?? defaults.closed,
+        smart_expand: raw.smart_expand ?? defaults.smart_expand,
+        show_skeleton: raw.show_skeleton ?? defaults.show_skeleton
+    };
+}
+
+export function pickEllipseToolFieldsFromCanvas(canvas) {
+    const raw = canvas?.ellipseToolSettings;
+    const defaults = defaultEllipseToolSettings();
     if (!raw) return { ...defaults };
     return {
         stroke_width: raw.stroke_width ?? defaults.stroke_width,

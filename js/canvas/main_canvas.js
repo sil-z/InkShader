@@ -52,6 +52,9 @@ class MainCanvasBase extends HTMLElement {
         this.scaleBase = this.scale;   // Scale at zoomTicks = 0 (initially 0.4, matched to current default)
         this.offset = { x: 0, y: 0 }; this.offset_start = { x: 0, y: 0 };
         this.guideline_lock = false;
+        this.snap_alignment_enabled = true;
+        this.snap_coincident_enabled = true;
+        this.divider_visible = true;
         this.viewportConfig = {
             rulerWidth: this.ruler_size,
             rulerHeight: this.ruler_size,
@@ -102,6 +105,9 @@ class MainCanvasBase extends HTMLElement {
         /** false: disallow undo/redo from silently calling loadFromSnapshotObject (restore/open-file only) */
         this.history_allow_snapshot_fallback = false;
         this.drawToolSettings = {
+            stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
+        };
+        this.ellipseToolSettings = {
             stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
         };
         this.fontSettings = {

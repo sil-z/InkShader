@@ -629,6 +629,37 @@ export class CanvasCommands {
     }
 
     /**
+     * Command: update ellipse tool default properties
+     */
+    setEllipseProperties(updates = {}, options = {}) {
+        if (!updates || typeof updates !== 'object') return false;
+        let changed = false;
+        const allowed = ['stroke_width', 'closed', 'smart_expand', 'show_skeleton'];
+        for (const key of allowed) {
+            if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
+            const nextVal = updates[key];
+            if (key === 'stroke_width' && nextVal === '') continue;
+            if (key === 'stroke_width' && (!Number.isFinite(Number(nextVal)) || Number(nextVal) < 0)) {
+                continue;
+            }
+            if (this.ellipseToolSettings[key] !== nextVal) {
+                this.ellipseToolSettings[key] = key === 'stroke_width' ? Number(nextVal) : nextVal;
+                changed = true;
+            }
+        }
+        if (!changed) {
+            return options.recordHistory === true;
+        }
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.SET_ELLIPSE_TOOL_SETTINGS,
+            payload: { ...this.ellipseToolSettings }
+        });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
      * Command: update pen tool default properties
      */
     setPenProperties(updates = {}, options = {}) {

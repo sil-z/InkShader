@@ -122,8 +122,12 @@ export class EllipseToolPopup extends HTMLElement {
 
     _handleStateChanged(e) {
         const nextState = e?.detail?.afterState;
-        if (nextState?.drawToolSettings) {
-            this._drawToolSettings = nextState.drawToolSettings;
+        if (nextState?.ellipseToolSettings) {
+            const actionType = e.detail?.action?.type;
+            // Only accept from actions that actually update ellipseToolSettings.
+            if (actionType === 'SET_ELLIPSE_TOOL_SETTINGS' || actionType === 'SEED_FROM_RUNTIME' || actionType === '__INIT__') {
+                this._drawToolSettings = nextState.ellipseToolSettings;
+            }
         }
         if (this._visible) {
             this._patchValues();
@@ -163,7 +167,7 @@ export class EllipseToolPopup extends HTMLElement {
                 this._restoreStrokeInput(target);
                 return;
             }
-            CanvasDispatcher.requestSetPenProperties(
+            CanvasDispatcher.requestSetEllipseProperties(
                 { [prop]: (target.type === 'checkbox' ? val : numVal) },
                 { recordHistory }
             );
@@ -174,7 +178,7 @@ export class EllipseToolPopup extends HTMLElement {
         const fallback = this._strokeSnapshot != null ? String(this._strokeSnapshot) : '';
         restoreRememberedInputValue(this, target, fallback);
         if (Number.isFinite(Number(this._strokeSnapshot)) && Number(this._strokeSnapshot) >= 0) {
-            CanvasDispatcher.requestSetPenProperties(
+            CanvasDispatcher.requestSetEllipseProperties(
                 { stroke_width: Number(this._strokeSnapshot) },
                 { recordHistory: false }
             );
@@ -182,6 +186,10 @@ export class EllipseToolPopup extends HTMLElement {
     }
 
     show(anchorEl) {
+        // Always prefer canvas.ellipseToolSettings as source of truth (persisted value).
+        if (window.__canvas?.ellipseToolSettings) {
+            this._drawToolSettings = { ...window.__canvas.ellipseToolSettings };
+        }
         this._patchValues();
         this.classList.add('visible');
 

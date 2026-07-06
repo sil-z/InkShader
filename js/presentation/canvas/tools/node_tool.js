@@ -326,6 +326,14 @@ export class NodeTool extends BaseTool {
     calculatePointSnapping(dragging_node_n, isMainNode, raw_x, raw_y, dragged_seq_offset) {
         const c = this.canvas;
         let snapped_x = raw_x, snapped_y = raw_y;
+
+        // Respect snap toggle flags; when both disabled, return raw position immediately
+        const alignEnabled = c.snap_alignment_enabled !== false;
+        const coincidentEnabled = c.snap_coincident_enabled !== false;
+        if (!alignEnabled && !coincidentEnabled) {
+            return { x: raw_x, y: raw_y };
+        }
+
         let snapThresholdLogical = 5 / c.scale;
         let targets = [];
         let seqTokens = c.curve_manager.sequenceTokens || [];
@@ -368,9 +376,9 @@ export class NodeTool extends BaseTool {
 
         for (let t of targets) {
             let dx = Math.abs(world_raw_x - t.x); let dy = Math.abs(world_raw_y - t.y); let d = Math.hypot(dx, dy);
-            if (d < snapThresholdLogical && d < bestDist) { bestDist = d; pointMatch = t; }
-            if (dx < snapThresholdLogical && dx < bestXDist) { bestXDist = dx; xMatch = t; }
-            if (dy < snapThresholdLogical && dy < bestYDist) { bestYDist = dy; yMatch = t; }
+            if (coincidentEnabled && d < snapThresholdLogical && d < bestDist) { bestDist = d; pointMatch = t; }
+            if (alignEnabled && dx < snapThresholdLogical && dx < bestXDist) { bestXDist = dx; xMatch = t; }
+            if (alignEnabled && dy < snapThresholdLogical && dy < bestYDist) { bestYDist = dy; yMatch = t; }
         }
 
         if (pointMatch) {

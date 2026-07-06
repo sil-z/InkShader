@@ -106,6 +106,7 @@ export class EllipseTool {
 
         if (rx < 0.25 || ry < 0.25) return;
 
+        const eSettings = c.ellipseToolSettings || c.drawToolSettings;
         if (!c.commands.startAddingPath(activeGroupId, seqOffsetX)) return;
 
         const k = 0.5522847498;
@@ -125,6 +126,17 @@ export class EllipseTool {
         }
 
         c.current_curve.closed = true;
+
+        // Apply ellipseToolSettings stroke_width to the curve
+        if (eSettings.stroke_width > 0) {
+            c.current_curve.stroke_width = eSettings.stroke_width;
+        }
+        if (eSettings.smart_expand !== undefined) {
+            c.current_curve.smart_stroke = eSettings.smart_expand;
+        }
+        if (eSettings.show_skeleton !== undefined) {
+            c.current_curve.show_skeleton = eSettings.show_skeleton;
+        }
 
         for (let i = 0; i < markers.length; i++) {
             const n = cm.find_node_by_curve(markers[i]);

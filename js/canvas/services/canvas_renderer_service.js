@@ -314,7 +314,7 @@ export class CanvasRendererService {
             }
         }
         let unselectedNodeRenders = []; let selectedNodeRenders = [];
-        if (c.curve_manager.activeSequenceIndices.size > 0) {
+        if (c.curve_manager.activeSequenceIndices.size > 0 && c.divider_visible !== false) {
             c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
             let hoveredScreenX = null;
             let drawnPositions = new Set();

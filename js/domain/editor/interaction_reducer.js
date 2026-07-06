@@ -8,6 +8,15 @@ export function defaultDrawToolSettings() {
         show_skeleton: true
     };
 }
+
+export function defaultEllipseToolSettings() {
+    return {
+        stroke_width: 0,
+        closed: true,
+        smart_expand: true,
+        show_skeleton: true
+    };
+}
 import { deriveTreeFieldsFromState } from "../selection/derive_tree_fields.js";
 import { createTreeCatalogFromCurveManager } from "../selection/tree_catalog.js";
 
@@ -161,6 +170,19 @@ export function reduceInteractionState(state, action, curveManager = null) {
                 }
             };
         }
+        case EDITOR_ACTIONS.SET_ELLIPSE_TOOL_SETTINGS: {
+            const epatch = payload.settings || payload;
+            const eprev = state.ellipseToolSettings || defaultEllipseToolSettings();
+            return {
+                ...state,
+                ellipseToolSettings: {
+                    stroke_width: epatch.stroke_width ?? eprev.stroke_width,
+                    closed: epatch.closed ?? eprev.closed,
+                    smart_expand: epatch.smart_expand ?? eprev.smart_expand,
+                    show_skeleton: epatch.show_skeleton ?? eprev.show_skeleton
+                }
+            };
+        }
         case EDITOR_ACTIONS.SET_SEQUENCE_EDITOR_STATE: {
             const patch = payload.payload || {};
             next = { ...state };
@@ -216,6 +238,9 @@ export function reduceInteractionState(state, action, curveManager = null) {
                 drawToolSettings: runtime.drawToolSettings
                     ? { ...runtime.drawToolSettings }
                     : state.drawToolSettings || defaultDrawToolSettings(),
+                ellipseToolSettings: runtime.ellipseToolSettings
+                    ? { ...runtime.ellipseToolSettings }
+                    : state.ellipseToolSettings || defaultEllipseToolSettings(),
                 treeSnapshot: runtime.treeSnapshot
                     ? {
                           rootChildren: [...(runtime.treeSnapshot.rootChildren || [])],
@@ -254,6 +279,7 @@ export const INTERACTION_PAYLOAD_ACTIONS = Object.freeze(
         EDITOR_ACTIONS.DELETE_GROUP_AND_UPDATE_SEQUENCE,
         EDITOR_ACTIONS.CHANGE_OBJECT_SELECTION,
         EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
-        EDITOR_ACTIONS.SET_DRAW_TOOL_SETTINGS
+        EDITOR_ACTIONS.SET_DRAW_TOOL_SETTINGS,
+        EDITOR_ACTIONS.SET_ELLIPSE_TOOL_SETTINGS
     ])
 );

@@ -32,6 +32,13 @@ const DRAW_TOOL_KEYS = Object.freeze([
     "show_skeleton"
 ]);
 
+const ELLIPSE_TOOL_KEYS = Object.freeze([
+    "stroke_width",
+    "closed",
+    "smart_expand",
+    "show_skeleton"
+]);
+
 function arraysShallowEqual(a, b) {
     if (a === b) return true;
     if (!a || !b || a.length !== b.length) return false;
@@ -57,6 +64,9 @@ export function snapshotStoreState(state) {
     }
     if (state.drawToolSettings && typeof state.drawToolSettings === "object") {
         out.drawToolSettings = { ...state.drawToolSettings };
+    }
+    if (state.ellipseToolSettings && typeof state.ellipseToolSettings === "object") {
+        out.ellipseToolSettings = { ...state.ellipseToolSettings };
     }
     if (state.treeSnapshot && typeof state.treeSnapshot === "object") {
         out.treeSnapshot = {
@@ -101,6 +111,13 @@ export function storeStatesEqual(a, b) {
     if (!ad || !bd) return false;
     for (const key of DRAW_TOOL_KEYS) {
         if (ad[key] !== bd[key]) return false;
+    }
+    const ae = a.ellipseToolSettings;
+    const be = b.ellipseToolSettings;
+    if (!ae && !be) return true;
+    if (!ae || !be) return false;
+    for (const key of ELLIPSE_TOOL_KEYS) {
+        if (ae[key] !== be[key]) return false;
     }
     return true;
 }

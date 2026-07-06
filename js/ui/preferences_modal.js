@@ -26,9 +26,6 @@ const TEMPLATE_HTML = `
     </div>
     <div class="pen-tool-separator"></div>
     <div id="pref_colors"></div>
-    <div style="display:flex;justify-content:center;margin-top:6px;">
-        <button id="pref_reset" class="pref_button_secondary" data-i18n="pref.reset">Reset to Default</button>
-    </div>
 </div>`;
 
 const CONFIGURABLE_COLORS = [
@@ -103,16 +100,6 @@ export class PreferencesPopup extends HTMLElement {
             this.applyTheme(e.target.value);
             this.saveSettings();
         });
-
-        this.querySelector('#pref_reset').addEventListener('click', () => {
-            this.customColors = {};
-            CONFIGURABLE_COLORS.forEach(item => {
-                document.documentElement.style.removeProperty(item.varName);
-            });
-            this.refreshColorInputs();
-            this.saveSettings();
-            this.notifyCanvasUpdate();
-        });
     }
 
     buildColorPickers() {
@@ -134,12 +121,24 @@ export class PreferencesPopup extends HTMLElement {
                 <label>${t(item.key)}</label>
                 <input type="color" id="${cpId}" value="${hexVal}" style="width:28px;height:22px;padding:1px;flex:none;">
                 <input type="text" id="${textId}" value="${currentVal}" style="width:80px;flex:none;">
+                <button class="pref-color-reset-btn" data-var-name="${item.varName}" title="Reset">
+                    <img src="./assets/icons/reset.svg" alt="Reset">
+                </button>
             `;
 
             container.appendChild(row);
 
             const colorInput = row.querySelector(`#${cpId}`);
             const textInput = row.querySelector(`#${textId}`);
+
+            // Per-row reset: clear the custom color override for this variable
+            row.querySelector('.pref-color-reset-btn').addEventListener('click', () => {
+                delete this.customColors[item.varName];
+                document.documentElement.style.removeProperty(item.varName);
+                this.refreshColorInputs();
+                this.saveSettings();
+                this.notifyCanvasUpdate();
+            });
 
             colorInput.addEventListener('input', (e) => {
                 textInput.value = e.target.value;

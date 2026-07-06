@@ -165,6 +165,60 @@ export function initializeLayoutShell() {
         btnFile.classList.add('active');
     });
 
+    // ── Edit menu dropdown ──
+    const btnEdit = document.getElementById("menu_edit");
+    btnEdit?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const menu = document.querySelector('dropdown-menu');
+        if (!menu) return;
+        if (menu._visible) { menu.hide(); btnEdit.classList.remove('active'); return; }
+
+        const c = window.__canvas;
+        const I18nManager = window.I18n || { t: (k) => k };
+
+        const makeItem = (i18nKey, shortcut = null, action = null) => ({
+            label: I18nManager.t(i18nKey),
+            i18n: i18nKey,
+            shortcut,
+            action
+        });
+        const makeToggle = (i18nKey, checked, action) => ({
+            label: (checked ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
+            action
+        });
+
+        const items = [
+            makeItem('edit.copy', 'Ctrl+C', () => CanvasDispatcher.requestCopySelectedObjects()),
+            makeItem('edit.paste', 'Ctrl+V', () => CanvasDispatcher.requestEditorAction('paste', c?.getInteractionSnapshot()?.activeGroupId ?? null)),
+            makeItem('edit.duplicate', 'Ctrl+D', () => CanvasDispatcher.requestDuplicateSelectedObjects()),
+            makeItem('edit.delete', 'Del', () => {
+                const tool = c?.getActiveTool?.();
+                if (tool === 'NODE') {
+                    c?.commands?.deleteSelectedNodes();
+                } else {
+                    CanvasDispatcher.requestDeleteSelectedObjects();
+                }
+            }),
+            { separator: true },
+            makeToggle('edit.snap_alignment', c?.snap_alignment_enabled !== false, () => {
+                if (c) c.snap_alignment_enabled = !c.snap_alignment_enabled;
+                if (c) c.history?.saveCurrentViewState?.();
+            }),
+            makeToggle('edit.snap_coincident', c?.snap_coincident_enabled !== false, () => {
+                if (c) c.snap_coincident_enabled = !c.snap_coincident_enabled;
+                if (c) c.history?.saveCurrentViewState?.();
+            }),
+            { separator: true },
+            makeToggle('edit.divider_visible', c?.divider_visible !== false, () => {
+                if (c) c.divider_visible = !c.divider_visible;
+                if (c) c.history?.saveCurrentViewState?.();
+            })
+        ];
+
+        menu.show(btnEdit, items);
+        btnEdit.classList.add('active');
+    });
+
     // ── Font popup active class sync ──
     const fontPopup = document.querySelector('font-popup');
     if (fontPopup) {
@@ -211,13 +265,14 @@ export function initializeLayoutShell() {
         if (helpModal) helpModal.open();
     });
 
-    // ── Sync active class on File button when dropdown hides/closes ──
+    // ── Sync active class on File/Edit button when dropdown hides/closes ──
     // Hide active class when dropdown hides
     const dropdown = document.querySelector('dropdown-menu');
     if (dropdown) {
         const origHide = dropdown.hide.bind(dropdown);
         dropdown.hide = function() {
             btnFile?.classList.remove('active');
+            btnEdit?.classList.remove('active');
             return origHide();
         };
     }

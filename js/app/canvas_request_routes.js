@@ -49,6 +49,7 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, action: CANVAS_ACTIONS.SET_GROUP_ADVANCE, mapPayload: (d) => ({ id: d?.id, value: d?.value, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_UPDATE_NODE_PROPERTY, action: CANVAS_ACTIONS.UPDATE_NODE_PROPERTY, mapPayload: (d) => ({ marker: d?.marker, propId: d?.propId, value: d?.value, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_SET_PEN_PROPERTIES, action: CANVAS_ACTIONS.SET_PEN_PROPERTIES, mapPayload: (d) => ({ updates: d?.updates || {}, options: d?.options || {} }) },
+    { event: CANVAS_EVENTS.REQUEST_SET_ELLIPSE_PROPERTIES, action: CANVAS_ACTIONS.SET_ELLIPSE_PROPERTIES, mapPayload: (d) => ({ updates: d?.updates || {}, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_SET_FONT_SETTINGS, action: CANVAS_ACTIONS.SET_FONT_SETTINGS, mapPayload: (d) => ({ updates: d?.updates || {}, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_SET_GROUP_CHAR_CODE, action: CANVAS_ACTIONS.SET_GROUP_CHAR_CODE, mapPayload: (d) => ({ id: d?.id, value: d?.value, options: d?.options || {} }), assignResult: true },
     { event: CANVAS_EVENTS.REQUEST_SET_SEQUENCE_EDITOR_STATE, action: CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE, mapPayload: (d) => ({ payload: d?.payload || {}, options: d?.options || {} }), assignResult: true },
@@ -106,7 +107,10 @@ export const REQUEST_IO_ROUTES = [
         event: CANVAS_EVENTS.REQUEST_FINISH_DRAWING_PATH,
         handler: (c) => {
             if (c.current_curve?.startNode) {
-                if (c.drawToolSettings?.closed) c.current_curve.closed = true;
+                const closedSetting = c.getActiveTool?.() === 'ELLIPSE'
+                    ? c.ellipseToolSettings?.closed
+                    : c.drawToolSettings?.closed;
+                if (closedSetting) c.current_curve.closed = true;
                 c.commands.finishAddingPathCommand();
             } else if (c.current_curve) {
                 c.commands.finishAddingPath();

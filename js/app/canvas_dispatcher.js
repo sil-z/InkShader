@@ -91,6 +91,9 @@ export const CanvasDispatcher = Object.freeze({
     requestSetPenProperties(updates = {}, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_PEN_PROPERTIES, { updates, options });
     },
+    requestSetEllipseProperties(updates = {}, options = {}) {
+        emitRequest(CANVAS_EVENTS.REQUEST_SET_ELLIPSE_PROPERTIES, { updates, options });
+    },
     requestSetFontSettings(updates = {}, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_FONT_SETTINGS, { updates, options });
     },

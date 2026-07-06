@@ -122,8 +122,14 @@ export class PenToolPopup extends HTMLElement {
 
     _handleStateChanged(e) {
         const nextState = e?.detail?.afterState;
+        // Only accept drawToolSettings from actions that actually update them.
+        // Other actions (SET_SEQUENCE_EDITOR_STATE, CHANGE_OBJECT_SELECTION, etc.)
+        // carry stale boot defaults that would overwrite canvas-persisted values.
         if (nextState?.drawToolSettings) {
-            this._drawToolSettings = nextState.drawToolSettings;
+            const actionType = e.detail?.action?.type;
+            if (actionType === 'SET_DRAW_TOOL_SETTINGS' || actionType === 'SEED_FROM_RUNTIME' || actionType === '__INIT__') {
+                this._drawToolSettings = nextState.drawToolSettings;
+            }
         }
         if (this._visible) {
             this._patchValues();
@@ -184,6 +190,10 @@ export class PenToolPopup extends HTMLElement {
     }
 
     show(anchorEl) {
+        // Always prefer canvas.drawToolSettings as source of truth (persisted value).
+        if (window.__canvas?.drawToolSettings) {
+            this._drawToolSettings = { ...window.__canvas.drawToolSettings };
+        }
         this._patchValues();
         this.classList.add('visible');
 

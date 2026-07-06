@@ -7,6 +7,7 @@ import { readInteractionSnapshotFromCurveManager } from "../domain/selection/run
 import { pickModelRevisionFields } from "./editor_model_sync.js";
 import {
     pickDrawToolFieldsFromCanvas,
+    pickEllipseToolFieldsFromCanvas,
     pickHistoryStackFields,
     pickViewFieldsFromCanvas
 } from "./editor_store_projection.js";
@@ -50,7 +51,8 @@ export function buildInteractionSeedFromCanvas(canvas) {
             clipboardSummary: modelFields.clipboardSummary,
             selectionBoundsTransform: modelFields.selectionBoundsTransform,
             ...pickHistoryStackFields(canvas),
-            drawToolSettings: pickDrawToolFieldsFromCanvas(canvas)
+            drawToolSettings: pickDrawToolFieldsFromCanvas(canvas),
+            ellipseToolSettings: pickEllipseToolFieldsFromCanvas(canvas)
         }
     };
 }

@@ -342,7 +342,11 @@ export class CanvasHistoryService {
                 active_sequence_indices: [...(storeState.activeSequenceIndices || [])],
                 current_tool: resolveActiveCanvasTool(c),
                 draw_tool_settings: c.drawToolSettings,
+                ellipse_tool_settings: c.ellipseToolSettings,
                 guideline_lock: c.guideline_lock,
+                snap_alignment_enabled: c.snap_alignment_enabled,
+                snap_coincident_enabled: c.snap_coincident_enabled,
+                divider_visible: c.divider_visible,
                 selected_tree_ids: interaction.selectedTreeIds,
                 sequence_text: c.curve_manager.sequenceText
             };

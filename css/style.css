@@ -2562,7 +2562,8 @@ group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:no
 [data-theme="dark"] .lock_guideline_icon_unlocked,
 [data-theme="dark"] .seq-bar-action-btn img,
 [data-theme="dark"] .tree_lock_btn img,
-[data-theme="dark"] .tree_hide_btn img {
+[data-theme="dark"] .tree_hide_btn img,
+[data-theme="dark"] .pref-color-reset-btn img {
     filter: invert(0.8);
 }
 .pref_modal_overlay {
@@ -2782,6 +2783,33 @@ group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:no
     border: 1px solid var(--ui-border);
 }
 .pref_button_secondary:hover { background: var(--ui-hover-bg); border-color: var(--ui-border-light); }
+
+/* Per-row color reset button in preferences popup */
+preferences-popup .pref-color-reset-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--ui-text-muted);
+    transition: all 0.15s ease;
+}
+preferences-popup .pref-color-reset-btn:hover {
+    color: var(--ui-accent);
+    background: var(--ui-accent-bg);
+    border-color: var(--ui-accent);
+}
+preferences-popup .pref-color-reset-btn img {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
 /* 新增: 帮助弹窗分离 CSS 类 */
 .help_modal_container { width: 500px; height: 380px; }
 .help_modal_body { flex-direction: column; padding: 20px; }

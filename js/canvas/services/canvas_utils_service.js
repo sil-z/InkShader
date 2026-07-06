@@ -331,6 +331,7 @@ export class CanvasUtilsService {
     }
     hitTestDividerLines(mouseX, mouseY) {
         const c = this.canvas;
+        if (c.divider_visible === false) return null;
         const seqTokens = c.curve_manager.sequenceTokens || [];
         const activeIndices = c.curve_manager.activeSequenceIndices;
         if (activeIndices.size === 0) return null;

@@ -39,6 +39,7 @@ export const CANVAS_EVENTS = Object.freeze({
     REQUEST_SET_GROUP_ADVANCE: "request-set-group-advance",
     REQUEST_UPDATE_NODE_PROPERTY: "request-update-node-property",
     REQUEST_SET_PEN_PROPERTIES: "request-set-pen-properties",
+    REQUEST_SET_ELLIPSE_PROPERTIES: "request-set-ellipse-properties",
     REQUEST_SET_FONT_SETTINGS: "request-set-font-settings",
     REQUEST_SET_GROUP_CHAR_CODE: "request-set-group-char-code",
     REQUEST_SET_SEQUENCE_EDITOR_STATE: "request-set-sequence-editor-state",
