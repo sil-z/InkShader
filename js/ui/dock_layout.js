@@ -1056,6 +1056,29 @@ export class DockLayout {
         }
     }
 
+    _clampPreviewRect(left, top, width, height) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const thin = Math.min(width, height);
+        const IS_THIN_BAR = thin <= 8;
+        if (IS_THIN_BAR) {
+            // Thin insert bar: shift position so the whole bar stays visible
+            if (width < height) {
+                // Vertical bar (thin width, tall height)
+                left = Math.max(0, Math.min(left, vw - width));
+            } else {
+                // Horizontal bar (thin height, wide width)
+                top = Math.max(0, Math.min(top, vh - height));
+            }
+        }
+        // Clip any remaining overflow on the non-thin dimension
+        if (left < 0) { width = Math.max(0, width + left); left = 0; }
+        if (top < 0) { height = Math.max(0, height + top); top = 0; }
+        if (left + width > vw) { width = Math.max(0, vw - left); }
+        if (top + height > vh) { height = Math.max(0, vh - top); }
+        return { left, top, width, height };
+    }
+
     _updateDragPreview(target, cx, cy) {
         if (!target) {
             this._previewEl.classList.remove("visible", "dock-preview-merge", "dock-preview-insert");
@@ -1070,11 +1093,12 @@ export class DockLayout {
                 const tabBar = fw.querySelector(".dock-tab-bar");
                 if (tabBar) {
                     const r = tabBar.getBoundingClientRect();
+                    const clamped = this._clampPreviewRect(r.left, r.top, r.width, r.height);
                     this._previewEl.classList.add("dock-preview-merge");
-                    this._previewEl.style.left = r.left + "px";
-                    this._previewEl.style.top = r.top + "px";
-                    this._previewEl.style.width = r.width + "px";
-                    this._previewEl.style.height = r.height + "px";
+                    this._previewEl.style.left = clamped.left + "px";
+                    this._previewEl.style.top = clamped.top + "px";
+                    this._previewEl.style.width = clamped.width + "px";
+                    this._previewEl.style.height = clamped.height + "px";
                     const fwZ = parseInt(fw.style.zIndex) || 1000;
                     this._previewEl.style.zIndex = (fwZ + 1).toString();
                     this._previewEl.classList.add("visible");
@@ -1086,11 +1110,17 @@ export class DockLayout {
         if (target.zone === "empty-dock") {
             const cr = this.container.getBoundingClientRect();
             const PREVIEW_THICKNESS = 4;
+            const half = PREVIEW_THICKNESS / 2;
+            let left = cr.left - half;
+            let top = cr.top;
+            let width = PREVIEW_THICKNESS;
+            let height = cr.height;
+            const clamped = this._clampPreviewRect(left, top, width, height);
             this._previewEl.classList.add("dock-preview-insert");
-            this._previewEl.style.left = (cr.left - PREVIEW_THICKNESS / 2) + "px";
-            this._previewEl.style.top = cr.top + "px";
-            this._previewEl.style.width = PREVIEW_THICKNESS + "px";
-            this._previewEl.style.height = cr.height + "px";
+            this._previewEl.style.left = clamped.left + "px";
+            this._previewEl.style.top = clamped.top + "px";
+            this._previewEl.style.width = clamped.width + "px";
+            this._previewEl.style.height = clamped.height + "px";
             this._previewEl.classList.add("visible");
             return;
         }
@@ -1101,11 +1131,12 @@ export class DockLayout {
                 const tabBar = tabsEl.querySelector(".dock-tab-bar");
                 if (tabBar) {
                     const r = tabBar.getBoundingClientRect();
+                    const clamped = this._clampPreviewRect(r.left, r.top, r.width, r.height);
                     this._previewEl.classList.add("dock-preview-merge");
-                    this._previewEl.style.left = r.left + "px";
-                    this._previewEl.style.top = r.top + "px";
-                    this._previewEl.style.width = r.width + "px";
-                    this._previewEl.style.height = r.height + "px";
+                    this._previewEl.style.left = clamped.left + "px";
+                    this._previewEl.style.top = clamped.top + "px";
+                    this._previewEl.style.width = clamped.width + "px";
+                    this._previewEl.style.height = clamped.height + "px";
                     this._previewEl.classList.add("visible");
                 }
             }
@@ -1120,25 +1151,23 @@ export class DockLayout {
             this._previewEl.classList.add("dock-preview-insert");
             this._previewEl.classList.add("visible");
 
+            let left, top, width, height;
             if (target.edge === "top" || target.edge === "bottom") {
-                const left = r.left;
-                const top = seam - half;
-                const width = r.width;
-                const height = PREVIEW_THICKNESS;
-                this._previewEl.style.left = left + "px";
-                this._previewEl.style.top = top + "px";
-                this._previewEl.style.width = width + "px";
-                this._previewEl.style.height = height + "px";
+                left = r.left;
+                top = seam - half;
+                width = r.width;
+                height = PREVIEW_THICKNESS;
             } else {
-                const left = seam - half;
-                const top = r.top;
-                const width = PREVIEW_THICKNESS;
-                const height = r.height;
-                this._previewEl.style.left = left + "px";
-                this._previewEl.style.top = top + "px";
-                this._previewEl.style.width = width + "px";
-                this._previewEl.style.height = height + "px";
+                left = seam - half;
+                top = r.top;
+                width = PREVIEW_THICKNESS;
+                height = r.height;
             }
+            const clamped = this._clampPreviewRect(left, top, width, height);
+            this._previewEl.style.left = clamped.left + "px";
+            this._previewEl.style.top = clamped.top + "px";
+            this._previewEl.style.width = clamped.width + "px";
+            this._previewEl.style.height = clamped.height + "px";
         }
     }
 
