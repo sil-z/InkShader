@@ -1175,28 +1175,10 @@ object-tree {
     font-size: 13px;
     color: var(--ui-text-main);
 }
-.property_panel input {
-    height: 22px;
-    font-family: inherit;
-    font-size: 11px;
-    padding: 2px 4px;
-    border: 1px solid var(--ui-border);
-    border-radius: 4px;
+.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn) {
     width: 100%;
-    box-sizing: border-box;
-    color: var(--ui-text-main);
-    background-color: transparent;
-    transition: border-color 0.15s, background-color 0.15s;
 }
-.property_panel input:hover:not(:disabled) {
-    border-color: var(--ui-border-light);
-}
-.property_panel input:focus:not(:disabled) {
-    outline: none;
-    border-color: var(--ui-accent);
-    background-color: var(--ui-accent-bg);
-}
-.property_panel input:disabled {
+.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn):disabled {
     opacity: 0.5;
     cursor: not-allowed;
     border-color: transparent;
@@ -1494,6 +1476,10 @@ ellipse-tool-popup.visible,
 font-popup.visible {
     display: block;
 }
+preferences-popup,
+font-popup {
+    overflow: hidden;
+}
 font-popup .pen-tool-popup-header {
     font-size: 11px;
     font-weight: 600;
@@ -1505,9 +1491,9 @@ font-popup .pen-tool-popup-header {
 }
 preferences-popup .pen-tool-popup-body,
 font-popup .pen-tool-popup-body {
-    padding: 4px 10px 10px;
+    padding: 0;
     overflow-y: auto;
-    max-height: 60vh;
+    max-height: 70vh;
 }
 /* Scrollbar for tool popups: match other panel scrollbar style */
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar,
@@ -1560,22 +1546,20 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track {
     background: transparent;
     border: none;
 }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: none;
+}
 
 preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 3px;
-    min-height: 24px;
+    margin-bottom: 0;
 }
 preferences-popup .pen-tool-row label,
 font-popup .pen-tool-row label {
     width: 110px;
-    font-size: 11px;
-    color: var(--ui-text-muted);
     flex-shrink: 0;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -1619,13 +1603,6 @@ font-popup .pen-tool-row textarea {
 }
 font-popup .pen-tool-row textarea:focus {
     border-color: var(--ui-accent);
-}
-preferences-popup .pen-tool-separator,
-font-popup .pen-tool-separator {
-    height: 1px;
-    background: var(--ui-border);
-    margin: 6px 0;
-    opacity: 0.4;
 }
 /* Hide number input spinners */
 font-popup .pen-tool-row input[type="number"]::-webkit-outer-spin-button,
@@ -1718,20 +1695,7 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
 .ppp-row input[type="number"] {
     flex: 1;
     min-width: 0;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    box-sizing: border-box;
-    outline: none;
     text-align: left;
-}
-.ppp-row input[type="number"]:focus {
-    border-color: var(--ui-accent);
 }
 .ppp-row input[type="checkbox"] {
     width: auto;
@@ -1742,19 +1706,6 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
 .ppp-row input[type="text"] {
     flex: 1;
     min-width: 0;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-family: inherit;
-    font-size: 11px;
-    box-sizing: border-box;
-    outline: none;
-}
-.ppp-row input[type="text"]:focus {
-    border-color: var(--ui-accent);
 }
 .ppp-row .prop_direction_controls {
     flex: 1;
@@ -1884,22 +1835,9 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
 .npp-row input {
     flex: 1;
     min-width: 0;
-    height: 22px;
-    padding: 0 5px;
-    border: 1px solid var(--ui-border);
-    border-radius: 3px;
-    background: var(--ui-bg-base);
-    color: var(--ui-text-main);
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    box-sizing: border-box;
-    outline: none;
     text-align: left;
     cursor: text;
     user-select: auto;
-}
-.npp-row input:focus {
-    border-color: var(--ui-accent);
 }
 .npp-row input:disabled {
     opacity: 0.5;
@@ -2365,10 +2303,11 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
 dropdown-menu {
     display: none;
 }
-.save-dropdown {
+.save-dropdown,
+.save-dropdown-sub,
+preferences-popup,
+font-popup {
     position: fixed;
-    display: none;
-    flex-direction: column;
     z-index: 9999;
     background: var(--ui-bg-overlay);
     backdrop-filter: blur(12px);
@@ -2376,8 +2315,13 @@ dropdown-menu {
     border: 1px solid var(--ui-border);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
-    min-width: 210px;
     padding: 6px 0;
+    box-sizing: border-box;
+}
+.save-dropdown {
+    display: none;
+    flex-direction: column;
+    min-width: 210px;
     max-height: 70vh;
     overflow-y: auto;
 }
@@ -2406,24 +2350,47 @@ dropdown-menu {
     background: transparent;
     border: none;
 }
-.save-dropdown-item {
+.save-dropdown-item,
+preferences-popup .pen-tool-row,
+font-popup .pen-tool-row {
     color: var(--ui-text-main);
     transition: background-color 0.08s;
     white-space: nowrap;
     padding: 6px 14px 6px 12px;
-    cursor: pointer;
     font-size: 13px;
+    line-height: 16px;
     display: flex;
     align-items: center;
     gap: 8px;
     position: relative;
     flex-shrink: 0;
 }
-.save-dropdown-item:hover { background: var(--ui-accent); color: #fff; }
+.save-dropdown-item {
+    cursor: pointer;
+}
+preferences-popup .pen-tool-row,
+font-popup .pen-tool-row {
+    padding: 3px 14px 3px 12px;
+    transition: none;
+}
+.save-dropdown-item:hover {
+    background: var(--ui-accent);
+    color: #fff;
+}
 .save-dropdown-item.disabled { color: var(--ui-text-muted); cursor: default; opacity: 0.6; }
 .save-dropdown-item.disabled:hover { background: transparent; color: var(--ui-text-muted); }
 .save-dropdown-label {
     flex: 1;
+}
+.save-dropdown-label,
+preferences-popup .pen-tool-row label,
+font-popup .pen-tool-row label {
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    white-space: nowrap;
 }
 .save-dropdown-item .shortcut {
     color: var(--ui-text-muted);
@@ -2437,7 +2404,9 @@ dropdown-menu {
     margin-left: 4px;
 }
 .save-dropdown-item:hover .save-dropdown-arrow { opacity: 0.8; }
-.save-dropdown-separator {
+.save-dropdown-separator,
+preferences-popup .pen-tool-separator,
+font-popup .pen-tool-separator {
     height: 1px;
     background: var(--ui-border);
     margin: 4px 8px;
@@ -2445,17 +2414,9 @@ dropdown-menu {
     opacity: 0.5;
 }
 .save-dropdown-sub {
-    position: fixed;
     display: none;
     flex-direction: column;
     z-index: 10000;
-    background: var(--ui-bg-overlay);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
-    padding: 6px 0;
     min-width: 210px;
     max-height: 60vh;
     overflow-y: auto;
@@ -2487,6 +2448,22 @@ dropdown-menu {
 }
 .font-popup-input {
     width: 120px;
+}
+font-popup .pen-tool-row input,
+font-popup .pen-tool-row select,
+preferences-popup .pen-tool-row input,
+preferences-popup .pen-tool-row select,
+.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn),
+property-panel .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+property-panel .ppp-row input[type="number"],
+property-panel .ppp-row input[type="text"],
+node-property-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+bounding-box-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+group-settings-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+path-property-popup .ppp-row input[type="number"],
+path-property-popup .ppp-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
     height: 22px;
     padding: 0 5px;
     border: 1px solid var(--ui-border);
@@ -2498,7 +2475,78 @@ dropdown-menu {
     box-sizing: border-box;
     outline: none;
 }
-.font-popup-input:focus {
+font-popup .pen-tool-row input:focus,
+font-popup .pen-tool-row select:focus,
+preferences-popup .pen-tool-row input:focus,
+preferences-popup .pen-tool-row select:focus,
+.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+property-panel .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+property-panel .ppp-row input[type="number"]:focus:not(:disabled),
+property-panel .ppp-row input[type="text"]:focus:not(:disabled),
+node-property-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+bounding-box-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+group-settings-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+path-property-popup .ppp-row input[type="number"]:focus:not(:disabled),
+path-property-popup .ppp-row input[type="text"]:focus:not(:disabled) {
+    border-color: var(--ui-accent);
+}
+
+/* Authoritative shared baseline for Font and Properties fields. */
+:root {
+    --ink-field-label-font: 400 13px/16px system-ui, sans-serif;
+    --ink-field-input-font: 400 11px/normal "SFMono-Regular", "Cascadia Mono", "Liberation Mono", "Menlo", "Consolas", monospace;
+}
+font-popup .pen-tool-row label,
+preferences-popup .pen-tool-row label,
+property-panel.property_panel .property_single_row > label,
+property-panel.property_panel .npp-row > label,
+property-panel.property_panel .ppp-row > label,
+property-panel .property_single_row > label,
+property-panel .npp-row > label,
+property-panel .ppp-row > label,
+node-property-popup .npp-row > label,
+path-property-popup .ppp-row > label,
+bounding-box-popup .npp-row > label,
+group-settings-popup .npp-row > label {
+    color: var(--ui-text-main);
+    font: var(--ink-field-label-font);
+    letter-spacing: normal;
+}
+font-popup .pen-tool-row input,
+font-popup .pen-tool-row select,
+font-popup .pen-tool-row textarea,
+preferences-popup .pen-tool-row input,
+preferences-popup .pen-tool-row select,
+property-panel.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn),
+property-panel input:not([type="checkbox"]):not(.prop_toggle_btn),
+node-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
+path-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
+bounding-box-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
+group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn) {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font: var(--ink-field-input-font);
+    letter-spacing: normal;
+    box-sizing: border-box;
+    outline: none;
+}
+font-popup .pen-tool-row input:focus,
+font-popup .pen-tool-row select:focus,
+font-popup .pen-tool-row textarea:focus,
+preferences-popup .pen-tool-row input:focus,
+preferences-popup .pen-tool-row select:focus,
+property-panel.property_panel input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+property-panel input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+node-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+path-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+bounding-box-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled) {
     border-color: var(--ui-accent);
 }
 

@@ -662,19 +662,30 @@ export class CanvasCommands {
     /**
      * Command: update document font settings.
      */
-    setFontSettings(updates = {}, options = {}) {
-        const canvas = commandCanvas(this);
-        if (!updates || typeof updates !== 'object') return false;
-        const previous = canvas.fontSettings || {};
-        const next = { ...previous, ...updates };
-        if (JSON.stringify(previous) === JSON.stringify(next)) {
-            return options.recordHistory === true;
-        }
-        canvas.fontSettings = next;
-        this.notifyPropertiesUpdate();
-        this.is_dirty = true;
-        return true;
-    }
+	    setFontSettings(updates = {}, options = {}) {
+	        const canvas = commandCanvas(this);
+	        if (!updates || typeof updates !== 'object') return false;
+	        const previous = canvas.fontSettings || {};
+	        const next = { ...previous, ...updates };
+	        if (JSON.stringify(previous) === JSON.stringify(next)) {
+	            return options.recordHistory === true;
+	        }
+	        canvas.fontSettings = next;
+
+	        // Sync project name with ProjectManager immediately so the brand title
+	        // and cached project list reflect the change without relying on the
+	        // EditorStore → STATE_CHANGED → syncActiveProjectNameFromCanvas pipeline
+	        // (which may not fire if recordHistory returns false for metadata-only changes).
+	        if (next.project_name && next.project_name !== previous.project_name) {
+	            canvas.projectManager?.syncActiveProjectNameFromCanvas?.()?.catch(e =>
+	                console.error("[setFontSettings] Failed to sync project name:", e)
+	            );
+	        }
+
+	        this.notifyPropertiesUpdate();
+	        this.is_dirty = true;
+	        return true;
+	    }
 
     /**
      * Command: update group character mapping (g_char)

@@ -8,7 +8,7 @@ import {
 } from "./input_validation.js";
 
 const TEMPLATE_HTML = `
-<div class="pen-tool-popup-body" style="padding:8px 12px 12px;max-height:none;">
+<div class="pen-tool-popup-body">
     <div class="pen-tool-row">
         <label data-i18n="pref.lang">Language</label>
         <select id="pref_lang" class="font-popup-input">
