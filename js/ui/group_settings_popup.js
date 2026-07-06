@@ -4,6 +4,15 @@ import { appEventBus } from "../app/event_bus.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    isValidTreeName,
+    numberFromInput,
+    restoreRememberedInputValue,
+    rememberInputValue,
+    trimmedInputValue
+} from "./input_validation.js";
 
 export const GRP_DOCKED = 'grp:docked';
 
@@ -32,6 +41,8 @@ export class GroupSettingsPopup extends HTMLElement {
         this._docked = false;
         this._positionReady = false;
         this._focusedInput = null;
+        this._inputSnapshot = null;
+        this._skipCommitTarget = null;
     }
 
     get docked() { return this._docked; }
@@ -55,27 +66,36 @@ export class GroupSettingsPopup extends HTMLElement {
         this.innerHTML = POPUP_HTML;
         this.container = this;
 
-        this.container.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                e.preventDefault();
-                e.target.blur();
-            }
-        });
+        installEnterBlurHandler(this.container);
 
         this.container.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+            if (e.target.tagName === 'INPUT') {
+                this._focusedInput = e.target;
+                rememberInputValue(this, e.target);
+                this._captureInputSnapshot(e.target);
+            }
         });
         this.container.addEventListener('focusout', (e) => {
             if (e.target.tagName === 'INPUT') {
                 this._focusedInput = null;
-                this._commitChange(e.target);
+                if (this._skipCommitTarget === e.target) {
+                    this._skipCommitTarget = null;
+                    return;
+                }
+                if (this._isValidFinalInput(e.target)) {
+                    this._commitChange(e.target);
+                } else {
+                    this._restoreInput(e.target);
+                }
             }
         });
 
         this.container.addEventListener('input', (e) => {
             const id = e.target.id;
             if (!id || !id.startsWith('grp_')) return;
-            this._dispatchChange(e.target, false);
+            if (id === 'grp_advance' && isValidNumber(numberFromInput(e.target), { min: 0 })) {
+                this._dispatchChange(e.target, false);
+            }
         });
 
         this.container.addEventListener('change', (e) => {
@@ -148,12 +168,17 @@ export class GroupSettingsPopup extends HTMLElement {
     _dispatchChange(target, recordHistory) {
         if (!this._groupId) return;
         const id = target.id;
-        const val = target.type === 'checkbox' ? target.checked : target.value.trim();
+        const val = target.type === 'checkbox' ? target.checked : trimmedInputValue(target);
 
         if (id === 'grp_name') {
             const item = EditorModel.getTreeItem(this._groupId);
+            if (!isValidTreeName(val)) {
+                this._restoreInput(target);
+                return;
+            }
             if (item && item.name !== val) {
-                CanvasDispatcher.requestRenameTreeItem(this._groupId, val);
+                const reqDetail = CanvasDispatcher.requestRenameTreeItem(this._groupId, val);
+                if (!reqDetail.result) this._restoreInput(target);
             }
             return;
         }
@@ -163,16 +188,19 @@ export class GroupSettingsPopup extends HTMLElement {
             if (item) {
                 const newVal = val === "" ? null : val;
                 if (item.charCode !== newVal) {
-                    CanvasDispatcher.requestSetGroupCharCode(this._groupId, newVal, { recordHistory: true });
+                    const reqDetail = CanvasDispatcher.requestSetGroupCharCode(this._groupId, newVal, { recordHistory: true });
+                    if (!reqDetail.result?.success && reqDetail.result?.error) this._restoreInput(target);
                 }
             }
             return;
         }
 
         if (id === 'grp_advance') {
-            const numVal = target.valueAsNumber;
-            if (!isNaN(numVal)) {
+            const numVal = numberFromInput(target);
+            if (isValidNumber(numVal, { min: 0 })) {
                 CanvasDispatcher.requestSetGroupAdvance(this._groupId, numVal, { recordHistory });
+            } else if (recordHistory) {
+                this._restoreInput(target);
             }
             return;
         }
@@ -180,6 +208,33 @@ export class GroupSettingsPopup extends HTMLElement {
 
     _commitChange(target) {
         this._dispatchChange(target, true);
+    }
+
+    _captureInputSnapshot(target) {
+        const item = this._groupId ? EditorModel.getTreeItem(this._groupId) : null;
+        this._inputSnapshot = {
+            id: target.id,
+            value: target.id === 'grp_name' ? item?.name ?? target.value
+                : target.id === 'grp_char' ? item?.charCode ?? ''
+                    : target.id === 'grp_advance' ? item?.advance ?? numberFromInput(target)
+                        : target.value
+        };
+    }
+
+    _isValidFinalInput(target) {
+        if (target.id === 'grp_name') return isValidTreeName(trimmedInputValue(target));
+        if (target.id === 'grp_advance') return isValidNumber(numberFromInput(target), { min: 0 });
+        return true;
+    }
+
+    _restoreInput(target) {
+        const fallback = this._inputSnapshot?.id === target.id ? String(this._inputSnapshot.value ?? '') : '';
+        restoreRememberedInputValue(this, target, fallback);
+        this._skipCommitTarget = target;
+        if (target.id === 'grp_advance' && this._groupId && Number.isFinite(Number(this._inputSnapshot?.value))) {
+            CanvasDispatcher.requestSetGroupAdvance(this._groupId, Number(this._inputSnapshot.value), { recordHistory: false });
+        }
+        this._patchValues();
     }
 
     _show() {

@@ -1,6 +1,13 @@
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    numberFromInput,
+    restoreRememberedInputValue,
+    rememberInputValue
+} from "./input_validation.js";
 
 const POPUP_HTML = `
 <div class="property_group_title" data-i18n="prop.pen_settings">Pen Tool Settings</div>
@@ -33,6 +40,8 @@ export class PenToolPopup extends HTMLElement {
         this._globalCleanups = [];
         this._drawToolSettings = null;
         this._visible = false;
+        this._focusedInput = null;
+        this._strokeSnapshot = null;
     }
 
     addGlobalListener(target, type, listener, options = false) {
@@ -52,6 +61,24 @@ export class PenToolPopup extends HTMLElement {
         this._domReady = true;
 
         this.innerHTML = POPUP_HTML;
+        installEnterBlurHandler(this);
+
+        this.addEventListener('focusin', (e) => {
+            if (e.target.tagName !== 'INPUT') return;
+            this._focusedInput = e.target;
+            rememberInputValue(this, e.target);
+            if (e.target.id === 'pen_popup_stroke') {
+                this._strokeSnapshot = this._drawToolSettings?.stroke_width ?? numberFromInput(e.target);
+            }
+        });
+
+        this.addEventListener('focusout', (e) => {
+            if (e.target.tagName !== 'INPUT') return;
+            this._focusedInput = null;
+            if (e.target.id === 'pen_popup_stroke' && !isValidNumber(numberFromInput(e.target), { min: 0 })) {
+                this._restoreStrokeInput(e.target);
+            }
+        });
 
         this.addEventListener('change', (e) => {
             const id = e.target.id;
@@ -61,6 +88,7 @@ export class PenToolPopup extends HTMLElement {
 
         this.addEventListener('input', (e) => {
             if (e.target.id === 'pen_popup_stroke') {
+                if (!isValidNumber(numberFromInput(e.target), { min: 0 })) return;
                 this._dispatchChange(e.target, false);
             }
         });
@@ -111,6 +139,7 @@ export class PenToolPopup extends HTMLElement {
             if (el.type === 'checkbox') {
                 el.checked = val;
             } else {
+                if (el === this._focusedInput) return;
                 el.value = val != null ? String(val) : '';
             }
         };
@@ -123,7 +152,7 @@ export class PenToolPopup extends HTMLElement {
     _dispatchChange(target, recordHistory = true) {
         const id = target.id;
         const val = target.type === 'checkbox' ? target.checked : target.value.trim();
-        const numVal = target.type === 'number' ? target.valueAsNumber : parseFloat(val);
+        const numVal = numberFromInput(target);
         const propMap = {
             'pen_popup_stroke': 'stroke_width',
             'pen_popup_closed': 'closed',
@@ -132,9 +161,24 @@ export class PenToolPopup extends HTMLElement {
         };
         const prop = propMap[id];
         if (prop) {
+            if (prop === 'stroke_width' && !isValidNumber(numVal, { min: 0 })) {
+                this._restoreStrokeInput(target);
+                return;
+            }
             CanvasDispatcher.requestSetPenProperties(
                 { [prop]: (target.type === 'checkbox' ? val : numVal) },
                 { recordHistory }
+            );
+        }
+    }
+
+    _restoreStrokeInput(target) {
+        const fallback = this._strokeSnapshot != null ? String(this._strokeSnapshot) : '';
+        restoreRememberedInputValue(this, target, fallback);
+        if (Number.isFinite(Number(this._strokeSnapshot)) && Number(this._strokeSnapshot) >= 0) {
+            CanvasDispatcher.requestSetPenProperties(
+                { stroke_width: Number(this._strokeSnapshot) },
+                { recordHistory: false }
             );
         }
     }

@@ -62,42 +62,44 @@ export class TreeStore {
     }
 
     renameItem(oldId, newName) {
-        if (oldId === newName) return true;
-        if (this.treeItems.has(newName)) return false;
+        const normalizedName = typeof newName === 'string' ? newName.trim() : '';
+        if (normalizedName.length === 0 || normalizedName.includes('\\')) return false;
+        if (oldId === normalizedName) return true;
+        if (this.treeItems.has(normalizedName)) return false;
 
         let item = this.treeItems.get(oldId);
         if (!item) return false;
 
         this.treeItems.delete(oldId);
-        item.id = newName;
-        item.name = newName;
+        item.id = normalizedName;
+        item.name = normalizedName;
         item.is_modified = true;
         if (item.type === 'curve') {
-            item.curveId = newName;
+            item.curveId = normalizedName;
             let curve = this._curveStore.curves.find(c => c.id === oldId);
-            if (curve) curve.id = newName;
+            if (curve) curve.id = normalizedName;
         }
-        this.treeItems.set(newName, item);
+        this.treeItems.set(normalizedName, item);
 
         if (item.parentId) {
             let parent = this.treeItems.get(item.parentId);
             if (parent) {
                 let idx = parent.children.indexOf(oldId);
-                if (idx !== -1) parent.children[idx] = newName;
+                if (idx !== -1) parent.children[idx] = normalizedName;
             }
         } else {
             let idx = this.rootChildren.indexOf(oldId);
-            if (idx !== -1) this.rootChildren[idx] = newName;
+            if (idx !== -1) this.rootChildren[idx] = normalizedName;
         }
 
         for (let v of this.treeItems.values()) {
-            if (v.parentId === oldId) v.parentId = newName;
-            if (v.isRef && v.refId === oldId) v.refId = newName;
+            if (v.parentId === oldId) v.parentId = normalizedName;
+            if (v.isRef && v.refId === oldId) v.refId = normalizedName;
         }
 
         if (item.type === 'group') {
             for (let c of this._curveStore.curves) {
-                if (c.groupId === oldId) c.groupId = newName;
+                if (c.groupId === oldId) c.groupId = normalizedName;
             }
         }
 
@@ -345,6 +347,16 @@ export class TreeStore {
 
             const directProps = ['stroke_width', 'closed', 'smart_stroke', 'show_skeleton', 'smart_stroke_clockwise', 'visible', 'locked'];
             for (const key of directProps) {
+                if (key === 'stroke_width') {
+                    if (!Object.prototype.hasOwnProperty.call(props, key) || props[key] === '') continue;
+                    const nextStrokeWidth = Number(props[key]);
+                    if (!Number.isFinite(nextStrokeWidth) || nextStrokeWidth < 0) continue;
+                    if (curve.stroke_width !== nextStrokeWidth) {
+                        curve.stroke_width = nextStrokeWidth;
+                        changed = true;
+                    }
+                    continue;
+                }
                 if (Object.prototype.hasOwnProperty.call(props, key) && curve[key] !== props[key]) {
                     curve[key] = props[key];
                     changed = true;

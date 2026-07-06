@@ -972,7 +972,7 @@ logger-panel {
     font-size: 13px;
     font-weight: 600;
     color: var(--ui-text-main);
-    padding-left: 4px;
+    padding: 0 4px;
     letter-spacing: 0.2px;
 }
 .property_group {
@@ -988,7 +988,7 @@ logger-panel {
     font-size: 11px;
     font-weight: 600;
     color: var(--ui-text-muted);
-    padding: 4px 0 4px 4px;
+    padding: 4px 4px;
     letter-spacing: 0.5px;
 }
 .property_single_row {
@@ -1155,7 +1155,7 @@ object-tree {
     min-height: 0;
 }
 .tree_panel {
-    padding: 0 0 4px 6px;
+    padding: 0 6px 4px 6px;
     font-size: 13px;
     flex: 1; 
     white-space: nowrap;

@@ -173,6 +173,7 @@ export class SnapshotSerializer {
     // Export
     // =========================================================================
     exportJSON(editorState) {
+        const fontSettings = editorState.font_settings || {};
         let file = {
             "version": "1.0", "canvas_size_width": editorState.canvas_size_width, "canvas_size_height": editorState.canvas_size_height,
             "editor_guideline_h": editorState.guidelines_h || [], "editor_guideline_v": editorState.guidelines_v || [],
@@ -181,7 +182,32 @@ export class SnapshotSerializer {
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
             "editor_fill_color": editorState.fill_color, "editor_stroke_color": editorState.stroke_color,
-            "family_name": "InkShader_Default_Font", "project_name": "", "basic_spacing": 1000, "ch": {}, "components": {}
+            "family_name": fontSettings.family || "InkShader_Default_Font",
+            "project_name": fontSettings.project_name || "",
+            "basic_spacing": fontSettings.basic_spacing ?? 1000,
+            "font_style": fontSettings.style || "Regular",
+            "postscript_name": fontSettings.postscript_name || "",
+            "preferred_family": fontSettings.preferred_family || "",
+            "preferred_subfamily": fontSettings.preferred_subfamily || "",
+            "copyright": fontSettings.copyright || "",
+            "designer": fontSettings.designer || "",
+            "designer_url": fontSettings.designer_url || "",
+            "manufacturer": fontSettings.manufacturer || "",
+            "manufacturer_url": fontSettings.manufacturer_url || "",
+            "license": fontSettings.license || "",
+            "license_url": fontSettings.license_url || "",
+            "trademark": fontSettings.trademark || "",
+            "description": fontSettings.description || "",
+            "sample_text": fontSettings.sample_text || "",
+            "upm": fontSettings.upm ?? 1000,
+            "weight_class": fontSettings.weight_class ?? 400,
+            "width_class": fontSettings.width_class ?? 5,
+            "ascender": fontSettings.ascender ?? 800,
+            "descender": fontSettings.descender ?? -200,
+            "x_height": fontSettings.x_height ?? 500,
+            "cap_height": fontSettings.cap_height ?? 700,
+            "font_version": fontSettings.version || "1.0",
+            "ch": {}, "components": {}
         };
         const serializeCurve = (curve) => {
             let pathData = {

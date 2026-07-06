@@ -104,6 +104,32 @@ class MainCanvasBase extends HTMLElement {
         this.drawToolSettings = {
             stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
         };
+        this.fontSettings = {
+            family: "InkShader Default Font",
+            style: "Regular",
+            postscript_name: "",
+            preferred_family: "",
+            preferred_subfamily: "",
+            copyright: "",
+            designer: "",
+            designer_url: "",
+            manufacturer: "",
+            manufacturer_url: "",
+            license: "",
+            license_url: "",
+            trademark: "",
+            description: "",
+            sample_text: "",
+            upm: 1000,
+            weight_class: 400,
+            width_class: 5,
+            ascender: 800,
+            descender: -200,
+            x_height: 500,
+            cap_height: 700,
+            version: "1.0",
+            project_name: ""
+        };
         this.viewportService = new CanvasViewportService(this);
         this.renderRuntimeService = new CanvasRenderRuntimeService(this);
         // EditorStore initializes in connectedCallback after services are ready (history callback depends on this.history)

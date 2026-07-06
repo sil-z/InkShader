@@ -13,6 +13,46 @@ import {
 } from "./command_runtime.js";
 import { resolveMarkersFromCanvas } from "../selection/marker_resolution.js";
 
+function snapshotString(snapshot, key, fallback, defaultValue = "") {
+    return Object.prototype.hasOwnProperty.call(snapshot, key) ? snapshot[key] : fallback ?? defaultValue;
+}
+
+function snapshotNumber(snapshot, key, fallback, defaultValue) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) return fallback ?? defaultValue;
+    const value = Number(snapshot[key]);
+    return Number.isFinite(value) ? value : fallback ?? defaultValue;
+}
+
+function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
+    return {
+        family: snapshotString(snapshot, "family_name", fallback.family, "InkShader Default Font"),
+        style: snapshotString(snapshot, "font_style", fallback.style, "Regular"),
+        postscript_name: snapshotString(snapshot, "postscript_name", fallback.postscript_name),
+        preferred_family: snapshotString(snapshot, "preferred_family", fallback.preferred_family),
+        preferred_subfamily: snapshotString(snapshot, "preferred_subfamily", fallback.preferred_subfamily),
+        copyright: snapshotString(snapshot, "copyright", fallback.copyright),
+        designer: snapshotString(snapshot, "designer", fallback.designer),
+        designer_url: snapshotString(snapshot, "designer_url", fallback.designer_url),
+        manufacturer: snapshotString(snapshot, "manufacturer", fallback.manufacturer),
+        manufacturer_url: snapshotString(snapshot, "manufacturer_url", fallback.manufacturer_url),
+        license: snapshotString(snapshot, "license", fallback.license),
+        license_url: snapshotString(snapshot, "license_url", fallback.license_url),
+        trademark: snapshotString(snapshot, "trademark", fallback.trademark),
+        description: snapshotString(snapshot, "description", fallback.description),
+        sample_text: snapshotString(snapshot, "sample_text", fallback.sample_text),
+        upm: snapshotNumber(snapshot, "upm", fallback.upm, 1000),
+        weight_class: snapshotNumber(snapshot, "weight_class", fallback.weight_class, 400),
+        width_class: snapshotNumber(snapshot, "width_class", fallback.width_class, 5),
+        ascender: snapshotNumber(snapshot, "ascender", fallback.ascender, 800),
+        descender: snapshotNumber(snapshot, "descender", fallback.descender, -200),
+        x_height: snapshotNumber(snapshot, "x_height", fallback.x_height, 500),
+        cap_height: snapshotNumber(snapshot, "cap_height", fallback.cap_height, 700),
+        version: snapshotString(snapshot, "font_version", fallback.version, "1.0"),
+        project_name: snapshotString(snapshot, "project_name", fallback.project_name),
+        basic_spacing: snapshotNumber(snapshot, "basic_spacing", fallback.basic_spacing, 1000)
+    };
+}
+
 export class CanvasCommands {
     /** Canvas direct-command history write without dispatch (others go through EditorStore auto commit) */
     _commitHistory(commandName, payload = {}) {
@@ -28,10 +68,22 @@ export class CanvasCommands {
         if (jsonStr === null || jsonStr === undefined) return false;
         if (typeof jsonStr === "object") {
             await this.curve_manager.loadFromSnapshotObject(jsonStr);
+            const canvas = commandCanvas(this);
+            canvas.fontSettings = fontSettingsFromSnapshot(jsonStr, canvas.fontSettings);
             return true;
         }
         if (typeof jsonStr !== "string" || jsonStr.length === 0) return false;
+        let snapshotObj = null;
+        try {
+            snapshotObj = JSON.parse(jsonStr);
+        } catch (_) {
+            snapshotObj = null;
+        }
         await this.curve_manager.loadFromJSON(jsonStr);
+        if (snapshotObj) {
+            const canvas = commandCanvas(this);
+            canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
+        }
         return true;
     }
 
@@ -546,9 +598,12 @@ export class CanvasCommands {
     setGroupAdvance(groupId, advance, options = {}) {
         const item = this.curve_manager.treeItems.get(groupId);
         if (!item || item.type !== 'group') return false;
+        if (advance === '') return false;
         const num = Number(advance);
-        if (!Number.isFinite(num)) return false;
-        if (item.advance === num) return false;
+        if (!Number.isFinite(num) || num < 0) return false;
+        if (item.advance === num) {
+            return options.recordHistory === true;
+        }
 
         item.advance = num;
         item.is_modified = true;
@@ -565,7 +620,9 @@ export class CanvasCommands {
         const num = Number(value);
         if (!Number.isFinite(num)) return false;
         const changed = this.curve_manager.updateNodeProperty(marker, propId, num);
-        if (!changed) return false;
+        if (!changed) {
+            return options.recordHistory === true;
+        }
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;
@@ -581,16 +638,39 @@ export class CanvasCommands {
         for (const key of allowed) {
             if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
             const nextVal = updates[key];
+            if (key === 'stroke_width' && nextVal === '') continue;
+            if (key === 'stroke_width' && (!Number.isFinite(Number(nextVal)) || Number(nextVal) < 0)) {
+                continue;
+            }
             if (this.drawToolSettings[key] !== nextVal) {
-                this.drawToolSettings[key] = nextVal;
+                this.drawToolSettings[key] = key === 'stroke_width' ? Number(nextVal) : nextVal;
                 changed = true;
             }
         }
-        if (!changed) return false;
+        if (!changed) {
+            return options.recordHistory === true;
+        }
         commitInteractionFromCommand(this, {
             type: EDITOR_ACTIONS.SET_DRAW_TOOL_SETTINGS,
             payload: { ...this.drawToolSettings }
         });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
+     * Command: update document font settings.
+     */
+    setFontSettings(updates = {}, options = {}) {
+        const canvas = commandCanvas(this);
+        if (!updates || typeof updates !== 'object') return false;
+        const previous = canvas.fontSettings || {};
+        const next = { ...previous, ...updates };
+        if (JSON.stringify(previous) === JSON.stringify(next)) {
+            return options.recordHistory === true;
+        }
+        canvas.fontSettings = next;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;

@@ -8,6 +8,16 @@ import { NODE_PROPS_DOCKED, NODE_PROPS_UNDOCKED } from "./node_property_popup.js
 import { PATH_PROPS_DOCKED, PATH_PROPS_UNDOCKED } from "./path_property_popup.js";
 import { BBOX_DOCKED, BBOX_UNDOCKED } from "./bounding_box_popup.js";
 import { GRP_DOCKED } from "./group_settings_popup.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    isValidTreeName,
+    numberFromInput,
+    readInputValue,
+    restoreRememberedInputValue,
+    rememberInputValue,
+    trimmedInputValue
+} from "./input_validation.js";
 
 const TEMPLATE_HTML = `
     <div class="prop_panel_title_wrapper">
@@ -37,6 +47,7 @@ export class PropertyPanel extends HTMLElement {
         this._loadSectionOrder();
         this._dragState = null;
         this._renderPending = false;
+        this._inputSnapshots = new WeakMap();
     }
 
     _loadSectionDockState() {
@@ -87,18 +98,21 @@ export class PropertyPanel extends HTMLElement {
 
             this.container = this.querySelector('#property_container');
 
-            this.container.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                    e.preventDefault();
-                    e.target.blur();
-                }
-            });
+            installEnterBlurHandler(this.container);
 
             this.container.addEventListener('focusin', (e) => {
-                if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+                if (e.target.tagName === 'INPUT') {
+                    this._focusedInput = e.target;
+                    this._captureInputSnapshot(e.target);
+                }
             });
             this.container.addEventListener('focusout', (e) => {
-                if (e.target.tagName === 'INPUT') this._focusedInput = null;
+                if (e.target.tagName === 'INPUT') {
+                    this._focusedInput = null;
+                    if (!this._isValidFinalInput(e.target)) {
+                        this._restoreInputSnapshot(e.target);
+                    }
+                }
             });
 
             const realtimeIds = [
@@ -336,6 +350,112 @@ export class PropertyPanel extends HTMLElement {
             if (items[i][prop] !== first) return 'mixed';
         }
         return first;
+    }
+
+    _captureInputSnapshot(target) {
+        rememberInputValue(this, target);
+        const id = target.id;
+        const selectedIds = [...this.interaction.selectedTreeIds];
+        const snapshot = { value: readInputValue(target), kind: null };
+
+        if (id === 'path_stroke') {
+            snapshot.kind = 'pathStroke';
+            snapshot.values = selectedIds.map((sid) => {
+                const item = EditorModel.getTreeItem(sid);
+                const curve = item?.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
+                return curve ? { id: sid, value: curve.stroke_width } : null;
+            }).filter(Boolean);
+        } else if (['ref_tx', 'ref_ty'].includes(id)) {
+            const item = EditorModel.getTreeItem(selectedIds[0]);
+            const transform = item?.isRef ? EditorModel.getRefTransform(item) : null;
+            snapshot.kind = 'refTransform';
+            snapshot.id = item?.id ?? null;
+            snapshot.tx = transform?.e ?? 0;
+            snapshot.ty = transform?.f ?? 0;
+        } else if (['sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h'].includes(id)) {
+            const bounds = this.getSelectionBounds();
+            snapshot.kind = 'bounds';
+            snapshot.prop = id.split('_')[2];
+            snapshot.valueForProp = bounds ? {
+                x: bounds.minX,
+                y: bounds.minY,
+                w: bounds.maxX - bounds.minX,
+                h: bounds.maxY - bounds.minY
+            }[snapshot.prop] : null;
+        } else if (['prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
+            const marker = this._nodePropsDocked && this._nodePropsAnchorId
+                ? EditorModel.resolveNodeMarker(this._nodePropsAnchorId)
+                : this._resolvePrimaryNodeMarker();
+            snapshot.kind = 'nodeProp';
+            snapshot.marker = marker;
+            snapshot.propId = id;
+            snapshot.valueForProp = numberFromInput(target);
+        } else if (id === 'g_advance') {
+            const groupId = this._resolveInputGroupId(selectedIds);
+            const item = groupId ? EditorModel.getTreeItem(groupId) : null;
+            snapshot.kind = 'groupAdvance';
+            snapshot.groupId = groupId;
+            snapshot.valueForProp = item?.advance !== undefined ? item.advance : null;
+        }
+
+        this._inputSnapshots.set(target, snapshot);
+    }
+
+    _resolveInputGroupId(selectedIds) {
+        let selId = selectedIds[0];
+        let item = EditorModel.getTreeItem(selId);
+        if (!item || item.type !== 'group') {
+            selId = this.interaction.activeGroupId;
+        }
+        return selId ?? null;
+    }
+
+    _restoreInputSnapshot(target) {
+        const snapshot = this._inputSnapshots.get(target);
+        restoreRememberedInputValue(this, target, snapshot?.value ?? '');
+        if (!snapshot) {
+            this.render();
+            return;
+        }
+
+        if (snapshot.kind === 'pathStroke' && Array.isArray(snapshot.values)) {
+            const updates = snapshot.values.map(({ id, value }) => ({ id, props: { stroke_width: value } }));
+            if (updates.length > 0) {
+                CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: false });
+            }
+        } else if (snapshot.kind === 'refTransform' && snapshot.id) {
+            CanvasDispatcher.requestSetSingleObjectProperties(
+                [{ id: snapshot.id, props: { ref_tx: snapshot.tx, ref_ty: snapshot.ty } }],
+                { recordHistory: false }
+            );
+        } else if (snapshot.kind === 'bounds' && Number.isFinite(snapshot.valueForProp)) {
+            const isSizeProp = snapshot.prop === 'w' || snapshot.prop === 'h';
+            CanvasDispatcher.requestChangeSelectedObjectsBounds(snapshot.prop, snapshot.valueForProp, {
+                recordHistory: false,
+                useBoundsSession: isSizeProp,
+                commitBoundsSession: false
+            });
+        } else if (snapshot.kind === 'nodeProp' && snapshot.marker && Number.isFinite(snapshot.valueForProp)) {
+            CanvasDispatcher.requestUpdateNodeProperty(snapshot.marker, snapshot.propId, snapshot.valueForProp, {
+                recordHistory: false
+            });
+        } else if (snapshot.kind === 'groupAdvance' && snapshot.groupId && Number.isFinite(snapshot.valueForProp)) {
+            CanvasDispatcher.requestSetGroupAdvance(snapshot.groupId, snapshot.valueForProp, { recordHistory: false });
+        }
+
+        this.render();
+    }
+
+    _isValidFinalInput(target) {
+        const id = target.id;
+        if (['ref_name', 'g_name', 'c_name'].includes(id)) return isValidTreeName(trimmedInputValue(target));
+        if (id === 'path_stroke' || id === 'g_advance') return isValidNumber(numberFromInput(target), { min: 0 });
+        if (['ref_tx', 'ref_ty', 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
+            return isValidNumber(numberFromInput(target));
+        }
+        if (['sel_prop_x', 'sel_prop_y'].includes(id)) return isValidNumber(numberFromInput(target));
+        if (['sel_prop_w', 'sel_prop_h'].includes(id)) return isValidNumber(numberFromInput(target), { min: 0 });
+        return true;
     }
 
     render() {
@@ -1095,13 +1215,18 @@ export class PropertyPanel extends HTMLElement {
         const id = target.id;
         if (!id) return;
 
-        let val = target.type === 'checkbox' ? target.checked : target.value.trim();
-        let numVal = target.type === 'number' ? target.valueAsNumber : parseFloat(val);
+        let val = target.type === 'checkbox' ? target.checked : trimmedInputValue(target);
+        let numVal = numberFromInput(target);
         let selectedIds = [...this.interaction.selectedTreeIds];
 
         if (id.startsWith('path_')) {
             const propMap = { 'path_stroke': 'stroke_width', 'path_closed': 'closed', 'path_smart_stroke': 'smart_stroke', 'path_show_skel': 'show_skeleton' };
             const prop = propMap[id];
+            if (!prop) return;
+            if (id === 'path_stroke' && !isValidNumber(numVal, { min: 0 })) {
+                if (e.type === 'change') this._restoreInputSnapshot(target);
+                return;
+            }
             const updates = [];
             selectedIds.forEach(sid => {
                 let item = EditorModel.getTreeItem(sid);
@@ -1127,10 +1252,14 @@ export class PropertyPanel extends HTMLElement {
                 item = selId ? EditorModel.getTreeItem(selId) : null;
             }
             if (!item || item.name === val) return;
+            if (!isValidTreeName(val)) {
+                this._restoreInputSnapshot(target);
+                return;
+            }
 
             const reqDetail = CanvasDispatcher.requestRenameTreeItem(selId, val);
             if (!reqDetail.result) {
-                target.value = item.name;
+                this._restoreInputSnapshot(target);
             }
             return;
         }
@@ -1159,8 +1288,14 @@ export class PropertyPanel extends HTMLElement {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
             if (item && item.isRef) {
-                let tx = parseFloat(this.container.querySelector('#ref_tx').value) || 0;
-                let ty = parseFloat(this.container.querySelector('#ref_ty').value) || 0;
+                const txInput = this.container.querySelector('#ref_tx');
+                const tyInput = this.container.querySelector('#ref_ty');
+                let tx = numberFromInput(txInput);
+                let ty = numberFromInput(tyInput);
+                if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+                    if (e.type === 'change') this._restoreInputSnapshot(target);
+                    return;
+                }
                 CanvasDispatcher.requestSetSingleObjectProperties(
                     [{ id: selId, props: { ref_tx: tx, ref_ty: ty } }],
                     { recordHistory: e.type === 'change' }
@@ -1169,7 +1304,11 @@ export class PropertyPanel extends HTMLElement {
             return;
         }
 
-        if (id === 'g_advance' && !isNaN(numVal)) {
+        if (id === 'g_advance') {
+            if (!isValidNumber(numVal, { min: 0 })) {
+                if (e.type === 'change') this._restoreInputSnapshot(target);
+                return;
+            }
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
             // Fallback to active group if selected item is not a group
@@ -1196,14 +1335,16 @@ export class PropertyPanel extends HTMLElement {
                     commitBoundsSession: isSizeProp && e.type === 'change'
                 });
             } else if (e.type === 'change') {
-                // On blur/enter with invalid input, refill with current actual value to avoid empty value persisting
-                this.render();
+                this._restoreInputSnapshot(target);
             }
             return;
         }
 
         if (['prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
-            if (isNaN(numVal)) return;
+            if (!Number.isFinite(numVal)) {
+                if (e.type === 'change') this._restoreInputSnapshot(target);
+                return;
+            }
             let marker;
             if (this._nodePropsDocked && this._nodePropsAnchorId) {
                 marker = EditorModel.resolveNodeMarker(this._nodePropsAnchorId);

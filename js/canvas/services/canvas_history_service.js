@@ -342,6 +342,7 @@ export class CanvasHistoryService {
                 active_sequence_indices: [...(storeState.activeSequenceIndices || [])],
                 current_tool: resolveActiveCanvasTool(c),
                 draw_tool_settings: c.drawToolSettings,
+                guideline_lock: c.guideline_lock,
                 selected_tree_ids: interaction.selectedTreeIds,
                 sequence_text: c.curve_manager.sequenceText
             };

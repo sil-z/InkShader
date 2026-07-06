@@ -3,6 +3,15 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    isValidTreeName,
+    numberFromInput,
+    restoreRememberedInputValue,
+    rememberInputValue,
+    trimmedInputValue
+} from "./input_validation.js";
 
 export const PATH_PROPS_DOCKED = 'ppp:docked';
 export const PATH_PROPS_UNDOCKED = 'ppp:undocked';
@@ -63,6 +72,8 @@ export class PathPropertyPopup extends HTMLElement {
         this._docked = false;
         this._positionReady = false;
         this._togglingDirection = false;
+        this._strokeSnapshot = null;
+        this._skipCommitTarget = null;
     }
 
     get docked() { return this._docked; }
@@ -87,20 +98,27 @@ export class PathPropertyPopup extends HTMLElement {
 
         this.container = this;
 
-        this.container.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                e.preventDefault();
-                e.target.blur();
-            }
-        });
+        installEnterBlurHandler(this.container);
 
         this.container.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+            if (e.target.tagName === 'INPUT') {
+                this._focusedInput = e.target;
+                rememberInputValue(this, e.target);
+                if (e.target.id === 'ppp_stroke') this._captureStrokeSnapshot();
+            }
         });
         this.container.addEventListener('focusout', (e) => {
             if (e.target.tagName === 'INPUT') {
                 this._focusedInput = null;
-                this._commitChange(e.target);
+                if (this._skipCommitTarget === e.target) {
+                    this._skipCommitTarget = null;
+                    return;
+                }
+                if (this._isValidFinalInput(e.target)) {
+                    this._commitChange(e.target);
+                } else {
+                    this._restoreInput(e.target);
+                }
             }
         });
 
@@ -316,11 +334,15 @@ export class PathPropertyPopup extends HTMLElement {
 
     _dispatchChange(target, recordHistory) {
         const id = target.id;
-        const val = target.type === 'checkbox' ? target.checked : target.value.trim();
-        const numVal = target.type === 'number' ? target.valueAsNumber : parseFloat(val);
+        const val = target.type === 'checkbox' ? target.checked : trimmedInputValue(target);
+        const numVal = numberFromInput(target);
         const selIds = [...this._selectedTreeIds];
 
         if (id === 'ppp_stroke') {
+            if (!isValidNumber(numVal, { min: 0 })) {
+                if (recordHistory) this._restoreInput(target);
+                return;
+            }
             const updates = [];
             selIds.forEach(sid => {
                 const item = EditorModel.getTreeItem(sid);
@@ -357,10 +379,14 @@ export class PathPropertyPopup extends HTMLElement {
         if (id === 'ppp_name') {
             const selId = selIds[0];
             const item = EditorModel.getTreeItem(selId);
+            if (!isValidTreeName(val)) {
+                this._restoreInput(target);
+                return;
+            }
             if (item && item.name !== val) {
                 const reqDetail = CanvasDispatcher.requestRenameTreeItem(selId, val);
                 if (!reqDetail.result) {
-                    target.value = item.name;
+                    this._restoreInput(target);
                 }
             }
         }
@@ -368,6 +394,35 @@ export class PathPropertyPopup extends HTMLElement {
 
     _commitChange(target) {
         this._dispatchChange(target, true);
+    }
+
+    _isValidFinalInput(target) {
+        if (target.id === 'ppp_stroke') return isValidNumber(numberFromInput(target), { min: 0 });
+        if (target.id === 'ppp_name') return isValidTreeName(trimmedInputValue(target));
+        return true;
+    }
+
+    _captureStrokeSnapshot() {
+        this._strokeSnapshot = [...this._selectedTreeIds].map((sid) => {
+            const item = EditorModel.getTreeItem(sid);
+            const curve = item?.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
+            return curve ? { id: sid, value: curve.stroke_width } : null;
+        }).filter(Boolean);
+    }
+
+    _restoreInput(target) {
+        restoreRememberedInputValue(this, target);
+        this._skipCommitTarget = target;
+        if (target.id === 'ppp_stroke' && Array.isArray(this._strokeSnapshot)) {
+            const updates = this._strokeSnapshot.map(({ id, value }) => ({ id, props: { stroke_width: value } }));
+            if (updates.length > 0) {
+                CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: false });
+            }
+        }
+        this._patchValues(this._selectedTreeIds.map((id) => {
+            const item = EditorModel.getTreeItem(id);
+            return item?.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
+        }).filter(Boolean));
     }
 
     _handleReverseDirection() {

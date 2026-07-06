@@ -44,6 +44,100 @@
       "type": "string",
       "description": "Project name (reserved, currently empty on export)"
     },
+    "font_style": {
+      "type": "string",
+      "description": "Font style/subfamily name"
+    },
+    "postscript_name": {
+      "type": "string",
+      "description": "PostScript font name"
+    },
+    "preferred_family": {
+      "type": "string",
+      "description": "Preferred family name"
+    },
+    "preferred_subfamily": {
+      "type": "string",
+      "description": "Preferred subfamily name"
+    },
+    "copyright": {
+      "type": "string",
+      "description": "Font copyright text"
+    },
+    "designer": {
+      "type": "string",
+      "description": "Font designer"
+    },
+    "designer_url": {
+      "type": "string",
+      "description": "Designer URL"
+    },
+    "manufacturer": {
+      "type": "string",
+      "description": "Font manufacturer"
+    },
+    "manufacturer_url": {
+      "type": "string",
+      "description": "Manufacturer URL"
+    },
+    "license": {
+      "type": "string",
+      "description": "Font license text"
+    },
+    "license_url": {
+      "type": "string",
+      "description": "License URL"
+    },
+    "trademark": {
+      "type": "string",
+      "description": "Font trademark text"
+    },
+    "description": {
+      "type": "string",
+      "description": "Font description"
+    },
+    "sample_text": {
+      "type": "string",
+      "description": "Font sample text"
+    },
+    "upm": {
+      "type": "number",
+      "description": "Units per em",
+      "minimum": 16,
+      "maximum": 16384
+    },
+    "weight_class": {
+      "type": "number",
+      "description": "OS/2 weight class",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "width_class": {
+      "type": "number",
+      "description": "OS/2 width class",
+      "minimum": 1,
+      "maximum": 9
+    },
+    "ascender": {
+      "type": "number",
+      "description": "Font ascender"
+    },
+    "descender": {
+      "type": "number",
+      "description": "Font descender"
+    },
+    "x_height": {
+      "type": "number",
+      "description": "Font x-height"
+    },
+    "cap_height": {
+      "type": "number",
+      "description": "Font cap height"
+    },
+    "font_version": {
+      "type": "string",
+      "description": "Font version string"
+    },
     "basic_spacing": {
       "type": "number",
       "description": "Default advance width for glyphs without explicit advance",

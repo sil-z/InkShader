@@ -317,19 +317,25 @@ export class CanvasRendererService {
         if (c.curve_manager.activeSequenceIndices.size > 0) {
             c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
             let hoveredScreenX = null;
+            let drawnPositions = new Set();
             for (let i = 0; i < seqTokens.length; i++) {
                 if (!activeIndices.has(i)) continue;
                 let seqOffsetX = c.curve_manager.getSeqOffset(i); let sx = seqOffsetX * c.scale + offsetX;
-                c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH);
+                if (!drawnPositions.has(sx)) {
+                    c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH);
+                    drawnPositions.add(sx);
+                }
                 let token = seqTokens[i]; let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
                 let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
                 let ex = (seqOffsetX + advance) * c.scale + offsetX;
+                if (drawnPositions.has(ex)) continue;
                 let rightId = gid + "-" + i + "-r";
                 let isHov = !c.guideline_lock && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
                 if (isHov) {
                     hoveredScreenX = ex;
                 } else {
                     c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
+                    drawnPositions.add(ex);
                 }
             }
             c.ctx.stroke(); c.ctx.restore();

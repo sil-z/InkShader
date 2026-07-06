@@ -44,7 +44,8 @@ export class CanvasIOService {
             guideline_lock: c.guideline_lock,
             user_guidelines: c.user_guidelines || [],
             fill_color: getCanvasTheme().path_fill_color,
-            stroke_color: getCanvasTheme().path_stroke_color
+            stroke_color: getCanvasTheme().path_stroke_color,
+            font_settings: c.fontSettings || {}
         });
     }
     triggerLoad() {
@@ -89,6 +90,10 @@ export class CanvasIOService {
     }
     triggerSave() {
         const c = this.canvas;
+        const active = document.activeElement;
+        if (active && document.querySelector('font-popup')?.contains(active)) {
+            active.blur();
+        }
         const jsonStr = c.io.save_file();
         const blob = new Blob([jsonStr], { type: "application/json" });
         const url = c.env.createObjectURL(blob);
@@ -109,15 +114,23 @@ export class CanvasIOService {
     }
     exportToUFO() {
         const c = this.canvas;
+        const active = document.activeElement;
+        if (active && document.querySelector('font-popup')?.contains(active)) {
+            active.blur();
+        }
         if (typeof JSZip === "undefined") {
             alert("JSZip library is not loaded. Cannot export UFO.");
             return;
         }
-        let fontSettings = { family: "InkShader Font", style: "Regular", upm: 1000, ascender: 800, descender: -200, version: "1.0" };
-        try {
-            const prefs = JSON.parse(c.env.getLocalStorage("InkShader_preferences") || "{}");
-            if (prefs.fontSettings) fontSettings = { ...fontSettings, ...prefs.fontSettings };
-        } catch (e) {}
+        let fontSettings = {
+            family: "InkShader Font",
+            style: "Regular",
+            upm: 1000,
+            ascender: 800,
+            descender: -200,
+            version: "1.0",
+            ...(c.fontSettings || {})
+        };
         let [vMaj, vMin] = fontSettings.version.split(".");
         vMaj = parseInt(vMaj, 10) || 1;
         vMin = parseInt(vMin, 10) || 0;

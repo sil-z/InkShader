@@ -4,6 +4,73 @@
  */
 import { CurveNode } from "../../core/bezier/node.js";
 const GROUP_ROOT_KEYS = new Set(["ch", "components"]);
+const FONT_SNAPSHOT_KEYS = new Set([
+    "family_name",
+    "project_name",
+    "basic_spacing",
+    "font_style",
+    "postscript_name",
+    "preferred_family",
+    "preferred_subfamily",
+    "copyright",
+    "designer",
+    "designer_url",
+    "manufacturer",
+    "manufacturer_url",
+    "license",
+    "license_url",
+    "trademark",
+    "description",
+    "sample_text",
+    "upm",
+    "weight_class",
+    "width_class",
+    "ascender",
+    "descender",
+    "x_height",
+    "cap_height",
+    "font_version"
+]);
+
+function snapshotString(snapshotObj, key, fallback, defaultValue = "") {
+    return Object.prototype.hasOwnProperty.call(snapshotObj, key) ? snapshotObj[key] : fallback ?? defaultValue;
+}
+
+function snapshotNumber(snapshotObj, key, fallback, defaultValue) {
+    if (!Object.prototype.hasOwnProperty.call(snapshotObj, key)) return fallback ?? defaultValue;
+    const value = Number(snapshotObj[key]);
+    return Number.isFinite(value) ? value : fallback ?? defaultValue;
+}
+
+function fontSettingsFromSnapshot(snapshotObj = {}, fallback = {}) {
+    return {
+        family: snapshotString(snapshotObj, "family_name", fallback.family, "InkShader Default Font"),
+        style: snapshotString(snapshotObj, "font_style", fallback.style, "Regular"),
+        postscript_name: snapshotString(snapshotObj, "postscript_name", fallback.postscript_name),
+        preferred_family: snapshotString(snapshotObj, "preferred_family", fallback.preferred_family),
+        preferred_subfamily: snapshotString(snapshotObj, "preferred_subfamily", fallback.preferred_subfamily),
+        copyright: snapshotString(snapshotObj, "copyright", fallback.copyright),
+        designer: snapshotString(snapshotObj, "designer", fallback.designer),
+        designer_url: snapshotString(snapshotObj, "designer_url", fallback.designer_url),
+        manufacturer: snapshotString(snapshotObj, "manufacturer", fallback.manufacturer),
+        manufacturer_url: snapshotString(snapshotObj, "manufacturer_url", fallback.manufacturer_url),
+        license: snapshotString(snapshotObj, "license", fallback.license),
+        license_url: snapshotString(snapshotObj, "license_url", fallback.license_url),
+        trademark: snapshotString(snapshotObj, "trademark", fallback.trademark),
+        description: snapshotString(snapshotObj, "description", fallback.description),
+        sample_text: snapshotString(snapshotObj, "sample_text", fallback.sample_text),
+        upm: snapshotNumber(snapshotObj, "upm", fallback.upm, 1000),
+        weight_class: snapshotNumber(snapshotObj, "weight_class", fallback.weight_class, 400),
+        width_class: snapshotNumber(snapshotObj, "width_class", fallback.width_class, 5),
+        ascender: snapshotNumber(snapshotObj, "ascender", fallback.ascender, 800),
+        descender: snapshotNumber(snapshotObj, "descender", fallback.descender, -200),
+        x_height: snapshotNumber(snapshotObj, "x_height", fallback.x_height, 500),
+        cap_height: snapshotNumber(snapshotObj, "cap_height", fallback.cap_height, 700),
+        version: snapshotString(snapshotObj, "font_version", fallback.version, "1.0"),
+        project_name: snapshotString(snapshotObj, "project_name", fallback.project_name),
+        basic_spacing: snapshotNumber(snapshotObj, "basic_spacing", fallback.basic_spacing, 1000)
+    };
+}
 function patchValue(patch, direction) {
     const applyReverse = direction === "undo";
     return {
@@ -235,6 +302,11 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
             canvas.canvas_size_height = value;
             return true;
         default:
+            if (FONT_SNAPSHOT_KEYS.has(key)) {
+                const snapshotObj = canvas.currentStateObj?.snapshotObj || {};
+                canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
+                return true;
+            }
             return false;
     }
 }
@@ -379,5 +451,6 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     }
     if (snapshotObj.canvas_size_width) canvas.canvas_size_width = snapshotObj.canvas_size_width;
     if (snapshotObj.canvas_size_height) canvas.canvas_size_height = snapshotObj.canvas_size_height;
+    canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
     return true;
 }

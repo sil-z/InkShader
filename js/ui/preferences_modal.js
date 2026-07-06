@@ -1,5 +1,11 @@
 // js/ui/preferences_modal.js
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
+import {
+    installEnterBlurHandler,
+    rememberInputValue,
+    restoreRememberedInputValue,
+    trimmedInputValue
+} from "./input_validation.js";
 
 const TEMPLATE_HTML = `
 <div class="pen-tool-popup-body" style="padding:8px 12px 12px;max-height:none;">
@@ -42,8 +48,12 @@ export class PreferencesPopup extends HTMLElement {
         this._domReady = true;
         this.innerHTML = TEMPLATE_HTML;
         this._visible = false;
+        installEnterBlurHandler(this);
 
         this.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.addEventListener('focusin', (e) => {
+            if (e.target?.tagName === 'INPUT') rememberInputValue(this, e.target);
+        });
 
         this.loadSettings();
         this.bindEvents();
@@ -137,7 +147,13 @@ export class PreferencesPopup extends HTMLElement {
             });
 
             textInput.addEventListener('change', (e) => {
-                let val = e.target.value;
+                let val = trimmedInputValue(e.target);
+                if (!this.isValidColorValue(val)) {
+                    restoreRememberedInputValue(this, e.target, currentVal);
+                    colorInput.value = this.rgbaToHex(e.target.value);
+                    return;
+                }
+                e.target.value = val;
                 colorInput.value = this.rgbaToHex(val);
                 this.updateCustomColor(item.varName, val);
             });
@@ -184,7 +200,6 @@ export class PreferencesPopup extends HTMLElement {
             theme,
             customColors: this.customColors
         };
-        settings.fontSettings = existing.fontSettings || {};
         localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
     }
 
@@ -219,6 +234,10 @@ export class PreferencesPopup extends HTMLElement {
             return `#${r}${g}${b}`;
         }
         return "#000000";
+    }
+
+    isValidColorValue(value) {
+        return typeof value === 'string' && value.trim().length > 0 && CSS.supports('color', value.trim());
     }
 }
 

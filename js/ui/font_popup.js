@@ -1,6 +1,13 @@
 // js/ui/font_popup.js
+import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
-import { appEventBus } from "../app/event_bus.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    rememberInputValue,
+    restoreRememberedInputValue,
+    trimmedInputValue
+} from "./input_validation.js";
 
 const POPUP_HTML = `
 <div class="pen-tool-popup-body">
@@ -176,17 +183,32 @@ export class FontPopup extends HTMLElement {
         this._visible = false;
         this._projectManager = null;
         this._canvas = null;
+        this._focusedControl = null;
     }
 
     setProjectManager(pm) { this._projectManager = pm; }
     setCanvas(c) { this._canvas = c; }
 
+    _resolveCanvas() {
+        if (this._canvas) return this._canvas;
+        this._canvas = document.querySelector('main-canvas');
+        return this._canvas;
+    }
+
     connectedCallback() {
         if (this._domReady) return;
         this._domReady = true;
         this.innerHTML = POPUP_HTML;
+        installEnterBlurHandler(this);
 
         this.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.addEventListener('focusin', (e) => {
+            const target = e.target;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) {
+                this._focusedControl = target;
+                rememberInputValue(this, target);
+            }
+        });
 
         // Toggle scrollbar visibility on mouse enter/leave
         const body = this.querySelector('.pen-tool-popup-body');
@@ -200,10 +222,27 @@ export class FontPopup extends HTMLElement {
             if (!this._visible) return;
             const target = e.target;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) {
-                this._save();
+                if (!this._validateField(target)) {
+                    restoreRememberedInputValue(this, target, this._defaultValueForField(target.id));
+                    return;
+                }
+                this._save({ recordHistory: true });
             }
         });
-
+        this.addEventListener('change', (e) => {
+            if (!this._visible) return;
+            const target = e.target;
+            if (!target || target.tagName !== 'SELECT') return;
+            this._save({ recordHistory: true });
+        });
+        this.addEventListener('focusout', (e) => {
+            if (e.target === this._focusedControl) this._focusedControl = null;
+        });
+        window.addEventListener(CANVAS_EVENTS.STATE_CHANGED, () => {
+            if (this._visible && !this._focusedControl) {
+                this._loadSettings();
+            }
+        });
         document.addEventListener('mousedown', (e) => {
             if (!this._visible) return;
             if (!this.contains(e.target)) this.hide();
@@ -211,19 +250,10 @@ export class FontPopup extends HTMLElement {
     }
 
     _loadSettings() {
-        let fontSettings = { ...DEFAULT_FONT };
-        try {
-            const data = localStorage.getItem('InkShader_preferences');
-            if (data) {
-                const parsed = JSON.parse(data);
-                if (parsed.fontSettings) fontSettings = { ...fontSettings, ...parsed.fontSettings };
-            }
-        } catch (e) {}
+        const canvas = this._resolveCanvas();
+        let fontSettings = { ...DEFAULT_FONT, ...(canvas?.fontSettings || {}) };
 
-        let projectName = '';
-        if (this._projectManager) {
-            projectName = this._projectManager.getActiveProjectName() || '';
-        }
+        let projectName = fontSettings.project_name || '';
 
         this.querySelector('#font_popup_project_name').value = projectName;
         this.querySelector('#font_popup_family').value = fontSettings.family;
@@ -251,9 +281,18 @@ export class FontPopup extends HTMLElement {
         this.querySelector('#font_popup_version').value = fontSettings.version;
     }
 
-    _save() {
-        const projectName = this.querySelector('#font_popup_project_name').value.trim();
-        const fontSettings = {
+    _save({ recordHistory = true } = {}) {
+        const fontSettings = this._readSettingsFromFields();
+        CanvasDispatcher.requestSetFontSettings(fontSettings, { recordHistory });
+    }
+
+    _readSettingsFromFields() {
+        const canvas = this._resolveCanvas();
+        const readInt = (id, fallback) => {
+            const value = parseInt(this.querySelector(`#${id}`).value, 10);
+            return Number.isFinite(value) ? value : fallback;
+        };
+        return {
             family: this.querySelector('#font_popup_family').value.trim() || DEFAULT_FONT.family,
             style: this.querySelector('#font_popup_style').value.trim() || DEFAULT_FONT.style,
             postscript_name: this.querySelector('#font_popup_postscript_name').value.trim(),
@@ -269,47 +308,53 @@ export class FontPopup extends HTMLElement {
             trademark: this.querySelector('#font_popup_trademark').value.trim(),
             description: this.querySelector('#font_popup_description').value.trim(),
             sample_text: this.querySelector('#font_popup_sample_text').value.trim(),
-            upm: parseInt(this.querySelector('#font_popup_upm').value) || DEFAULT_FONT.upm,
-            weight_class: parseInt(this.querySelector('#font_popup_weight_class').value) || DEFAULT_FONT.weight_class,
-            width_class: parseInt(this.querySelector('#font_popup_width_class').value) || DEFAULT_FONT.width_class,
-            ascender: parseInt(this.querySelector('#font_popup_ascender').value) || DEFAULT_FONT.ascender,
-            descender: parseInt(this.querySelector('#font_popup_descender').value) || DEFAULT_FONT.descender,
-            x_height: parseInt(this.querySelector('#font_popup_x_height').value) || DEFAULT_FONT.x_height,
-            cap_height: parseInt(this.querySelector('#font_popup_cap_height').value) || DEFAULT_FONT.cap_height,
-            version: this.querySelector('#font_popup_version').value.trim() || DEFAULT_FONT.version
+            upm: readInt('font_popup_upm', DEFAULT_FONT.upm),
+            weight_class: readInt('font_popup_weight_class', DEFAULT_FONT.weight_class),
+            width_class: readInt('font_popup_width_class', DEFAULT_FONT.width_class),
+            ascender: readInt('font_popup_ascender', DEFAULT_FONT.ascender),
+            descender: readInt('font_popup_descender', DEFAULT_FONT.descender),
+            x_height: readInt('font_popup_x_height', DEFAULT_FONT.x_height),
+            cap_height: readInt('font_popup_cap_height', DEFAULT_FONT.cap_height),
+            version: this.querySelector('#font_popup_version').value.trim() || DEFAULT_FONT.version,
+            project_name: this.querySelector('#font_popup_project_name').value.trim(),
+            basic_spacing: canvas?.fontSettings?.basic_spacing ?? 1000
         };
+    }
 
-        try {
-            const data = JSON.parse(localStorage.getItem('InkShader_preferences') || '{}');
-            data.fontSettings = fontSettings;
-            localStorage.setItem('InkShader_preferences', JSON.stringify(data));
-        } catch (e) {}
+    _validateField(target) {
+        const requiredTextIds = new Set([
+            'font_popup_project_name',
+            'font_popup_family',
+            'font_popup_style',
+            'font_popup_version'
+        ]);
+        if (requiredTextIds.has(target.id)) return trimmedInputValue(target).length > 0;
 
-        if (projectName && this._projectManager) {
-            const oldName = this._projectManager.getActiveProjectName();
-            if (oldName && oldName !== projectName) {
-                // Immediately update the brand title for instant feedback
-                const el = document.getElementById('brand_title');
-                if (el) el.textContent = `${projectName} - InkShader`;
-                // Rename the underlying storage properly:
-                // activeProjectName stays 'oldName' throughout the save+rename to
-                // prevent any concurrent save from creating a duplicate entry.
-                this._projectManager.saveToCache(oldName).then(() => {
-                    this._canvas?.history?._idbPut?.("projects", undefined);
-                    return import('./storage.js').then(({ StorageUtils }) => {
-                        return StorageUtils.renameProject(oldName, projectName);
-                    });
-                }).then(() => {
-                    this._projectManager.setActiveProjectName(projectName);
-                }).catch(err => {
-                    console.warn('FontPopup rename error:', err);
-                });
-            } else if (!oldName) {
-                this._projectManager.setActiveProjectName(projectName);
-            }
-        }
+        const numericRules = {
+            font_popup_upm: { min: 16, max: 16384 },
+            font_popup_ascender: {},
+            font_popup_descender: {},
+            font_popup_x_height: {},
+            font_popup_cap_height: {}
+        };
+        const rule = numericRules[target.id];
+        if (!rule) return true;
+        return isValidNumber(target.valueAsNumber, rule);
+    }
 
-        this._canvas?.notifyPropertiesUpdate?.();
+    _defaultValueForField(id) {
+        const map = {
+            font_popup_project_name: this._resolveCanvas()?.fontSettings?.project_name ?? '',
+            font_popup_family: DEFAULT_FONT.family,
+            font_popup_style: DEFAULT_FONT.style,
+            font_popup_version: DEFAULT_FONT.version,
+            font_popup_upm: DEFAULT_FONT.upm,
+            font_popup_ascender: DEFAULT_FONT.ascender,
+            font_popup_descender: DEFAULT_FONT.descender,
+            font_popup_x_height: DEFAULT_FONT.x_height,
+            font_popup_cap_height: DEFAULT_FONT.cap_height
+        };
+        return map[id] != null ? String(map[id]) : '';
     }
 
     show(anchorEl) {
@@ -340,6 +385,8 @@ export class FontPopup extends HTMLElement {
     }
 
     hide() {
+        const active = this.querySelector('input:focus, textarea:focus, select:focus');
+        active?.blur?.();
         this.classList.remove('visible');
         this._visible = false;
         const body = this.querySelector('.pen-tool-popup-body');

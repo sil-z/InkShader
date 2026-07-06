@@ -91,6 +91,9 @@ export const CanvasDispatcher = Object.freeze({
     requestSetPenProperties(updates = {}, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_PEN_PROPERTIES, { updates, options });
     },
+    requestSetFontSettings(updates = {}, options = {}) {
+        emitRequest(CANVAS_EVENTS.REQUEST_SET_FONT_SETTINGS, { updates, options });
+    },
     requestSetGroupAdvance(id, value, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, { id, value, options });
     },

@@ -3,6 +3,7 @@ import { appEventBus } from "../app/event_bus.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { getCanvasTheme } from "../canvas/rendering/canvas_theme.js";
+import { installEnterBlurHandler, isValidTreeName } from "./input_validation.js";
 const TOOLBAR_W = 28;
 function _toAfdkoName(str) {
     const parts = [];
@@ -577,6 +578,7 @@ export class GlyphSequenceBar extends HTMLElement {
         menu.appendChild(header);
         const form = document.createElement("div");
         form.className = "seq-menu-form";
+        installEnterBlurHandler(form);
         const nameInput = document.createElement("input");
         nameInput.type = "text";
         nameInput.className = "seq-menu-input";
@@ -602,20 +604,21 @@ export class GlyphSequenceBar extends HTMLElement {
             const finalAdv = isNaN(advVal) ? 1000 : advVal;
             nameInput.classList.remove("seq-menu-input-error");
             codeInput.classList.remove("seq-menu-input-error");
+            advInput.classList.remove("seq-menu-input-error");
             let charStr = null;
             if (codeVal) {
                 if (codeVal.startsWith("U+") || codeVal.startsWith("u+")) {
                     const cp = parseInt(codeVal.substring(2), 16);
-                    if (!isNaN(cp) && cp >= 0) charStr = String.fromCodePoint(cp);
+                    if (!isNaN(cp) && cp >= 0 && cp <= 0x10FFFF) charStr = String.fromCodePoint(cp);
                 } else if (/^\d+$/.test(codeVal)) {
                     const cp = parseInt(codeVal, 10);
-                    if (!isNaN(cp) && cp >= 0) charStr = String.fromCodePoint(cp);
+                    if (!isNaN(cp) && cp >= 0 && cp <= 0x10FFFF) charStr = String.fromCodePoint(cp);
                 } else {
                     charStr = codeVal;
                 }
             }
             let hasError = false;
-            if (nameVal && nameVal.includes("\\")) {
+            if (nameVal && !isValidTreeName(nameVal)) {
                 nameInput.classList.add("seq-menu-input-error");
                 hasError = true;
             }
@@ -626,6 +629,10 @@ export class GlyphSequenceBar extends HTMLElement {
             if (!charStr && !nameVal) {
                 nameInput.classList.add("seq-menu-input-error");
                 if (!charStr) codeInput.classList.add("seq-menu-input-error");
+                hasError = true;
+            }
+            if (!isNaN(advVal) && advVal < 0) {
+                advInput.classList.add("seq-menu-input-error");
                 hasError = true;
             }
             if (hasError) return;
@@ -806,18 +813,30 @@ export class GlyphSequenceBar extends HTMLElement {
                 nameEl.replaceWith(input);
                 input.focus();
                 input.select();
+                let committed = false;
                 const apply = () => {
+                    if (committed) return;
+                    committed = true;
                     const newName = input.value.trim();
-                    if (newName && newName !== existingGroup.name) {
-                        CanvasDispatcher.requestRenameTreeItem(gid, newName);
+                    if (isValidTreeName(newName) && newName !== existingGroup.name) {
+                        const reqDetail = CanvasDispatcher.requestRenameTreeItem(gid, newName);
+                        if (reqDetail.result) {
+                            nameEl.textContent = newName;
+                        }
                     }
-                    nameEl.textContent = existingGroup.name;
                     input.replaceWith(nameEl);
                 };
                 input.addEventListener("blur", apply);
                 input.addEventListener("keydown", (ev) => {
-                    if (ev.key === "Enter") apply();
-                    if (ev.key === "Escape") { nameEl.textContent = existingGroup.name; input.replaceWith(nameEl); }
+                    if (ev.key === "Enter") {
+                        ev.preventDefault();
+                        input.blur();
+                    }
+                    if (ev.key === "Escape") {
+                        committed = true;
+                        nameEl.textContent = existingGroup.name;
+                        input.replaceWith(nameEl);
+                    }
                 });
             });
             charGrid.appendChild(item);

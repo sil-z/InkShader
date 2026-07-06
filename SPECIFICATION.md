@@ -488,8 +488,15 @@ sequenceText: string       — 原始序列文本
   canvas_size_width: number,         — 画布宽度（CSS 像素）
   canvas_size_height: number,        — 画布高度（CSS 像素）
   family_name: string,               — 字体族名
-  project_name: string,              — 项目名（当前为空占位）
+  project_name: string,              — 项目名
   basic_spacing: number,             — 默认 advance（默认 1000）
+  font_style: string,                — 字体样式名
+  postscript_name: string,           — PostScript 名称
+  preferred_family: string,          — 首选字体族名
+  preferred_subfamily: string,       — 首选字体子族名
+  copyright/designer/...: string,    — 字体元数据
+  upm/ascender/descender/...: number,— 字体度量
+  font_version: string,              — 字体版本
   editor_sequence: string,           — 序列文本（\group\ 引用格式）
   editor_active_indices: number[],   — 激活的序列索引
   editor_fill_color: string,         — 默认填充色（#RRGGBB）

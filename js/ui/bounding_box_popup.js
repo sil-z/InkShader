@@ -3,6 +3,13 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { appEventBus } from "../app/event_bus.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    numberFromInput,
+    restoreRememberedInputValue,
+    rememberInputValue
+} from "./input_validation.js";
 
 export const BBOX_DOCKED = 'bbox:docked';
 export const BBOX_UNDOCKED = 'bbox:undocked';
@@ -47,6 +54,8 @@ export class BoundingBoxPopup extends HTMLElement {
         this._docked = false;
         this._positionReady = false;
         this._focusedInput = null;
+        this._inputSnapshot = null;
+        this._skipCommitTarget = null;
     }
 
     get docked() { return this._docked; }
@@ -70,26 +79,34 @@ export class BoundingBoxPopup extends HTMLElement {
         this.innerHTML = POPUP_HTML;
         this.container = this;
 
-        this.container.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                e.preventDefault();
-                e.target.blur();
-            }
-        });
+        installEnterBlurHandler(this.container);
 
         this.container.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+            if (e.target.tagName === 'INPUT') {
+                this._focusedInput = e.target;
+                rememberInputValue(this, e.target);
+                this._captureInputSnapshot(e.target);
+            }
         });
         this.container.addEventListener('focusout', (e) => {
             if (e.target.tagName === 'INPUT') {
                 this._focusedInput = null;
-                this._commitChange(e.target);
+                if (this._skipCommitTarget === e.target) {
+                    this._skipCommitTarget = null;
+                    return;
+                }
+                if (this._isValidFinalInput(e.target)) {
+                    this._commitChange(e.target);
+                } else {
+                    this._restoreInput(e.target);
+                }
             }
         });
 
         this.container.addEventListener('input', (e) => {
             const id = e.target.id;
             if (!id || !id.startsWith('bbox_')) return;
+            if (!this._isValidFinalInput(e.target)) return;
             this._dispatchChange(e.target, false);
         });
 
@@ -160,15 +177,14 @@ export class BoundingBoxPopup extends HTMLElement {
 
     _dispatchChange(target, recordHistory) {
         const id = target.id;
-        const numVal = target.valueAsNumber;
-        if (isNaN(numVal)) return;
+        const numVal = numberFromInput(target);
         const propMap = { 'bbox_x': 'x', 'bbox_y': 'y', 'bbox_w': 'w', 'bbox_h': 'h' };
         const prop = propMap[id];
         if (!prop) return;
         const isSizeProp = (prop === 'w' || prop === 'h');
-        const isValidSize = !isSizeProp || numVal >= 0;
-        if (!isValidSize) {
-            if (recordHistory) this._patchValues();
+        const isValidValue = isValidNumber(numVal, { min: isSizeProp ? 0 : -Infinity });
+        if (!isValidValue) {
+            if (recordHistory) this._restoreInput(target);
             return;
         }
         CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, numVal, {
@@ -180,6 +196,41 @@ export class BoundingBoxPopup extends HTMLElement {
 
     _commitChange(target) {
         this._dispatchChange(target, true);
+    }
+
+    _captureInputSnapshot(target) {
+        if (!this._bounds) return;
+        const propMap = { 'bbox_x': 'x', 'bbox_y': 'y', 'bbox_w': 'w', 'bbox_h': 'h' };
+        const prop = propMap[target.id];
+        const values = {
+            x: this._bounds.minX,
+            y: this._bounds.minY,
+            w: this._bounds.maxX - this._bounds.minX,
+            h: this._bounds.maxY - this._bounds.minY
+        };
+        this._inputSnapshot = { id: target.id, prop, value: values[prop] };
+    }
+
+    _isValidFinalInput(target) {
+        const propMap = { 'bbox_x': 'x', 'bbox_y': 'y', 'bbox_w': 'w', 'bbox_h': 'h' };
+        const prop = propMap[target.id];
+        if (!prop) return true;
+        const isSizeProp = prop === 'w' || prop === 'h';
+        return isValidNumber(numberFromInput(target), { min: isSizeProp ? 0 : -Infinity });
+    }
+
+    _restoreInput(target) {
+        restoreRememberedInputValue(this, target, this._inputSnapshot?.value != null ? String(this._inputSnapshot.value) : '');
+        this._skipCommitTarget = target;
+        if (this._inputSnapshot?.prop && Number.isFinite(this._inputSnapshot.value)) {
+            const isSizeProp = this._inputSnapshot.prop === 'w' || this._inputSnapshot.prop === 'h';
+            CanvasDispatcher.requestChangeSelectedObjectsBounds(this._inputSnapshot.prop, this._inputSnapshot.value, {
+                recordHistory: false,
+                useBoundsSession: isSizeProp,
+                commitBoundsSession: false
+            });
+        }
+        this._patchValues();
     }
 
     _show() {

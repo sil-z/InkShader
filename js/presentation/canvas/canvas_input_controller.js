@@ -211,6 +211,7 @@ export class CanvasInputController {
                     if (toRuler) {
                         if (!wasNew) {
                             c.user_guidelines = c.user_guidelines.filter(g => g.id !== guide.id);
+                            CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                         }
                         c.is_dirty = true;
                         return;
@@ -218,6 +219,9 @@ export class CanvasInputController {
                 }
                 if (wasNew) {
                     c.user_guidelines.push(guide);
+                    CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
+                } else {
+                    CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
                 }
                 c.is_dirty = true;
             });
@@ -751,6 +755,7 @@ export class CanvasInputController {
                 if (toRuler) {
                     if (!wasNew) {
                         c.user_guidelines = c.user_guidelines.filter(g => g.id !== guide.id);
+                        CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                     }
                     c.is_dirty = true;
                     return;
@@ -758,6 +763,9 @@ export class CanvasInputController {
             }
             if (wasNew) {
                 c.user_guidelines.push(guide);
+                CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
+            } else {
+                CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
             }
             c.is_dirty = true;
         });
@@ -928,6 +936,32 @@ export class CanvasInputController {
                 }
             }
         });
+        const readDialogNumber = (input, { min = -Infinity } = {}) => {
+            if (!input || input.value === '') return null;
+            const value = Number(input.value);
+            return Number.isFinite(value) && value >= min ? value : null;
+        };
+        const installDialogInputValidation = (inputs, overlay, rules = {}) => {
+            inputs.forEach((input) => {
+                input.dataset.prevValue = input.value;
+                input.addEventListener("focusin", () => {
+                    input.dataset.prevValue = input.value;
+                });
+                input.addEventListener("focusout", () => {
+                    const rule = rules[input.dataset.field] || {};
+                    if (readDialogNumber(input, rule) === null) {
+                        input.value = input.dataset.prevValue ?? "";
+                    }
+                });
+                input.addEventListener("keydown", (ev) => {
+                    if (ev.key === "Enter") {
+                        ev.preventDefault();
+                        input.blur();
+                    }
+                    if (ev.key === "Escape") overlay.remove();
+                });
+            });
+        };
         c._showUserGuideEditDialog = (guide, clientX, clientY) => {
             const old = document.querySelector(".user-guide-edit-overlay");
             if (old) old.remove();
@@ -950,18 +984,22 @@ export class CanvasInputController {
             if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
             const inputs = dlg.querySelectorAll("input");
             inputs[0].focus(); inputs[0].select();
+            installDialogInputValidation([...inputs], overlay);
             const apply = () => {
-                guide.x = parseFloat(dlg.querySelector('[data-field="x"]').value) || 0;
-                const rawY = parseFloat(dlg.querySelector('[data-field="y"]').value) || 0;
+                const x = readDialogNumber(dlg.querySelector('[data-field="x"]'));
+                const rawY = readDialogNumber(dlg.querySelector('[data-field="y"]'));
+                const angle = readDialogNumber(dlg.querySelector('[data-field="angle"]'));
+                if (x === null || rawY === null || angle === null) return;
+                guide.x = x;
                 guide.y = H - rawY;
-                guide.angle = parseFloat(dlg.querySelector('[data-field="angle"]').value) || 0;
+                guide.angle = angle;
                 overlay.remove();
                 c.is_dirty = true;
+                CanvasDispatcher.requestHistoryCommit("editUserGuideline", { id: guide.id });
             };
             dlg.querySelector(".btn-ok").addEventListener("click", apply);
             dlg.querySelector(".btn-cancel").addEventListener("click", () => overlay.remove());
             overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
-            inputs.forEach(inp => inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") apply(); if (ev.key === "Escape") overlay.remove(); }));
         };
         c._showDividerEditDialog = (groupId, clientX, clientY) => {
             const group = c.curve_manager.treeItems.get(groupId);
@@ -983,17 +1021,16 @@ export class CanvasInputController {
             if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
             const input = dlg.querySelector("input");
             input.focus(); input.select();
+            installDialogInputValidation([input], overlay, { x: { min: 0 } });
             const apply = () => {
-                const val = parseFloat(dlg.querySelector('[data-field="x"]').value);
-                if (Number.isFinite(val) && val >= 0) {
-                    CanvasDispatcher.requestSetGroupAdvance(groupId, val, { recordHistory: true });
-                }
+                const val = readDialogNumber(dlg.querySelector('[data-field="x"]'), { min: 0 });
+                if (val === null) return;
+                CanvasDispatcher.requestSetGroupAdvance(groupId, val, { recordHistory: true });
                 overlay.remove();
             };
             dlg.querySelector(".btn-ok").addEventListener("click", apply);
             dlg.querySelector(".btn-cancel").addEventListener("click", () => overlay.remove());
             overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
-            input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") apply(); if (ev.key === "Escape") overlay.remove(); });
         };
         c._showRulerEditDialog = (ruler, clientX, clientY) => {
             const old = document.querySelector(".user-guide-edit-overlay");
@@ -1028,21 +1065,24 @@ export class CanvasInputController {
                 angle: dlg.querySelector('[data-field="angle"]')
             };
             inputs.x1.focus(); inputs.x1.select();
+            installDialogInputValidation(Object.values(inputs), overlay, { length: { min: 0 } });
             const updateFromEndpoints = () => {
-                const x1 = parseFloat(inputs.x1.value) || 0;
-                const y1 = parseFloat(inputs.y1.value) || 0;
-                const x2 = parseFloat(inputs.x2.value) || 0;
-                const y2 = parseFloat(inputs.y2.value) || 0;
+                const x1 = readDialogNumber(inputs.x1);
+                const y1 = readDialogNumber(inputs.y1);
+                const x2 = readDialogNumber(inputs.x2);
+                const y2 = readDialogNumber(inputs.y2);
+                if (x1 === null || y1 === null || x2 === null || y2 === null) return;
                 const ddx = x2 - x1, ddy = y2 - y1;
                 inputs.length.value = Math.hypot(ddx, ddy).toFixed(1);
                 const ang = Math.atan2(-ddy, ddx) * 180 / Math.PI;
                 inputs.angle.value = ang.toFixed(1);
             };
             const updateFromPolar = () => {
-                const x1 = parseFloat(inputs.x1.value) || 0;
-                const y1 = parseFloat(inputs.y1.value) || 0;
-                const l = parseFloat(inputs.length.value) || 0;
-                const a = parseFloat(inputs.angle.value) || 0;
+                const x1 = readDialogNumber(inputs.x1);
+                const y1 = readDialogNumber(inputs.y1);
+                const l = readDialogNumber(inputs.length, { min: 0 });
+                const a = readDialogNumber(inputs.angle);
+                if (x1 === null || y1 === null || l === null || a === null) return;
                 const aRad = a * Math.PI / 180;
                 inputs.x2.value = (x1 + l * Math.cos(aRad)).toFixed(1);
                 inputs.y2.value = (y1 - l * Math.sin(aRad)).toFixed(1);
@@ -1054,10 +1094,15 @@ export class CanvasInputController {
             inputs.length.addEventListener("input", updateFromPolar);
             inputs.angle.addEventListener("input", updateFromPolar);
             const apply = () => {
-                ruler.x1 = parseFloat(inputs.x1.value) || 0;
-                ruler.y1 = parseFloat(inputs.y1.value) || 0;
-                ruler.x2 = parseFloat(inputs.x2.value) || 0;
-                ruler.y2 = parseFloat(inputs.y2.value) || 0;
+                const x1 = readDialogNumber(inputs.x1);
+                const y1 = readDialogNumber(inputs.y1);
+                const x2 = readDialogNumber(inputs.x2);
+                const y2 = readDialogNumber(inputs.y2);
+                if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+                ruler.x1 = x1;
+                ruler.y1 = y1;
+                ruler.x2 = x2;
+                ruler.y2 = y2;
                 overlay.remove();
                 c.is_dirty = true;
             };
@@ -1069,10 +1114,6 @@ export class CanvasInputController {
             dlg.querySelector(".btn-ok").addEventListener("click", apply);
             dlg.querySelector(".btn-delete").addEventListener("click", deleteRuler);
             overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
-            Object.values(inputs).forEach(inp => inp.addEventListener("keydown", (ev) => {
-                if (ev.key === "Enter") apply();
-                if (ev.key === "Escape") overlay.remove();
-            }));
         };
         c._hitTestRulerLine = (canvasX, canvasY) => {
             const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();

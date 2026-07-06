@@ -90,7 +90,30 @@ export class ProjectManager {
             editor_fill_color: "#000000", editor_stroke_color: "#000000",
             family_name: "InkShader_Default_Font",
             project_name: name,
-            basic_spacing: 1000, ch: {}, components: {}
+            basic_spacing: 1000,
+            font_style: "Regular",
+            postscript_name: "",
+            preferred_family: "",
+            preferred_subfamily: "",
+            copyright: "",
+            designer: "",
+            designer_url: "",
+            manufacturer: "",
+            manufacturer_url: "",
+            license: "",
+            license_url: "",
+            trademark: "",
+            description: "",
+            sample_text: "",
+            upm: 1000,
+            weight_class: 400,
+            width_class: 5,
+            ascender: 800,
+            descender: -200,
+            x_height: 500,
+            cap_height: 700,
+            font_version: "1.0",
+            ch: {}, components: {}
         });
 
         await c.commands.loadSnapshotCommand(emptySnapshot);
@@ -259,6 +282,27 @@ export class ProjectManager {
         this.activeProjectName = name;
         StorageUtils.saveActiveProject(name || "");
         this._updateBrandTitle(name);
+    }
+
+    async syncActiveProjectNameFromCanvas() {
+        const nextName = (this.canvas?.fontSettings?.project_name || "").trim();
+        if (!nextName || nextName === this.activeProjectName) {
+            this._updateBrandTitle(this.activeProjectName);
+            return true;
+        }
+
+        const previousName = this.activeProjectName;
+        if (previousName) {
+            await this.saveToCache(previousName);
+            const renamed = await StorageUtils.renameProject(previousName, nextName);
+            if (!renamed) return false;
+        } else if (await StorageUtils.projectExists(nextName)) {
+            return false;
+        }
+
+        this.setActiveProjectName(nextName);
+        await this.saveToCache(nextName);
+        return true;
     }
 
     /** Update the top-left brand title to "project_name - InkShader" */

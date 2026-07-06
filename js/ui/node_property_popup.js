@@ -4,6 +4,13 @@ import { appEventBus } from "../app/event_bus.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+import {
+    installEnterBlurHandler,
+    isValidNumber,
+    numberFromInput,
+    restoreRememberedInputValue,
+    rememberInputValue
+} from "./input_validation.js";
 
 export const NODE_PROPS_DOCKED = 'npp:docked';
 export const NODE_PROPS_UNDOCKED = 'npp:undocked';
@@ -50,6 +57,16 @@ const POPUP_HTML = `
 </div>`;
 
 const REALTIME_IDS = ['npp_x', 'npp_y', 'npp_in_x', 'npp_in_y', 'npp_out_x', 'npp_out_y', 'npp_in_a', 'npp_out_a'];
+const PROP_MAP = {
+    'npp_x': 'prop_x',
+    'npp_y': 'prop_y',
+    'npp_in_x': 'prop_in_x',
+    'npp_in_y': 'prop_in_y',
+    'npp_out_x': 'prop_out_x',
+    'npp_out_y': 'prop_out_y',
+    'npp_in_a': 'prop_in_a',
+    'npp_out_a': 'prop_out_a'
+};
 const POS_KEY = 'npp_pos';
 const DOCK_KEY = 'npp_docked';
 
@@ -67,6 +84,8 @@ export class NodePropertyPopup extends HTMLElement {
         this._focusedInput = null;
         this._docked = false;
         this._positionReady = false;
+        this._inputSnapshot = null;
+        this._skipCommitTarget = null;
     }
 
     get docked() { return this._docked; }
@@ -91,52 +110,50 @@ export class NodePropertyPopup extends HTMLElement {
 
         this.container = this;
 
-        this.container.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-                e.preventDefault();
-                e.target.blur();
-            }
-        });
+        installEnterBlurHandler(this.container);
 
         this.container.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT') this._focusedInput = e.target;
+            if (e.target.tagName === 'INPUT') {
+                this._focusedInput = e.target;
+                rememberInputValue(this, e.target);
+                this._captureInputSnapshot(e.target);
+            }
         });
         this.container.addEventListener('focusout', (e) => {
             if (e.target.tagName === 'INPUT') {
                 this._focusedInput = null;
-                this._patchValues(this._anchorNodeId);
+                if (this._skipCommitTarget === e.target) {
+                    this._skipCommitTarget = null;
+                    return;
+                }
+                if (this._isValidFinalInput(e.target)) {
+                    this._patchValues(this._anchorNodeId);
+                } else {
+                    this._restoreInput(e.target);
+                }
             }
         });
 
         this.container.addEventListener('input', (e) => {
             if (!REALTIME_IDS.includes(e.target.id)) return;
-            const numVal = e.target.valueAsNumber;
-            if (isNaN(numVal)) return;
+            const numVal = numberFromInput(e.target);
+            if (!isValidNumber(numVal)) return;
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
-            const propMap = {
-                'npp_x': 'prop_x', 'npp_y': 'prop_y',
-                'npp_in_x': 'prop_in_x', 'npp_in_y': 'prop_in_y',
-                'npp_out_x': 'prop_out_x', 'npp_out_y': 'prop_out_y',
-                'npp_in_a': 'prop_in_a', 'npp_out_a': 'prop_out_a'
-            };
-            const propId = propMap[e.target.id];
+            const propId = PROP_MAP[e.target.id];
             if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, numVal, { recordHistory: false });
         });
 
         this.container.addEventListener('change', (e) => {
             if (!REALTIME_IDS.includes(e.target.id)) return;
-            const numVal = e.target.valueAsNumber;
-            if (isNaN(numVal)) return;
+            const numVal = numberFromInput(e.target);
+            if (!isValidNumber(numVal)) {
+                this._restoreInput(e.target);
+                return;
+            }
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
-            const propMap = {
-                'npp_x': 'prop_x', 'npp_y': 'prop_y',
-                'npp_in_x': 'prop_in_x', 'npp_in_y': 'prop_in_y',
-                'npp_out_x': 'prop_out_x', 'npp_out_y': 'prop_out_y',
-                'npp_in_a': 'prop_in_a', 'npp_out_a': 'prop_out_a'
-            };
-            const propId = propMap[e.target.id];
+            const propId = PROP_MAP[e.target.id];
             if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, numVal, { recordHistory: true });
         });
 
@@ -229,6 +246,34 @@ export class NodePropertyPopup extends HTMLElement {
         patch('npp_out_a', hasC2
             ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC2);
+    }
+
+    _captureInputSnapshot(target) {
+        const marker = this._resolveMarker(this._anchorNodeId);
+        this._inputSnapshot = {
+            id: target.id,
+            marker,
+            propId: PROP_MAP[target.id],
+            value: numberFromInput(target)
+        };
+    }
+
+    _isValidFinalInput(target) {
+        return !REALTIME_IDS.includes(target.id) || isValidNumber(numberFromInput(target));
+    }
+
+    _restoreInput(target) {
+        restoreRememberedInputValue(this, target, this._inputSnapshot?.value != null ? String(this._inputSnapshot.value) : '');
+        this._skipCommitTarget = target;
+        if (this._inputSnapshot?.marker && this._inputSnapshot?.propId && Number.isFinite(this._inputSnapshot.value)) {
+            CanvasDispatcher.requestUpdateNodeProperty(
+                this._inputSnapshot.marker,
+                this._inputSnapshot.propId,
+                this._inputSnapshot.value,
+                { recordHistory: false }
+            );
+        }
+        this._patchValues(this._anchorNodeId);
     }
 
     _show() {

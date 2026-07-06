@@ -73,6 +73,7 @@ export class CanvasController {
             case CANVAS_ACTIONS.UPDATE_NODE_PROPERTY:
                 return c.commands.updateSingleNodeProperty(payload.marker, payload.propId, payload.value, payload.options || {});
             case CANVAS_ACTIONS.SET_PEN_PROPERTIES: return c.commands.setPenProperties(payload.updates || {}, payload.options || {});
+            case CANVAS_ACTIONS.SET_FONT_SETTINGS: return c.commands.setFontSettings(payload.updates || {}, payload.options || {});
             case CANVAS_ACTIONS.SET_GROUP_CHAR_CODE: return c.commands.setGroupCharCode(payload.id, payload.value, payload.options || {});
             case CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE:
                 return c.commands.setSequenceEditorState(payload.payload || {}, payload.options || {});
@@ -315,10 +316,16 @@ export class CanvasController {
                         c.offset.y = newCenterY + panY;
                     }
                 }
-                // draw_tool_settings intentionally NOT restored from localStorage:
-                // tool defaults come from code (interaction_reducer.js / main_canvas.js),
-                // restoring stale settings (e.g. stroke_width: 1) would silently override
-                // code-default changes.  User adjusts these per-session via the popup UI.
+                // Restore guideline_lock from viewState
+                if (viewState.guideline_lock !== undefined) {
+                    c.guideline_lock = !!viewState.guideline_lock;
+                    if (c.guideline_lock) { c.lock_guideline_icon?.classList.add('is-visible'); c.lock_guideline_icon_unlocked?.classList.remove('is-visible'); }
+                    else { c.lock_guideline_icon?.classList.remove('is-visible'); c.lock_guideline_icon_unlocked?.classList.add('is-visible'); }
+                }
+                // Restore draw_tool_settings from viewState (persisted tool preferences)
+                if (viewState.draw_tool_settings) {
+                    Object.assign(c.drawToolSettings, viewState.draw_tool_settings);
+                }
                 c.editorStore?.syncViewFromCanvas?.();
 
                 // Old fixed-width restoration (right_width) is now handled by dock layout; removed to avoid
@@ -432,6 +439,7 @@ export class CanvasController {
 
             c.editorStore?.mergeViewFromCanvas?.();
             c.editorStore?.bumpTreeRevision?.();
+            await pm?.syncActiveProjectNameFromCanvas?.();
         } catch (err) { console.error(" [Storage] Restore state failed:", err); }
     }
 
@@ -458,6 +466,11 @@ export class CanvasController {
         this.canvas.projectManager = pm;
         window.__canvas = this.canvas;
         await pm.init();
+        this.onBus(CANVAS_EVENTS.STATE_CHANGED, () => {
+            pm.syncActiveProjectNameFromCanvas?.().catch((err) => {
+                console.error("[ProjectManager] Failed to sync project name:", err);
+            });
+        });
 
         await this.restoreState();
 
