@@ -1,2 +1,6 @@
 *.txt
 *.py
+
+# OpenCode working data
+.omo/
+.codegraph
