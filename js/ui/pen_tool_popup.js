@@ -28,10 +28,6 @@ const POPUP_HTML = `
         <label data-i18n="prop.skel">Skeleton</label>
         <input type="checkbox" id="pen_popup_show_skel">
     </div>
-    <div class="pen-tool-actions">
-        <button type="button" id="pen_popup_cancel" class="btn-cancel">Cancel</button>
-        <button type="button" id="pen_popup_ok" class="btn-ok">OK</button>
-    </div>
 </div>`;
 
 export class PenToolPopup extends HTMLElement {
@@ -90,14 +86,6 @@ export class PenToolPopup extends HTMLElement {
             if (e.target.id === 'pen_popup_stroke') {
                 if (!isValidNumber(numberFromInput(e.target), { min: 0 })) return;
                 this._dispatchChange(e.target, false);
-            }
-        });
-
-        this.addEventListener('click', (e) => {
-            if (e.target.id === 'pen_popup_ok') {
-                this.hide();
-            } else if (e.target.id === 'pen_popup_cancel') {
-                this.hide();
             }
         });
 

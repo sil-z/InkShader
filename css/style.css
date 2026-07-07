@@ -201,7 +201,8 @@ div, span, label, p, button {
     white-space: nowrap !important;
 }
 .tree_label, .panel_title, .property_single_row label {
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     text-overflow: ellipsis;
 }
 .top {
@@ -991,12 +992,16 @@ logger-panel {
     padding: 4px 4px;
     letter-spacing: 0.5px;
 }
+pen-tool-popup .property_group_title,
+ellipse-tool-popup .property_group_title {
+    padding: 4px 10px;
+}
 .property_single_row {
     display: grid;
     grid-template-columns: 120px 1fr;
     gap: 12px;
     align-items: center;
-    padding: 2px 4px;
+    padding: 6px 4px;
     min-width: 0;
 }
 .property_single_row input[type="checkbox"] {
@@ -1008,7 +1013,8 @@ logger-panel {
 .property_single_row label {
     font-size: 13px;
     color: var(--ui-text-main);
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -1323,7 +1329,7 @@ object-tree {
 .user-guide-edit-dialog .field-row {
     display: flex;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 .user-guide-edit-dialog .field-row:last-of-type {
     margin-bottom: 0;
@@ -1336,13 +1342,13 @@ object-tree {
 }
 .user-guide-edit-dialog .field-row input {
     flex: 1;
-    height: 24px;
-    padding: 0 6px;
+    height: 22px;
+    padding: 0 5px;
     border: 1px solid var(--ui-border);
-    border-radius: 4px;
+    border-radius: 3px;
     background: var(--ui-bg-base);
     color: var(--ui-text-main);
-    font-size: 12px;
+    font-size: 11px;
     font-family: ui-monospace, monospace;
     box-sizing: border-box;
     outline: none;
@@ -1560,7 +1566,8 @@ preferences-popup .pen-tool-row label,
 font-popup .pen-tool-row label {
     width: 110px;
     flex-shrink: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     text-overflow: ellipsis;
 }
 preferences-popup .pen-tool-row input,
@@ -1677,7 +1684,7 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     min-height: 22px;
 }
 .ppp-row:last-child {
@@ -1689,7 +1696,8 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     flex-shrink: 0;
     width: 120px;
     white-space: nowrap;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     text-overflow: ellipsis;
 }
 .ppp-row input[type="number"] {
@@ -1782,7 +1790,7 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     min-height: 22px;
 }
 .npp-row:last-child {
@@ -1794,7 +1802,8 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     color: var(--ui-text-muted);
     flex-shrink: 0;
     white-space: nowrap;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     text-overflow: ellipsis;
 }
 /* When axis labels accompany the field label (e.g. Pos X, In X),
@@ -2358,7 +2367,7 @@ font-popup .pen-tool-row {
     white-space: nowrap;
     padding: 6px 14px 6px 12px;
     font-size: 13px;
-    line-height: 16px;
+    line-height: 20px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2370,7 +2379,7 @@ font-popup .pen-tool-row {
 }
 preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
-    padding: 3px 14px 3px 12px;
+    padding: 6px 14px 6px 12px;
     transition: none;
 }
 .save-dropdown-item:hover {
@@ -2461,7 +2470,9 @@ node-property-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
 bounding-box-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
 group-settings-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
 path-property-popup .ppp-row input[type="number"],
-path-property-popup .ppp-row input[type="text"] {
+path-property-popup .ppp-row input[type="text"],
+pen-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn) {
     flex: 1;
     min-width: 0;
     height: 22px;
@@ -2487,14 +2498,16 @@ node-property-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):
 bounding-box-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
 group-settings-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
 path-property-popup .ppp-row input[type="number"]:focus:not(:disabled),
-path-property-popup .ppp-row input[type="text"]:focus:not(:disabled) {
+path-property-popup .ppp-row input[type="text"]:focus:not(:disabled),
+pen-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled) {
     border-color: var(--ui-accent);
 }
 
 /* Authoritative shared baseline for Font and Properties fields. */
 :root {
-    --ink-field-label-font: 400 13px/16px system-ui, sans-serif;
-    --ink-field-input-font: 400 11px/normal "SFMono-Regular", "Cascadia Mono", "Liberation Mono", "Menlo", "Consolas", monospace;
+    --ink-field-label-font: 400 13px/20px system-ui, sans-serif;
+    --ink-field-input-font: 400 11px/normal ui-monospace, monospace;
 }
 font-popup .pen-tool-row label,
 preferences-popup .pen-tool-row label,
@@ -2507,7 +2520,9 @@ property-panel .ppp-row > label,
 node-property-popup .npp-row > label,
 path-property-popup .ppp-row > label,
 bounding-box-popup .npp-row > label,
-group-settings-popup .npp-row > label {
+group-settings-popup .npp-row > label,
+pen-tool-popup .npp-row > label,
+ellipse-tool-popup .npp-row > label {
     color: var(--ui-text-main);
     font: var(--ink-field-label-font);
     letter-spacing: normal;
@@ -2522,7 +2537,9 @@ property-panel input:not([type="checkbox"]):not(.prop_toggle_btn),
 node-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
 path-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
 bounding-box-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
-group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn) {
+group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn),
+pen-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn),
+ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn) {
     flex: 1;
     min-width: 0;
     height: 22px;
@@ -2546,7 +2563,9 @@ property-panel input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:dis
 node-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
 path-property-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
 bounding-box-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
-group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled) {
+group-settings-popup input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+pen-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled),
+ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):focus:not(:disabled) {
     border-color: var(--ui-accent);
 }
 
