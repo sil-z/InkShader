@@ -139,6 +139,9 @@
 .tool_button img {
     width: 14px;
     height: 14px;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 #mouse_pos {
     margin-left: auto;
@@ -147,6 +150,22 @@
     font-size: 13px;
     color: var(--ui-text-muted);
     font-family: ui-monospace, monospace;
+}
+/* 工具栏悬浮提示（body 层，避免被 overflow:auto 裁剪） */
+.toolbar-tooltip {
+    position: fixed;
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 .core_canvas {
     position: absolute;
@@ -283,6 +302,8 @@ div, span, label, p, button {
     display: flex;
     flex-direction: row;
     min-height: 0;
+    position: relative;
+    padding-left: 28px;
 }
 glyph-sequence-bar {
     display: block;
@@ -447,10 +468,19 @@ glyph-sequence-bar {
     align-items: center;
     padding: 0;
     width: 28px;
-    flex-shrink: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
     border-right: 1px solid var(--ui-border);
     border-radius: 0;
     background: var(--ui-bg-panel);
+    overflow-y: auto;
+    scrollbar-width: none;
+    box-sizing: border-box;
+}
+.toolbar::-webkit-scrollbar {
+    display: none;
 }
 .toolbar .tool_button {
     width: 28px;
@@ -2365,7 +2395,7 @@ font-popup .pen-tool-row {
     color: var(--ui-text-main);
     transition: background-color 0.08s;
     white-space: nowrap;
-    padding: 6px 14px 6px 12px;
+    padding: 3px 14px 3px 12px;
     font-size: 13px;
     line-height: 20px;
     display: flex;
@@ -2379,7 +2409,6 @@ font-popup .pen-tool-row {
 }
 preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
-    padding: 6px 14px 6px 12px;
     transition: none;
 }
 .save-dropdown-item:hover {

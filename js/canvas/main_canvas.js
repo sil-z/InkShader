@@ -257,6 +257,7 @@ class MainCanvasBase extends HTMLElement {
         }
 
         // First-time initialization
+        console.time("connectedCallback.sync");
         this.services = attachCanvasServices(this);
         this.utils = this.services.utils;
         this.renderer = this.services.renderer;
@@ -278,7 +279,10 @@ class MainCanvasBase extends HTMLElement {
         this.canvasController = new CanvasController(this);
         this.canvasInputController = new CanvasInputController(this);
         this.canvasInputController.bind();
+        console.timeEnd("connectedCallback.sync");
+        console.time("initialize");
         await this.canvasController.initialize();
+        console.timeEnd("initialize");
         if (gen !== this._initGen) return; // Stale continuation — reconnect happened during await
         this.editorStore.seedFromCanvas({ emit: true, applyToRuntime: false });
         this.renderRuntimeService.startLoop();

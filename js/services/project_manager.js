@@ -62,7 +62,11 @@ export class ProjectManager {
     }
 
     async createNewProject() {
-        const hasContent = !this._isEmptyProject();
+        // Guard: prevent double-creation if called while already active
+        if (this.activeProjectName) return this.activeProjectName;
+        if (this._creatingProject) return this._creatingProject;
+        this._creatingProject = (async () => {
+            const hasContent = !this._isEmptyProject();
 
         // Save current work before creating new project
         if (hasContent) {
@@ -77,6 +81,14 @@ export class ProjectManager {
 
         // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
         const name = await this.ensureUniqueName("New Font");
+
+        // Show brand title IMMEDIATELY with the new project name,
+        // before loadSnapshotCommand and IndexedDB save which can take ~1s.
+        // loadSnapshotCommand below sets fontSettings from the snapshot
+        // (which includes the same project_name), so this early write
+        // is overwritten with the same value — no flash or inconsistency.
+        this.canvas.fontSettings.project_name = name;
+        this._updateBrandTitle();
 
         const c = this.canvas;
 
@@ -143,7 +155,9 @@ export class ProjectManager {
 
         c.is_dirty = true;
         c.notifyPropertiesUpdate();
-        return name;
+            return name;
+        })();
+        return this._creatingProject;
     }
 
     async loadFromCache(projectName) {

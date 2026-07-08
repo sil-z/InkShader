@@ -30,10 +30,57 @@ function debouncedConstrain() {
     _resizeTimer = setTimeout(constrainPageMinWidth, 80);
 }
 
+/**
+ * 工具栏按钮：body 级 tooltip（避免被 overflow:auto 裁剪）
+ * 在每个 .tool_button 上监听 mouseenter/mouseleave，创建/移除 body 下的提示元素
+ */
+function initToolbarTooltips() {
+    const toolbar = document.querySelector('.toolbar');
+    if (!toolbar) return;
+    let tooltipEl = null;
+    let currentBtn = null;
+
+    function show(btn) {
+        const tip = btn.getAttribute('data-tip');
+        if (!tip) return;
+        hide();
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'toolbar-tooltip';
+        tooltipEl.textContent = tip;
+        document.body.appendChild(tooltipEl);
+        const r = btn.getBoundingClientRect();
+        tooltipEl.style.left = (r.right + 4) + 'px';
+        tooltipEl.style.top = r.top + 'px';
+        currentBtn = btn;
+    }
+
+    function hide() {
+        if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+        currentBtn = null;
+    }
+
+    toolbar.addEventListener('mouseover', e => {
+        const btn = e.target.closest('.tool_button');
+        if (btn) { if (btn !== currentBtn) show(btn); }
+        else { hide(); }
+    });
+
+    toolbar.addEventListener('scroll', () => {
+        if (currentBtn && tooltipEl) {
+            const r = currentBtn.getBoundingClientRect();
+            tooltipEl.style.left = (r.right + 8) + 'px';
+            tooltipEl.style.top = r.top + 'px';
+        }
+    });
+
+    toolbar.addEventListener('mouseleave', hide);
+}
+
 window.addEventListener("DOMContentLoaded", () => {
     ensureRuntimeHost();
     initializeLayoutShell();
     initScrollbarVisibility();
     constrainPageMinWidth();
+    initToolbarTooltips();
 });
 window.addEventListener("resize", debouncedConstrain);

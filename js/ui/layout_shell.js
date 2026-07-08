@@ -356,10 +356,9 @@ export function initializeLayoutShell() {
             if (!activeItem || activeItem === item) return;
 
             clearTimeout(_hoverTimer);
-            _hoverTimer = setTimeout(() => {
-                closeAnyOpenMenu();
-                item.click();
-            }, 150);
+            clearTimeout(_hoverTimer);
+            closeAnyOpenMenu();
+            item.click();
         });
         item.addEventListener('mouseleave', () => {
             clearTimeout(_hoverTimer);

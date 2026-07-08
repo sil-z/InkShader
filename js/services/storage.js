@@ -13,8 +13,12 @@ export class StorageUtils {
     /** Ensures migration from old projects map runs at most once */
     static _migrated = false;
 
+    /** Cached IndexedDB connection — reused across all _idb* calls */
+    static _dbPromise = null;
+
     static async initDB() {
-        return new Promise((resolve, reject) => {
+        if (this._dbPromise) return this._dbPromise;
+        this._dbPromise = new Promise((resolve, reject) => {
             const request = indexedDB.open(this.DB_NAME, 1);
             request.onupgradeneeded = (e) => {
                 const db = e.target.result;
@@ -23,8 +27,12 @@ export class StorageUtils {
                 }
             };
             request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
+            request.onerror = (e) => {
+                this._dbPromise = null; // allow retry on failure
+                reject(e.target.error);
+            };
         });
+        return this._dbPromise;
     }
 
     static async _idbPut(key, value) {

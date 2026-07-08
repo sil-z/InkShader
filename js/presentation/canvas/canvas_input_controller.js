@@ -338,10 +338,16 @@ export class CanvasInputController {
                 if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+                // Node/curve hits take priority over guideline/divider drag
+                const tool = c.getActiveTool();
+                const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
+                const hitCurveSegment = tool === 'SELECT' ? c.utils.hitTestCurve(pointer.x, pointer.y) : null;
+                const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && hitCurveSegment);
                 const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                 if (hit) {
                     if (c.guideline_lock) return;
-                    if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                    if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                    if (hasInteractiveHit) return;
                     e.preventDefault();
                     e.stopPropagation();
                     c.current_state = 'DRAGGING_USER_GUIDE';
@@ -358,7 +364,8 @@ export class CanvasInputController {
                 const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
                 if (divHit) {
                     if (c.guideline_lock) return;
-                    if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                    if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                    if (hasInteractiveHit) return;
                     const group = c.curve_manager.treeItems.get(divHit.groupId);
                     if (group && group.locked) return;
                     e.preventDefault();
@@ -523,10 +530,12 @@ export class CanvasInputController {
                 }
                 const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
+                // Node/curve/handle hits take priority over guideline/divider drag
+                const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && (handleHit || hitCurveSegment));
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
-                if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
+                if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                if (divHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE') { e.preventDefault(); return; }
+                if (divHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
@@ -886,10 +895,16 @@ export class CanvasInputController {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            // Node/curve hits take priority over guideline/divider drag
+            const tool = c.getActiveTool();
+            const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
+            const hitCurveSegment = tool === 'SELECT' ? c.utils.hitTestCurve(pointer.x, pointer.y) : null;
+            const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && hitCurveSegment);
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;
-                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                if (hasInteractiveHit) return;
                 e.preventDefault();
                 e.stopPropagation();
                 c.current_state = 'DRAGGING_USER_GUIDE';
@@ -906,7 +921,8 @@ export class CanvasInputController {
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
                 if (c.guideline_lock) return;
-                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                if (hasInteractiveHit) return;
                 const group = c.curve_manager.treeItems.get(divHit.groupId);
                 if (group && group.locked) return;
                 e.preventDefault();

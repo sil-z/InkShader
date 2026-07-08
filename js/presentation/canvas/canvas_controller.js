@@ -463,7 +463,7 @@ export class CanvasController {
 
             c.editorStore?.mergeViewFromCanvas?.();
             c.editorStore?.bumpTreeRevision?.();
-            await pm?.syncActiveProjectNameFromCanvas?.();
+            pm.syncActiveProjectNameFromCanvas?.();
         } catch (err) { console.error(" [Storage] Restore state failed:", err); }
     }
 
@@ -490,6 +490,19 @@ export class CanvasController {
         this.canvas.projectManager = pm;
         window.__canvas = this.canvas;
         await pm.init();
+
+        // Show brand title immediately from cached project name (localStorage),
+        // before restoreState() which does heavy IndexedDB reads + snapshot
+        // deserialization. This eliminates the ~1s delay where the user sees
+        // "InkShader" instead of their project name. restoreState() will later
+        // call syncActiveProjectNameFromCanvas() which re-runs _updateBrandTitle()
+        // from the actual canvas fontSettings.
+        const cachedName = pm.getActiveProjectName();
+        if (cachedName) {
+            const brandEl = document.getElementById('brand_title');
+            if (brandEl) brandEl.textContent = `${cachedName} - InkShader`;
+        }
+
         this.onBus(CANVAS_EVENTS.STATE_CHANGED, () => {
             pm.syncActiveProjectNameFromCanvas?.().catch((err) => {
                 console.error("[ProjectManager] Failed to sync project name:", err);
