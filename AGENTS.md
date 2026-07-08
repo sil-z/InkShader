@@ -230,3 +230,36 @@ Every AI modification **MUST** follow this process:
 3. **Locate** the files in the [Module Map](#module-map-by-architecture-layer) above to verify layer compliance (S001)
 4. **Implement** changes (follow CODEGUIDE.md rules)
 5. **Verify** — run the [Functional Deviation Checklist](SPECIFICATION.md#appendix-functional-deviation-checklist) in SPECIFICATION.md Appendix and check CODEGUIDE.md compliance
+
+---
+
+## Session Progress — Sisyphus
+
+### Session 1 (previous)
+
+**Objective**: Fix rotation crash; unify handle colors; rotate shear diamonds 45° on horizontal edges.
+
+**Changes**:
+- `js/core/transform_engine.js` — Added `isRotateAction()` to handle all rotation handle types (fixes rotation crash → NaN on `rot_tl`/`tr`/`bl`/`br`)
+- `js/services/theme.js` — Removed `rot_handle_*`, `shear_handle_*`, `pivot_handle_*` color entries
+- `js/canvas/services/canvas_renderer_service.js` — All handles use `p.select_handle_*` colors
+
+### Session 2 (current)
+
+**Objective**: Fix drag-broken (mode toggle on mousedown prevented drag); fix horizontal shear diamond being a square; make all handles transparent-bg (stroke only).
+
+**Changes**:
+
+1. **`select_tool.js`** — Mode toggle moved from mousedown to mouseup. Already-selected branches now set `c.pending_mode_toggle = true` and call `startTransform('drag', ...)` immediately, instead of returning early. Drag works again.
+
+2. **`transform_tool.js`** — `handleMouseUp` checks `c.pending_mode_toggle && !hasChanged` to toggle transform mode only on click (no drag). Resets `c.pending_mode_toggle = false`.
+
+3. **`canvas_renderer_service.js`** —
+   - Horizontal edge shear handles: left/right-pointing diamond (`moveTo(x-5,y)→(x,y-4)→(x+5,y)→(x,y+4)`) instead of axis-aligned square.
+   - All handles (scale squares, rot circles, shear diamonds, pivot crosshair+circle) now stroke-only — no `fillStyle`/`fill()` calls. Transparent background, hit testing unaffected (bounding-box math in `canvas_utils_service.js`).
+
+**Verification**: LSP diagnostics = 0 errors across all changed files.
+
+**Architecture notes**:
+- `c.pending_mode_toggle` is a transient flag set by `SelectTool.handleMouseDown` and consumed/cleared by `TransformTool.handleMouseUp`. It lives on the canvas object for cross-tool communication.
+- Handle hit testing (`canvas_utils_service.js`) uses `Math.abs(mouseX - h.x) <= size` bounding boxes, independent of canvas fill/stroke rendering — safe to remove fill.

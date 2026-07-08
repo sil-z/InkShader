@@ -40,18 +40,73 @@ export class CanvasUtilsService {
         let minSX = bounds.minX * c.scale + offsetX; let minSY = bounds.minY * c.scale + offsetY;
         let maxSX = bounds.maxX * c.scale + offsetX; let maxSY = bounds.maxY * c.scale + offsetY;
         let midSX = (minSX + maxSX) / 2; let midSY = (minSY + maxSY) / 2;
-        const handles = {
+        const pivotRadius = 5;
+
+        // Mode-specific handles
+        if (c.transform_mode === 'rotate_shear') {
+            // Rotate handles at corners (circular), shear handles at edges (diamond-shaped hit)
+            const rotSize = 7;
+            const rotHandles = {
+                "rot_tl": { x: minSX, y: minSY },
+                "rot_tr": { x: maxSX, y: minSY },
+                "rot_bl": { x: minSX, y: maxSY },
+                "rot_br": { x: maxSX, y: maxSY }
+            };
+            const shearSize = 7;
+            const shearHandles = {
+                "shear_tc": { x: midSX, y: minSY },
+                "shear_bc": { x: midSX, y: maxSY },
+                "shear_ml": { x: minSX, y: midSY },
+                "shear_mr": { x: maxSX, y: midSY }
+            };
+            for (let key in rotHandles) {
+                let h = rotHandles[key];
+                if (Math.abs(mouseX - h.x) <= rotSize && Math.abs(mouseY - h.y) <= rotSize) return key;
+            }
+            for (let key in shearHandles) {
+                let h = shearHandles[key];
+                if (Math.abs(mouseX - h.x) <= shearSize && Math.abs(mouseY - h.y) <= shearSize) return key;
+            }
+            // Pivot hit
+            const pivot = this._getTransformPivotScreen(c, bounds);
+            if (pivot && Math.abs(mouseX - pivot.x) <= pivotRadius && Math.abs(mouseY - pivot.y) <= pivotRadius) {
+                return 'pivot';
+            }
+            return null;
+        }
+
+        // Scale mode: 8 square handles (no rot handle)
+        const scaleHandles = {
             "tl": { x: minSX, y: minSY }, "tc": { x: midSX, y: minSY }, "tr": { x: maxSX, y: minSY },
             "ml": { x: minSX, y: midSY }, "mr": { x: maxSX, y: midSY },
-            "bl": { x: minSX, y: maxSY }, "bc": { x: midSX, y: maxSY }, "br": { x: maxSX, y: maxSY },
-            "rot": { x: midSX, y: minSY - 25 }
+            "bl": { x: minSX, y: maxSY }, "bc": { x: midSX, y: maxSY }, "br": { x: maxSX, y: maxSY }
         };
-        for (let key in handles) {
-            let h = handles[key];
+        for (let key in scaleHandles) {
+            let h = scaleHandles[key];
             if (Math.abs(mouseX - h.x) <= 6 && Math.abs(mouseY - h.y) <= 6) return key;
         }
         return null;
     }
+
+    /**
+     * Get the screen position of the transform pivot for hit-testing and rendering.
+     * Returns null if bounds are not available.
+     */
+    _getTransformPivotScreen(c, bounds) {
+        if (!bounds) return null;
+        const { x: offsetX, y: offsetY } = this.getLogicalOffset();
+        let px, py;
+        if (c.transform_center_pivot) {
+            px = c.transform_center_pivot.x * c.scale + offsetX;
+            py = c.transform_center_pivot.y * c.scale + offsetY;
+        } else {
+            px = ((bounds.minX + bounds.maxX) / 2) * c.scale + offsetX;
+            py = ((bounds.minY + bounds.maxY) / 2) * c.scale + offsetY;
+        }
+        return { x: px, y: py };
+    }
+
+    /** @deprecated Was used for selection-box-edge mode toggle — no longer needed */
     hitTestNode(mouseX, mouseY) {
         const c = this.canvas;
         const tool = resolveActiveCanvasTool(c);

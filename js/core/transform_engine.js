@@ -106,14 +106,93 @@ export class TransformEngine {
     }
 
     /**
-     * Pure function: applies computed transform parameters to a single node's coordinates and its offset system
+     * Pure function: computes shear parameters based on handle type and mouse delta
+     *
+     * @param {string} action - "shear_tc" | "shear_bc" | "shear_ml" | "shear_mr"
+     * @param {object} pivot - { x, y } pivot point in world coords
+     * @param {object} startWorld - { x, y } mouse start position
+     * @param {object} currentWorld - { x, y } current mouse position
+     * @param {object} bounds - { minX, minY, maxX, maxY } selection bounds
+     * @returns {{ shx: number, shy: number }} shear factors
      */
+    static calculateShearParams(action, pivot, startWorld, currentWorld, bounds) {
+        let shx = 0, shy = 0;
+        const h = bounds.maxY - bounds.minY;
+        const w = bounds.maxX - bounds.minX;
+        const dx = currentWorld.x - startWorld.x;
+        const dy = currentWorld.y - startWorld.y;
+
+        switch (action) {
+            case 'shear_bc':
+                // Bottom edge: drag right → top moves left (positive shx)
+                if (h > 0.01) shx = dx / h;
+                break;
+            case 'shear_tc':
+                // Top edge: drag right → bottom moves left (negative shx, opposite to shear_bc)
+                if (h > 0.01) shx = -dx / h;
+                break;
+            case 'shear_mr':
+                // Right edge: drag up → left moves down (positive shy)
+                if (w > 0.01) shy = dy / w;
+                break;
+            case 'shear_ml':
+                // Left edge: drag up → right moves down (negative shy, opposite to shear_mr)
+                if (w > 0.01) shy = -dy / w;
+                break;
+        }
+        return { shx, shy };
+    }
+
+    /**
+     * Pure function: applies shear transformation to a point
+     */
+    static applyShearToPoint(pt, snap, action, pivot, params) {
+        // Shear matrix: [1, shy, shx, 1, 0, 0]
+        const shx = params.shx || 0;
+        const shy = params.shy || 0;
+
+        if (snap && snap.localToWorld && snap.worldToLocal) {
+            const worldPt = snap.localToWorld.transformPoint({ x: pt.x, y: pt.y });
+            const dx = worldPt.x - pivot.x;
+            const dy = worldPt.y - pivot.y;
+            const newGlobalX = pivot.x + dx + shx * dy;
+            const newGlobalY = pivot.y + dy + shy * dx;
+            const localPt = snap.worldToLocal.transformPoint({ x: newGlobalX, y: newGlobalY });
+            return { x: localPt.x, y: localPt.y };
+        }
+
+        let globalX = pt.x + snap.seqOff + snap.refTx;
+        let globalY = pt.y + snap.refTy;
+        const dx = globalX - pivot.x;
+        const dy = globalY - pivot.y;
+        const newGlobalX = pivot.x + dx + shx * dy;
+        const newGlobalY = pivot.y + dy + shy * dx;
+
+        return {
+            x: newGlobalX - snap.seqOff - snap.refTx,
+            y: newGlobalY - snap.refTy
+        };
+    }
+
+    /**
+     * Pure function: applies computed transform parameters to a single node's coordinates and its offset system.
+     * Supports 'rot', 'scale' (sx/sy), and 'shear' (shx/shy) actions.
+     */
+    static isRotateAction(action) {
+        return action === 'rot' || action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br';
+    }
+
     static applyTransformationToPoint(pt, snap, action, pivot, params) {
+        // Delegate shear to dedicated method
+        if (action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr') {
+            return TransformEngine.applyShearToPoint(pt, snap, action, pivot, params);
+        }
+
         if (snap && snap.localToWorld && snap.worldToLocal) {
             const worldPt = snap.localToWorld.transformPoint({ x: pt.x, y: pt.y });
             let newGlobalX, newGlobalY;
 
-            if (action === 'rot') {
+            if (TransformEngine.isRotateAction(action)) {
                 let rx = worldPt.x - pivot.x;
                 let ry = worldPt.y - pivot.y;
                 newGlobalX = pivot.x + rx * params.cos - ry * params.sin;
@@ -131,7 +210,7 @@ export class TransformEngine {
         let globalY = pt.y + snap.refTy;
         let newGlobalX, newGlobalY;
         
-        if (action === 'rot') {
+        if (TransformEngine.isRotateAction(action)) {
             let rx = globalX - pivot.x;
             let ry = globalY - pivot.y;
             newGlobalX = pivot.x + rx * params.cos - ry * params.sin;

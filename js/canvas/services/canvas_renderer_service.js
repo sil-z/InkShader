@@ -247,15 +247,81 @@ export class CanvasRendererService {
                 let w = maxSX - minSX; let h = maxSY - minSY;
                 let midSX = minSX + w / 2; let midSY = minSY + h / 2;
                 c.ctx.save(); c.ctx.strokeStyle = p.select_box_stroke; c.ctx.lineWidth = 1; c.ctx.setLineDash([]); c.ctx.strokeRect(minSX, minSY, w, h);
-                const drawHandle = (x, y, isRot = false) => {
-                    c.ctx.fillStyle = p.select_handle_fill; c.ctx.strokeStyle = p.select_handle_stroke; c.ctx.lineWidth = 1; c.ctx.beginPath();
-                    if (isRot) { c.ctx.arc(x, y, 4, 0, Math.PI * 2); } else { c.ctx.rect(x - 3, y - 3, 6, 6); }
-                    c.ctx.fill(); c.ctx.stroke();
-                };
-                drawHandle(minSX, minSY); drawHandle(midSX, minSY); drawHandle(maxSX, minSY);
-                drawHandle(minSX, midSY); drawHandle(maxSX, midSY);
-                drawHandle(minSX, maxSY); drawHandle(midSX, maxSY); drawHandle(maxSX, maxSY);
-                c.ctx.beginPath(); c.ctx.moveTo(midSX, minSY); c.ctx.lineTo(midSX, minSY - 20); c.ctx.stroke(); drawHandle(midSX, minSY - 20, true);
+
+                if (c.transform_mode === 'scale') {
+                    // Scale mode: 8 square handles
+                    const drawHandle = (x, y) => {
+                        c.ctx.fillStyle = p.select_handle_fill;
+                        c.ctx.strokeStyle = p.select_handle_stroke;
+                        c.ctx.lineWidth = 1.5;
+                        c.ctx.beginPath();
+                        c.ctx.rect(x - 3.5, y - 3.5, 7, 7);
+                        c.ctx.fill();
+                        c.ctx.stroke();
+                    };
+                    drawHandle(minSX, minSY); drawHandle(midSX, minSY); drawHandle(maxSX, minSY);
+                    drawHandle(minSX, midSY); drawHandle(maxSX, midSY);
+                    drawHandle(minSX, maxSY); drawHandle(midSX, maxSY); drawHandle(maxSX, maxSY);
+                } else {
+                    // Rotate/Shear mode: circular rot handles at corners, diamond shear at edges
+                    const drawRotHandle = (x, y) => {
+                        c.ctx.fillStyle = p.select_handle_fill;
+                        c.ctx.strokeStyle = p.select_handle_stroke;
+                        c.ctx.lineWidth = 1.5;
+                        c.ctx.beginPath();
+                        c.ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                        c.ctx.fill();
+                        c.ctx.stroke();
+                    };
+                    const drawShearHandle = (x, y, isHorizontal) => {
+                        c.ctx.fillStyle = p.select_handle_fill;
+                        c.ctx.strokeStyle = p.select_handle_stroke;
+                        c.ctx.lineWidth = 1.5;
+                        c.ctx.beginPath();
+                        if (isHorizontal) {
+                            // Diamond pointed left/right for horizontal edges — short axis (vertical) = 7
+                            c.ctx.moveTo(x - 4, y);
+                            c.ctx.lineTo(x, y - 3.5);
+                            c.ctx.lineTo(x + 4, y);
+                            c.ctx.lineTo(x, y + 3.5);
+                        } else {
+                            // Diamond pointed up/down for vertical edges — short axis (horizontal) = 7
+                            c.ctx.moveTo(x, y - 4);
+                            c.ctx.lineTo(x + 3.5, y);
+                            c.ctx.lineTo(x, y + 4);
+                            c.ctx.lineTo(x - 3.5, y);
+                        }
+                        c.ctx.closePath();
+                        c.ctx.fill();
+                        c.ctx.stroke();
+                    };
+                    drawRotHandle(minSX, minSY); drawRotHandle(maxSX, minSY);
+                    drawRotHandle(minSX, maxSY); drawRotHandle(maxSX, maxSY);
+                    drawShearHandle(midSX, minSY, true); drawShearHandle(midSX, maxSY, true);
+                    drawShearHandle(minSX, midSY, false); drawShearHandle(maxSX, midSY, false);
+                }
+
+                // Draw center pivot (rotate_shear mode only — scale uses opposite-handle pivot)
+                if (c.transform_mode === 'rotate_shear') {
+                    const pivotScreen = c.utils._getTransformPivotScreen(c, bounds);
+                    if (pivotScreen) {
+                        const px = pivotScreen.x, py = pivotScreen.y;
+                        c.ctx.fillStyle = p.select_handle_fill;
+                        c.ctx.strokeStyle = p.select_handle_stroke;
+                        c.ctx.lineWidth = 1.5;
+                        // Crosshair lines
+                        const cr = 8;
+                        c.ctx.beginPath();
+                        c.ctx.moveTo(px - cr, py); c.ctx.lineTo(px + cr, py);
+                        c.ctx.moveTo(px, py - cr); c.ctx.lineTo(px, py + cr);
+                        c.ctx.stroke();
+                        // Outer circle
+                        c.ctx.beginPath();
+                        c.ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+                        c.ctx.fill();
+                        c.ctx.stroke();
+                    }
+                }
                 c.ctx.restore();
             }
         }

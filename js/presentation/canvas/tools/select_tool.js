@@ -21,6 +21,11 @@ export class SelectTool extends BaseTool {
         const ix = c.getInteractionSnapshot();
 
         if (handleHit) {
+            // If pivot is clicked (no drag detected yet), start pivot drag
+            if (handleHit === 'pivot') {
+                this.ic.transformTool.startTransform('pivot', mouseX, mouseY, clientX, clientY);
+                return;
+            }
             this.ic.transformTool.startTransform(handleHit, mouseX, mouseY, clientX, clientY);
             return;
         }
@@ -31,6 +36,8 @@ export class SelectTool extends BaseTool {
             if (hitCurveSegment.refId) {
                 let refItem = c.curve_manager.treeItems.get(hitCurveSegment.refId);
                 if (refItem && snapshotIncludesRef(ix, refItem)) {
+                    // Clicking already-selected ref — toggle mode on mouseup (if no drag)
+                    c.pending_mode_toggle = true;
                     this.ic.transformTool.startTransform('drag', mouseX, mouseY, clientX, clientY);
                     return;
                 } else if (refItem) {
@@ -39,8 +46,9 @@ export class SelectTool extends BaseTool {
                     return;
                 }
             } else if (snapshotIncludesCurve(ix, hitCurveSegment.curve)) {
+                // Clicking already-selected curve — toggle mode on mouseup (if no drag)
+                c.pending_mode_toggle = true;
                 this.ic.transformTool.startTransform('drag', mouseX, mouseY, clientX, clientY);
-                c.is_dirty = true;
                 return;
             } else {
                 this.requestObjectSelection(isShiftKey ? "add" : "replace", { curves: [hitCurveSegment.curve] });

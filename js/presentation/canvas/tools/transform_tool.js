@@ -23,6 +23,20 @@ export class TransformTool {
         this.ic = interactionController;
     }
 
+    /**
+     * Resolve the effective pivot point for rotation/shear transforms.
+     * Uses custom pivot if set, otherwise falls back to bounds center.
+     */
+    _resolvePivot(c, bounds) {
+        if (c.transform_center_pivot) {
+            return { x: c.transform_center_pivot.x, y: c.transform_center_pivot.y };
+        }
+        if (bounds) {
+            return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+        }
+        return null;
+    }
+
     startTransform(action, mouseX, mouseY, clientX, clientY) {
         const c = this.canvas;
         c.current_state = 'TRANSFORMING_OBJECTS';
@@ -35,6 +49,15 @@ export class TransformTool {
         let startWorldY = (mouseY - offsetY) / c.scale;
         c.transform_start_world = { x: startWorldX, y: startWorldY };
 
+        // Pivot drag: just record state, no snapshot needed
+        if (action === 'pivot') {
+            c.transform_start_bounds = null;
+            c.transform_snapshot = null;
+            c.transform_snapshot_refs = null;
+            c.transform_pivot = null;
+            return;
+        }
+
         let bounds = c.utils.getSelectionBounds();
         c.transform_start_bounds = bounds ? { ...bounds } : null;
         if (action !== 'drag' && bounds) {
@@ -46,7 +69,11 @@ export class TransformTool {
             else if (action === 'bc') c.transform_pivot = { x: (bounds.minX + bounds.maxX) / 2, y: bounds.minY };
             else if (action === 'ml') c.transform_pivot = { x: bounds.maxX, y: (bounds.minY + bounds.maxY) / 2 };
             else if (action === 'mr') c.transform_pivot = { x: bounds.minX, y: (bounds.minY + bounds.maxY) / 2 };
-            else if (action === 'rot') c.transform_pivot = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+            // Rotate handles (rotate_shear mode) and shear handles use custom pivot
+            else if (action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br' ||
+                     action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr') {
+                c.transform_pivot = this._resolvePivot(c, bounds);
+            }
         } else { c.transform_pivot = null; }
 
         c.transform_snapshot_refs = []; c.transform_snapshot = [];
@@ -158,6 +185,13 @@ export class TransformTool {
         let action = c.transform_action;
         let pivot = c.transform_pivot;
 
+        // Pivot drag: move the custom pivot point
+        if (action === 'pivot') {
+            c.transform_center_pivot = { x: worldX, y: worldY };
+            c.is_dirty = true;
+            return;
+        }
+
         if (action === 'drag') {
             const anchor = c.transform_anchor_client || c.transform_start_screen;
             let currentDx = (clientX - anchor.x) / c.scale;
@@ -176,14 +210,25 @@ export class TransformTool {
 
         if (pivot) {
             let params = {};
-            if (action === 'rot') params = TransformEngine.calculateRotationParams(pivot, c.transform_start_world, { x: worldX, y: worldY }, isCtrlPressed);
-            else params = TransformEngine.calculateScaleParams(action, pivot, c.transform_start_world, { x: worldX, y: worldY }, (isShiftPressed || isCtrlPressed));
+            const isRotateAction = action === 'rot' || action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br';
+            const isShearAction = action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr';
+
+            if (isRotateAction) {
+                params = TransformEngine.calculateRotationParams(pivot, c.transform_start_world, { x: worldX, y: worldY }, isCtrlPressed);
+            } else if (isShearAction) {
+                const bounds = c.utils.getSelectionBounds();
+                params = TransformEngine.calculateShearParams(action, pivot, c.transform_start_world, { x: worldX, y: worldY }, bounds || c.transform_start_bounds);
+            } else {
+                params = TransformEngine.calculateScaleParams(action, pivot, c.transform_start_world, { x: worldX, y: worldY }, (isShiftPressed || isCtrlPressed));
+            }
+
             c.curve_manager.applyTransformPreview({
                 action, snapshots: c.transform_snapshot,
                 snapshotRefs: c.transform_snapshot_refs, pivot, params
             });
 
-            if (action !== 'rot' && c.transform_start_bounds) {
+            // Scale anchor correction (not needed for rotate and shear)
+            if (!isRotateAction && !isShearAction && c.transform_start_bounds) {
                 const currentBounds = c.utils.getSelectionBounds();
                 if (currentBounds) {
                     const corr = this.getScaleAnchorCorrection(action, c.transform_start_bounds, currentBounds, params);
@@ -282,8 +327,30 @@ export class TransformTool {
 
     handleMouseUp() {
         const c = this.canvas;
+        const action = c.transform_action;
         const hasChanged = c.transform_started_moving === true;
         const affectedCurveIds = this.ic.collectInteractiveStrokePreviewCurveIds();
+
+        // Mode toggle on click (no drag) for already-selected objects
+        if (c.pending_mode_toggle && !hasChanged) {
+            c.transform_mode = c.transform_mode === 'scale' ? 'rotate_shear' : 'scale';
+            c.is_dirty = true;
+        }
+        c.pending_mode_toggle = false;
+
+        // Pivot drag: no history commit, just update state
+        if (action === 'pivot') {
+            c.current_state = 'IDLE';
+            c.transform_action = null;
+            c.transform_snapshot = null;
+            c.transform_snapshot_refs = null;
+            c.transform_start_bounds = null;
+            c.transform_anchor_client = null;
+            c.clearInteractiveStrokePreview?.();
+            c.is_dirty = true;
+            return;
+        }
+
         c.current_state = 'IDLE'; c.transform_action = null;
         c.transform_snapshot = null; c.transform_snapshot_refs = null;
         c.transform_start_bounds = null; c.transform_anchor_client = null;

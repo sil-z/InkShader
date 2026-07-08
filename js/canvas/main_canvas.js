@@ -44,6 +44,9 @@ class MainCanvasBase extends HTMLElement {
         this.transform_action = null; this.transform_snapshot = null;
         this.transform_snapshot_refs = null; this.transform_pivot = null; this.transform_start_world = null;
         this.transform_start_bounds = null;
+        this.transform_mode = 'scale'; /* 'scale' | 'rotate_shear' */
+        this.transform_center_pivot = null; /* { x, y } in world coords, null = use bounds center */
+        this.transform_center_pivot_start = null; /* snapshot of pivot pos at drag start */
         this.new_curve_handle = null; this.dragging_node_marker = null; this.last_on_curve_node_marker = null;
         this.hovered_node_marker = null; this.hovered_curve_segment = null;
         this.scale_min = 0.02; this.scale_max = 50; this.scale = 0.4;

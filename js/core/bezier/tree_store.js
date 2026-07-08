@@ -496,8 +496,17 @@ export class TreeStore {
             const seqOff = Number(snap.seqOff || 0);
 
             let m = new DOMMatrix();
-            if (action === 'rot') m = m.translate(pivot.x, pivot.y).rotate(params.angleDeg).translate(-pivot.x, -pivot.y);
-            else m = m.translate(pivot.x, pivot.y).scale(params.sx, params.sy).translate(-pivot.x, -pivot.y);
+            const isRotateAction = action === 'rot' || action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br';
+            const isShearAction = action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr';
+            if (isRotateAction) {
+                m = m.translate(pivot.x, pivot.y).rotate(params.angleDeg).translate(-pivot.x, -pivot.y);
+            } else if (isShearAction) {
+                const shx = params.shx || 0;
+                const shy = params.shy || 0;
+                m = m.translate(pivot.x, pivot.y).multiply(new DOMMatrix([1, shy, shx, 1, 0, 0])).translate(-pivot.x, -pivot.y);
+            } else {
+                m = m.translate(pivot.x, pivot.y).scale(params.sx, params.sy).translate(-pivot.x, -pivot.y);
+            }
 
             const globalStart = new DOMMatrix().translate(seqOff, 0).multiply(snap.startMatrix);
             const globalEnd = m.multiply(globalStart);
