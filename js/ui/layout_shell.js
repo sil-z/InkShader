@@ -83,7 +83,16 @@ export function initializeLayoutShell() {
         if (typeof mode === "string" && mode.length > 0) updateToolModeUI(mode);
     });
     document.getElementById("btn_action_union")?.addEventListener("click", () => CanvasDispatcher.requestBooleanUnion());
+    document.getElementById("btn_action_intersection")?.addEventListener("click", () => CanvasDispatcher.requestBooleanIntersection());
+    document.getElementById("btn_action_difference")?.addEventListener("click", () => CanvasDispatcher.requestBooleanDifference());
+    document.getElementById("btn_action_exclusion")?.addEventListener("click", () => CanvasDispatcher.requestBooleanExclusion());
     document.getElementById("btn_action_expand")?.addEventListener("click", () => CanvasDispatcher.requestExpandStroke());
+    document.getElementById("btn_action_insert_node")?.addEventListener("click", () => CanvasDispatcher.requestInsertNode());
+    document.getElementById("btn_action_delete_node")?.addEventListener("click", () => CanvasDispatcher.requestDeleteNode());
+    document.getElementById("btn_action_join_node")?.addEventListener("click", () => CanvasDispatcher.requestJoinNode());
+    document.getElementById("btn_action_break_node")?.addEventListener("click", () => CanvasDispatcher.requestBreakNode());
+    document.getElementById("btn_action_add_segment")?.addEventListener("click", () => CanvasDispatcher.requestAddSegment());
+    document.getElementById("btn_action_delete_segment")?.addEventListener("click", () => CanvasDispatcher.requestDeleteSegment());
     document.getElementById("btn_tool_select")?.addEventListener("click", () => dispatchToolMode("SELECT"));
     document.getElementById("btn_tool_node")?.addEventListener("click", () => dispatchToolMode("NODE"));
     document.getElementById("btn_tool_draw")?.addEventListener("click", () => dispatchToolMode("DRAW"));

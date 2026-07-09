@@ -227,14 +227,28 @@ export class PathPropertyPopup extends HTMLElement {
 
         if (this._docked) {
             this._hide();
-            // Read current direction state from our DOM (which has either the
-            // optimistic value if a toggle is in-flight, or the model value).
-            // This ensures the property panel stays in sync with the popup.
+            // Compute direction state to sync to the property panel.
+            // Single path: read from our DOM (picks up optimistic toggle flips).
+            // Multi-path: compute common winding from the actual curve data
+            // (no optimistic DOM flips for multi-path).
             const curve = curves.length > 0 ? curves[0] : null;
-            const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
-            const winding = revBtn ? revBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
-            const smartBtn = this.container.querySelector('#ppp_smart_winding_toggle');
-            const smartWinding = smartBtn ? smartBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
+            let winding = null;
+            let smartWinding = null;
+            if (curves.length === 1) {
+                const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
+                winding = revBtn ? revBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
+                const smartBtn = this.container.querySelector('#ppp_smart_winding_toggle');
+                smartWinding = smartBtn ? smartBtn.getAttribute('aria-pressed') === 'true' ? 'cw' : 'ccw' : null;
+            } else if (curves.length > 1) {
+                const firstW = curves[0].skeletonWinding;
+                if (firstW === 'cw' || firstW === 'ccw') {
+                    if (curves.every(c => c.skeletonWinding === firstW)) winding = firstW;
+                }
+                const firstSW = curves[0].smart_stroke_clockwise !== false ? 'cw' : 'ccw';
+                if (curves.every(c => (c.smart_stroke_clockwise !== false ? 'cw' : 'ccw') === firstSW)) {
+                    smartWinding = firstSW;
+                }
+            }
             appEventBus.emit(PATH_PROPS_DOCKED, {
                 curveIds: this._selectedCurveIds,
                 treeIds: this._selectedTreeIds,
@@ -427,38 +441,68 @@ export class PathPropertyPopup extends HTMLElement {
 
     _handleReverseDirection() {
         const selIds = [...this._selectedTreeIds];
-        if (selIds.length !== 1) return;
-        const item = EditorModel.getTreeItem(selIds[0]);
-        if (!item || item.type !== 'curve') return;
 
-        // Flip UI state FIRST so any synchronous re-render triggered by the
-        // server request picks up the correct winding from _manualDirWinding
-        // instead of the stale skeletonWinding. The server request can trigger
-        // a synchronous render that would otherwise overwrite the manual flip.
-        const dirEl = this.container.querySelector('#ppp_direction_text');
-        const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
-        if (revBtn && dirEl) {
-            const isCw = revBtn.getAttribute('aria-pressed') === 'true';
-            const newWinding = isCw ? 'ccw' : 'cw';
-            revBtn.setAttribute('aria-pressed', newWinding === 'cw' ? 'true' : 'false');
-            revBtn.dataset.winding = newWinding;
-            dirEl.value = newWinding === 'cw' ? 'Clockwise' : 'Counter-clockwise';
-            // Persist in JS so it survives DOM recreation
-            if (!this._manualDirWinding) this._manualDirWinding = {};
-            this._manualDirWinding[item.curveId] = newWinding;
+        // Collect all selected curve items with their Curve objects
+        const items = [];
+        selIds.forEach(sid => {
+            const item = EditorModel.getTreeItem(sid);
+            if (item && item.type === 'curve') {
+                const curve = EditorModel.getCurveById(item.curveId);
+                if (curve) items.push({ item, curve });
+            }
+        });
+        if (items.length === 0) return;
+
+        if (items.length === 1) {
+            // Single path: optimistic UI flip for the popup so any synchronous
+            // re-render picks up the correct winding from _manualDirWinding
+            // instead of the stale skeletonWinding.
+            const { item, curve } = items[0];
+            const dirEl = this.container.querySelector('#ppp_direction_text');
+            const revBtn = this.container.querySelector('#ppp_reverse_dir_toggle');
+            if (revBtn && dirEl) {
+                const isCw = revBtn.getAttribute('aria-pressed') === 'true';
+                const newWinding = isCw ? 'ccw' : 'cw';
+                revBtn.setAttribute('aria-pressed', newWinding === 'cw' ? 'true' : 'false');
+                revBtn.dataset.winding = newWinding;
+                dirEl.value = newWinding === 'cw' ? 'Clockwise' : 'Counter-clockwise';
+                if (!this._manualDirWinding) this._manualDirWinding = {};
+                this._manualDirWinding[item.id] = newWinding;
+            }
+            this._togglingDirection = true;
+            try {
+                CanvasDispatcher.requestSetSingleObjectProperties(
+                    [{ id: item.id, props: { reverse_direction: true } }],
+                    { recordHistory: true }
+                );
+            } finally {
+                this._togglingDirection = false;
+            }
+            return;
         }
 
-        // Prevent _patchValues from overwriting the direction UI during the
-        // synchronous STATE_CHANGED events that fire inside this call.
-        this._togglingDirection = true;
-        try {
-            CanvasDispatcher.requestSetSingleObjectProperties(
-                [{ id: item.id, props: { reverse_direction: true } }],
-                { recordHistory: true }
-            );
-        } finally {
-            this._togglingDirection = false;
+        // Multi-path: check if windings differ across selected curves
+        const windings = items.map(({ curve }) =>
+            curve.skeletonWinding != null ? curve.skeletonWinding : 'open'
+        );
+        const allSame = windings.every(w => w === windings[0]);
+
+        if (!allSame) {
+            // Mixed winding: only reverse CW curves so all become CCW in one click
+            const updates = items
+                .filter(({ curve }) => (curve.skeletonWinding != null ? curve.skeletonWinding : 'open') === 'cw')
+                .map(({ item }) => ({ id: item.id, props: { reverse_direction: true } }));
+            if (updates.length > 0) {
+                CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: true });
+            }
+            return;
         }
+
+        // All same winding: toggle all
+        CanvasDispatcher.requestSetSingleObjectProperties(
+            items.map(({ item }) => ({ id: item.id, props: { reverse_direction: true } })),
+            { recordHistory: true }
+        );
     }
 
     /**
@@ -476,13 +520,18 @@ export class PathPropertyPopup extends HTMLElement {
 
     _handleSmartWindingToggle() {
         const selIds = [...this._selectedTreeIds];
-        if (selIds.length !== 1) return;
-        const item = EditorModel.getTreeItem(selIds[0]);
-        if (!item || item.type !== 'curve') return;
-        CanvasDispatcher.requestSetSingleObjectProperties(
-            [{ id: item.id, props: { toggle_smart_winding: true } }],
-            { recordHistory: true }
-        );
+        const updates = [];
+        selIds.forEach(sid => {
+            const item = EditorModel.getTreeItem(sid);
+            if (item && item.type === 'curve') {
+                const curve = EditorModel.getCurveById(item.curveId);
+                if (curve && curve.smart_stroke === true) {
+                    updates.push({ id: item.id, props: { toggle_smart_winding: true } });
+                }
+            }
+        });
+        if (updates.length === 0) return;
+        CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: true });
     }
 
     _show() {

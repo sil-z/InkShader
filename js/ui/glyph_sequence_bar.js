@@ -107,6 +107,14 @@ export class GlyphSequenceBar extends HTMLElement {
         return (c.ruler_size ?? 20) + (c.offset?.x ?? 0);
     }
     _render() {
+        // Close any open menu before rebuilding the track — _render() destroys
+        // all child elements (including trigger buttons), rendering the existing
+        // menu's stale triggerBtn reference unusable for hit-testing.
+        if (this._activeMenu) {
+            if (this._activeMenu.isConnected) this._activeMenu.remove();
+            this._activeMenu = null;
+            this._lastTriggerBtn = null;
+        }
         const tr = this._track;
         if (!tr) return;
         tr.textContent = "";
@@ -444,6 +452,11 @@ export class GlyphSequenceBar extends HTMLElement {
         if (popup) popup.remove();
     }
     _addMenu(x, y, insertAt = -1, triggerBtn = null) {
+        // Guard: if activeMenu is stale (removed externally but not nulled), clean up
+        if (this._activeMenu && !this._activeMenu.isConnected) {
+            this._activeMenu = null;
+            this._lastTriggerBtn = null;
+        }
         if (this._activeMenu && this._lastTriggerBtn === triggerBtn) {
             this._activeMenu.remove();
             this._activeMenu = null;

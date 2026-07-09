@@ -965,6 +965,7 @@ export class PropertyPanel extends HTMLElement {
 
     _buildPathProps(pathCount, t) {
         if (pathCount > 0 && this._pathPropsDocked) {
+            const multiAttr = pathCount > 1 ? ' disabled' : '';
             return `
                 <div data-section="ppp">
                     <div class="property_group_title npp-drag-handle">${t('prop.path_props', 'Path Properties')}</div>
@@ -973,8 +974,7 @@ export class PropertyPanel extends HTMLElement {
                         <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
-                        ${pathCount === 1 ? `
-                        <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"></div>
+                        <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"${multiAttr}></div>
                         <div class="ppp-row ppp-single-path">
                             <label>${t('prop.path_direction', 'Path Direction')}</label>
                             <div class="prop_direction_text_toggle" id="path_reverse_dir_wrapper">
@@ -988,13 +988,13 @@ export class PropertyPanel extends HTMLElement {
                                 <input type="text" readonly class="prop_direction_input" id="path_smart_winding_text" value="" tabindex="-1">
                                 <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
                             </div>
-                        </div>` : ''}
+                        </div>
                     </div>
                 </div>`;
         } else if (pathCount > 1) {
             return `
-                <div class="property_group">
-                    <div class="property_group_title">${t('prop.multiple_paths', 'Multiple Paths')}</div>
+                <div data-section="ppp">
+                    <div class="property_group_title npp-drag-handle">${t('prop.multiple_paths', 'Multiple Paths')}</div>
                     <div class="npp-fields">
                         <div class="ppp-row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
@@ -1081,72 +1081,112 @@ export class PropertyPanel extends HTMLElement {
             patch('path_closed', this.getCommonValue(selectedCurves, 'closed'));
             patch('path_smart_stroke', this.getCommonValue(selectedCurves, 'smart_stroke'));
             patch('path_show_skel', this.getCommonValue(selectedCurves, 'show_skeleton'));
-            if (selectedCurves.length === 1 && (item || selectedIds.length > 0)) {
+            const isSinglePath = selectedCurves.length === 1 && (item || selectedIds.length > 0);
+            const firstCurve = selectedCurves[0];
+
+            // Name — single path shows name; multi-path shows empty disabled
+            if (isSinglePath) {
                 if (!item) item = EditorModel.getTreeItem(selectedIds[0]);
                 patch('c_name', item?.name ?? '');
-                const curve = selectedCurves[0];
-                const dirEl = this.container.querySelector('#path_direction_text');
-                const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
-                if (revBtn) {
-                    const revTitle = t('prop.toggle_path_direction', 'Toggle path direction');
-                    if (revBtn.title !== revTitle) revBtn.title = revTitle;
-                    if (revBtn.disabled) revBtn.disabled = false;
-                    // If the curve changed, clear stale dataset from previous curve
-                    if (this._lastDirCurveId !== curve.id) {
-                        this._lastDirCurveId = curve.id;
+            } else {
+                patch('c_name', '', true);
+            }
+
+            // Direction text — show common value or Mixed; button always enabled
+            const dirEl = this.container.querySelector('#path_direction_text');
+            const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
+
+            // Compute common winding across all selected curves
+            const commonWinding = (() => {
+                let first = firstCurve.skeletonWinding != null ? firstCurve.skeletonWinding : 'open';
+                for (let i = 1; i < selectedCurves.length; i++) {
+                    const w = selectedCurves[i].skeletonWinding != null ? selectedCurves[i].skeletonWinding : 'open';
+                    if (w !== first) return 'mixed';
+                }
+                return first;
+            })();
+
+            if (revBtn) {
+                revBtn.disabled = false;
+                if (isSinglePath) {
+                    if (this._lastDirCurveId !== firstCurve.id) {
+                        this._lastDirCurveId = firstCurve.id;
                         delete revBtn.dataset.winding;
                     }
-                    // Restore manual winding from JS store (survives buildDOM)
-                    if (this._manualDirWinding && this._manualDirWinding[curve.id]) {
-                        revBtn.dataset.winding = this._manualDirWinding[curve.id];
+                    if (this._manualDirWinding && this._manualDirWinding[firstCurve.id]) {
+                        revBtn.dataset.winding = this._manualDirWinding[firstCurve.id];
                     }
                 }
-                // Direction values come from dataset.winding (set by
-                // handleDockedPathPropsUpdate via PATH_PROPS_DOCKED, which runs
-                // synchronously before this microtask) or the model as fallback.
-                // The popup is the single authority for direction toggling.
-                const direction = (revBtn && revBtn.dataset && revBtn.dataset.winding)
-                    || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
-                if (dirEl) {
-                    const dirText = direction === 'cw' ? t('prop.dir_cw', 'Clockwise')
-                        : direction === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
+                const revTitle = t('prop.toggle_path_direction', 'Toggle path direction');
+                if (revBtn.title !== revTitle) revBtn.title = revTitle;
+            }
+            if (dirEl) {
+                if (commonWinding === 'mixed') {
+                    if (dirEl.value !== '') dirEl.value = '';
+                    dirEl.placeholder = t('prop.mixed', 'Mixed');
+                } else {
+                    const dirText = commonWinding === 'cw' ? t('prop.dir_cw', 'Clockwise')
+                        : commonWinding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise')
                         : t('prop.dir_open', 'Open');
                     if (dirEl.value !== dirText) dirEl.value = dirText;
+                    dirEl.placeholder = '';
                 }
-                if (revBtn) {
-                    const pressed = direction === 'cw' ? 'true' : 'false';
-                    if (revBtn.getAttribute('aria-pressed') !== pressed) {
-                        revBtn.setAttribute('aria-pressed', pressed);
-                    }
+            }
+            if (revBtn && commonWinding !== 'mixed') {
+                const pressed = commonWinding === 'cw' ? 'true' : 'false';
+                if (revBtn.getAttribute('aria-pressed') !== pressed) {
+                    revBtn.setAttribute('aria-pressed', pressed);
                 }
-                const revWrapper = this.container.querySelector('#path_reverse_dir_wrapper');
-                if (revWrapper) {
-                    const rwTitle = t('prop.toggle_path_direction', 'Toggle path direction');
-                    if (revWrapper.title !== rwTitle) revWrapper.title = rwTitle;
-                }
+            }
+            const revWrapper = this.container.querySelector('#path_reverse_dir_wrapper');
+            if (revWrapper) {
+                const rwTitle = t('prop.toggle_path_direction', 'Toggle path direction');
+                if (revWrapper.title !== rwTitle) revWrapper.title = rwTitle;
+            }
 
-                let smartBtn = this.container.querySelector('#path_smart_winding_toggle');
-                if (smartBtn) {
-                    const enableSmartWinding = curve.smart_stroke === true;
-                    if (smartBtn.disabled !== !enableSmartWinding) smartBtn.disabled = !enableSmartWinding;
-                    const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
-                    if (smartBtn.title !== swTitle) smartBtn.title = swTitle;
+            // Smart winding — show common value or Mixed; toggle enabled for all
+            const commonSmartWinding = (() => {
+                let first = selectedCurves[0].smart_stroke_clockwise !== false ? 'cw' : 'ccw';
+                for (let i = 1; i < selectedCurves.length; i++) {
+                    const w = selectedCurves[i].smart_stroke_clockwise !== false ? 'cw' : 'ccw';
+                    if (w !== first) return 'mixed';
                 }
-                let smartDirEl = this.container.querySelector('#path_smart_winding_text');
-                if (smartDirEl && smartBtn) {
-                    const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
-                    const smartDirText = smartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
+                return first;
+            })();
+
+            let smartBtn = this.container.querySelector('#path_smart_winding_toggle');
+            if (smartBtn) {
+                if (isSinglePath) {
+                    const enableSmartWinding = firstCurve.smart_stroke === true;
+                    smartBtn.disabled = !enableSmartWinding;
+                } else {
+                    const allSmartStroke = selectedCurves.every(c => c.smart_stroke === true);
+                    smartBtn.disabled = !allSmartStroke;
+                }
+                const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                if (smartBtn.title !== swTitle) smartBtn.title = swTitle;
+            }
+            let smartDirEl = this.container.querySelector('#path_smart_winding_text');
+            if (smartDirEl) {
+                if (commonSmartWinding === 'mixed') {
+                    if (smartDirEl.value !== '') smartDirEl.value = '';
+                    smartDirEl.placeholder = t('prop.mixed', 'Mixed');
+                } else {
+                    const smartDirText = commonSmartWinding === 'cw' ? t('prop.dir_cw', 'Clockwise') : t('prop.dir_ccw', 'Counter-clockwise');
                     if (smartDirEl.value !== smartDirText) smartDirEl.value = smartDirText;
-                    const smartPressed = smartWinding === 'cw' ? 'true' : 'false';
-                    if (smartBtn.getAttribute('aria-pressed') !== smartPressed) {
-                        smartBtn.setAttribute('aria-pressed', smartPressed);
-                    }
+                    smartDirEl.placeholder = '';
                 }
-                let smartWrapper = this.container.querySelector('#path_smart_winding_wrapper');
-                if (smartWrapper) {
-                    const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
-                    if (smartWrapper.title !== swTitle) smartWrapper.title = swTitle;
+            }
+            if (smartBtn && commonSmartWinding !== 'mixed') {
+                const smartPressed = commonSmartWinding === 'cw' ? 'true' : 'false';
+                if (smartBtn.getAttribute('aria-pressed') !== smartPressed) {
+                    smartBtn.setAttribute('aria-pressed', smartPressed);
                 }
+            }
+            let smartWrapper = this.container.querySelector('#path_smart_winding_wrapper');
+            if (smartWrapper) {
+                const swTitle = t('prop.toggle_smart_expand_direction', 'Toggle smart expand direction');
+                if (smartWrapper.title !== swTitle) smartWrapper.title = swTitle;
             }
         }
 
@@ -1191,21 +1231,26 @@ export class PropertyPanel extends HTMLElement {
                 markerId = typeof marker === 'object' ? marker?.id : marker;
             } else if (this._nodePropsAnchorId) {
                 markerId = this._nodePropsAnchorId;
+            } else {
+                // Fallback when popup anchor not yet available
+                let marker = this._resolvePrimaryNodeMarker();
+                markerId = typeof marker === 'object' ? marker?.id : marker;
             }
             const node = EditorModel.getNodeReadByMarkerId(markerId);
             if (node) {
+                const multiNode = nodeCount > 1;
                 patch('prop_x', node.x.toFixed(1));
                 patch('prop_y', node.y.toFixed(1));
 
                 let hasC1 = !!node.control1;
-                patch('prop_in_x', hasC1 ? node.control1.x.toFixed(1) : '', !hasC1);
-                patch('prop_in_y', hasC1 ? node.control1.y.toFixed(1) : '', !hasC1);
-                patch('prop_in_a', hasC1 ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1) : '', !hasC1);
+                patch('prop_in_x', multiNode ? '' : (hasC1 ? node.control1.x.toFixed(1) : ''), !hasC1 || multiNode);
+                patch('prop_in_y', multiNode ? '' : (hasC1 ? node.control1.y.toFixed(1) : ''), !hasC1 || multiNode);
+                patch('prop_in_a', multiNode ? '' : (hasC1 ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC1 || multiNode);
 
                 let hasC2 = !!node.control2;
-                patch('prop_out_x', hasC2 ? node.control2.x.toFixed(1) : '', !hasC2);
-                patch('prop_out_y', hasC2 ? node.control2.y.toFixed(1) : '', !hasC2);
-                patch('prop_out_a', hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : '', !hasC2);
+                patch('prop_out_x', multiNode ? '' : (hasC2 ? node.control2.x.toFixed(1) : ''), !hasC2 || multiNode);
+                patch('prop_out_y', multiNode ? '' : (hasC2 ? node.control2.y.toFixed(1) : ''), !hasC2 || multiNode);
+                patch('prop_out_a', multiNode ? '' : (hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC2 || multiNode);
             }
         }
     }

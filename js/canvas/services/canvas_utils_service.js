@@ -118,6 +118,11 @@ export class CanvasUtilsService {
         let activeIndices = c.curve_manager.activeSequenceIndices;
         const ix = c.getInteractionSnapshot();
         let showHandlesSet = new Set();
+        // Build set of curve IDs that are "effectively selected" — either via object-select
+        // (selectedCurveIds) or via node-select (any curve whose node markers appear in the
+        // node selection). This ensures node-level and object-level selection are equivalent
+        // for hit-test priority, regardless of which tool/entry path made the selection.
+        const nodeSelectedCurveIdSet = new Set();
         for (let i = 0; i < seqTokens.length; i++) {
             if (!activeIndices.has(i)) continue;
             let token = seqTokens[i];
@@ -130,10 +135,13 @@ export class CanvasUtilsService {
             }
             for (let cd of curveDataList) {
                 if (!cd.effectiveVis || cd.effectiveLock) continue;
+                let hasSelectedNode = false;
                 let isCurveSelected = snapshotIncludesCurve(ix, cd.curve) || cd.curve === c.current_curve;
                 let current = cd.curve.startNode;
                 while (current) {
-                    if (snapshotIncludesNodeMarker(ix, current.main_node) || isCurveSelected) {
+                    let nodeSelected = snapshotIncludesNodeMarker(ix, current.main_node);
+                    if (nodeSelected) hasSelectedNode = true;
+                    if (nodeSelected || isCurveSelected) {
                         showHandlesSet.add(current);
                         if (current.lastOnCurve) showHandlesSet.add(current.lastOnCurve);
                         if (current.nextOnCurve) showHandlesSet.add(current.nextOnCurve);
@@ -144,9 +152,14 @@ export class CanvasUtilsService {
                     }
                     current = current.nextOnCurve;
                 }
+                if (hasSelectedNode && cd.curve?.id) {
+                    nodeSelectedCurveIdSet.add(cd.curve.id);
+                }
             }
         }
-        const checkHit = (node, marker, seqIdx, matrix, refId) => {
+        const curveIsNodeSelected = (curve) => curve?.id && nodeSelectedCurveIdSet.has(curve.id);
+
+        const checkHit = (node, marker, seqIdx, matrix, refId, curve) => {
             if (!node) return;
             let seqOffsetX = c.curve_manager.getSeqOffset(seqIdx);
             let mx = node.x, my = node.y;
@@ -160,7 +173,10 @@ export class CanvasUtilsService {
             if (dist < threshold) {
                 let parentNode = node.type !== null ? node : (node.nextOnCurve || node.lastOnCurve);
                 let z = parentNode.last_touched || 0;
-                hits.push({ marker, dist, z, seqIndex: seqIdx, matrix, refId });
+                // A curve is "effectively selected" if any of its nodes are in the snapshot,
+                // regardless of whether the selection came via object-select or node-select.
+                let isSelected = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
+                hits.push({ marker, dist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSelected ? 1 : 0 });
             }
         };
         for (let i = 0; i < seqTokens.length; i++) {
@@ -181,18 +197,22 @@ export class CanvasUtilsService {
                 while (current) {
                     let showHandles = showHandlesSet.has(current);
                     if (showHandles && current.control1) {
-                        checkHit(current.control1, current.control1.main_node, i, cd.matrix, cd.refId);
+                        checkHit(current.control1, current.control1.main_node, i, cd.matrix, cd.refId, cd.curve);
                     }
                     if (showHandles && current.control2) {
-                        checkHit(current.control2, current.control2.main_node, i, cd.matrix, cd.refId);
+                        checkHit(current.control2, current.control2.main_node, i, cd.matrix, cd.refId, cd.curve);
                     }
-                    checkHit(current, current.main_node, i, cd.matrix, cd.refId);
+                    checkHit(current, current.main_node, i, cd.matrix, cd.refId, cd.curve);
                     current = current.nextOnCurve;
                 }
             }
         }
         if (hits.length > 0) {
-            hits.sort((a, b) => { if (b.z !== a.z) return b.z - a.z; return a.dist - b.dist; });
+            hits.sort((a, b) => {
+                if (b.isFromSelectedCurve !== a.isFromSelectedCurve) return b.isFromSelectedCurve - a.isFromSelectedCurve;
+                if (b.z !== a.z) return b.z - a.z;
+                return a.dist - b.dist;
+            });
             return { marker: hits[0].marker, seqIndex: hits[0].seqIndex, matrix: hits[0].matrix, refId: hits[0].refId };
         }
         return null;

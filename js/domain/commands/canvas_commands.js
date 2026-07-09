@@ -1,4 +1,5 @@
 import { generateMarker } from "../../core/bezier/utils.js";
+import { CurveNode } from "../../core/bezier/node.js";
 import { EDITOR_ACTIONS } from "../actions/editor_actions.js";
 import {
     commandCanvas,
@@ -1060,6 +1061,729 @@ export class CanvasCommands {
                 refIds: []
             }
         });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    // =========================================================================
+    // Node operations (batch)
+    // =========================================================================
+
+    /**
+     * Command: insert node at midpoint of each segment in curves with selected nodes.
+     * For each segment (between consecutive nodes), a new node is inserted at t=0.5.
+     */
+    /**
+     * Command: insert node at midpoint of each segment where BOTH endpoints are selected.
+     * Only segments whose two endpoints are both among the selected markers qualify.
+     */
+    insertNodeSelectedSegments() {
+        const markers = resolveMarkersFromCanvas(commandCanvas(this));
+        if (markers.length < 2) return false;
+
+        const cm = this.curve_manager;
+        // Build a set of selected marker IDs for O(1) lookup
+        const selectedIds = new Set();
+        for (const m of markers) {
+            selectedIds.add(m?.id ?? m);
+        }
+
+        let changed = false;
+        for (const curve of cm.curves) {
+            // Walk all segments of this curve
+            const segments = []; // list of { from: Node, to: Node }
+            let n = curve.startNode;
+            while (n) {
+                const next = n.nextOnCurve;
+                if (next) {
+                    segments.push({ from: n, to: next });
+                }
+                if (n === curve.endNode) break;
+                n = next;
+            }
+            // For closed curves, the endNode→startNode closing segment
+            if (curve.closed && curve.endNode && curve.startNode !== curve.endNode) {
+                const nMarkerId = curve.endNode.main_node?.id ?? curve.endNode.main_node;
+                const nextMarkerId = curve.startNode.main_node?.id ?? curve.startNode.main_node;
+                if (selectedIds.has(nMarkerId) && selectedIds.has(nextMarkerId)) {
+                    segments.push({ from: curve.endNode, to: curve.startNode });
+                }
+            }
+
+            for (const seg of segments) {
+                const fromId = seg.from.main_node?.id ?? seg.from.main_node;
+                const toId = seg.to.main_node?.id ?? seg.to.main_node;
+                if (selectedIds.has(fromId) && selectedIds.has(toId)) {
+                    const newMarker = curve.insertNodeAt(seg.from, 0.5, cm);
+                    if (newMarker) changed = true;
+                }
+            }
+        }
+
+        if (!changed) return false;
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this._commitHistory("insertNodeSelectedSegments");
+        return true;
+    }
+
+    /**
+     * Command: merge each pair of endpoints into a single node at the average position.
+     * Pairs are taken as (0,1), (2,3)... from the selected markers. Non-endpoint
+     * nodes are ignored (filtered out before pairing).
+     * If on the same curve (start+end): close the curve.
+     * If on different curves: the two curves merge through the shared node.
+     */
+    joinSelectedNodes() {
+        const markers = resolveMarkersFromCanvas(commandCanvas(this));
+        if (markers.length < 2) return false;
+
+        const cm = this.curve_manager;
+        // Filter to endpoint nodes only
+        const endMarkers = [];
+        for (const m of markers) {
+            const n = cm.find_node_by_curve(m);
+            if (n && n.curve && (n === n.curve.startNode || n === n.curve.endNode)) {
+                endMarkers.push(m);
+            }
+        }
+        if (endMarkers.length < 2) return false;
+
+        let changed = false;
+        for (let i = 0; i + 1 < endMarkers.length; i += 2) {
+            const m1 = endMarkers[i];
+            const m2 = endMarkers[i + 1];
+            const n1 = cm.find_node_by_curve(m1);
+            const n2 = cm.find_node_by_curve(m2);
+            if (!n1 || !n2 || !n1.curve || !n2.curve) continue;
+
+            const avgX = (n1.x + n2.x) / 2;
+            const avgY = (n1.y + n2.y) / 2;
+
+            const c1 = n1.curve;
+            const c2 = n2.curve;
+
+            if (c1 === c2) {
+                // Same curve: close it if n1 is start and n2 is end (or vice versa)
+                if ((n1 === c1.startNode && n2 === c1.endNode) ||
+                    (n2 === c1.startNode && n1 === c1.endNode)) {
+                    // Move n1 to avg (translate handles with node)
+                    const dx = avgX - n1.x;
+                    const dy = avgY - n1.y;
+                    n1.x = avgX;
+                    n1.y = avgY;
+                    if (n1.control1) { n1.control1.x += dx; n1.control1.y += dy; }
+                    if (n1.control2) { n1.control2.x += dx; n1.control2.y += dy; }
+                    cm.deleteSingleNode(m2);
+                    c1.closed = true;
+                    changed = true;
+                }
+                continue;
+            }
+
+            // Different curves: identify the endNode (has incoming segment) and
+            // startNode (has outgoing segment), regardless of which curve they are on.
+            let endNode = (n1 === c1.endNode) ? n1 : (n2 === c2.endNode ? n2 : null);
+            let startNode = (n2 === c2.startNode) ? n2 : (n1 === c1.startNode ? n1 : null);
+
+            // Fallback: both endpoints are the same type (both endNodes or both startNodes).
+            // Reverse one curve's chain so the pairing works.
+            // Uses Curve.reverseSkeletonDirection() which correctly swaps per-node
+            // control handles — a simple linked-list reversal would corrupt the Bezier segments.
+            if (!endNode || !startNode) {
+                if (n1 === c1.endNode && n2 === c2.endNode) {
+                    c2.reverseSkeletonDirection();
+                    startNode = n2;  // n2 is now c2.startNode
+                    endNode = n1;
+                } else if (n1 === c1.startNode && n2 === c2.startNode) {
+                    c1.reverseSkeletonDirection();
+                    endNode = n1;  // n1 is now c1.endNode
+                    startNode = n2;
+                } else {
+                    continue;
+                }
+            }
+            if (endNode.curve === startNode.curve) continue;
+
+            const sourceCurve = startNode.curve;  // the curve we absorb from
+            const targetCurve = endNode.curve;     // the curve we keep
+
+            // Move endNode to average position
+            const dx = avgX - endNode.x;
+            const dy = avgY - endNode.y;
+            endNode.x = avgX;
+            endNode.y = avgY;
+
+            // Handle strategy: keep only "meaningful" handles.
+            // endNode (end point): control2 is meaningful (incoming segment), control1 is dangling
+            // startNode (start point): control1 is meaningful (outgoing segment), control2 is dangling
+            // Translate meaningful handles to the merged position.
+
+            // endNode.control2 (incoming) — translate to new position
+            if (endNode.control2) {
+                endNode.control2.x += dx;
+                endNode.control2.y += dy;
+            }
+
+            // Apply startNode.control1's direction (outgoing) to endNode,
+            // replacing its dangling control1.
+            if (startNode.control1) {
+                const dirX = startNode.control1.x - startNode.x;
+                const dirY = startNode.control1.y - startNode.y;
+                if (endNode.control1) {
+                    endNode.control1.x = endNode.x + dirX;
+                    endNode.control1.y = endNode.y + dirY;
+                } else {
+                    // Create a new control1 for endNode
+                    const c1Marker = generateMarker("circle");
+                    const c1Node = new CurveNode(c1Marker, null,
+                        endNode.x + dirX, endNode.y + dirY,
+                        endNode, null, String(c1Marker.id));
+                    c1Node.curve = targetCurve;
+                    endNode.control1 = c1Node;
+                    cm.domMap.set(c1Marker, c1Node);
+                    targetCurve.domMap.set(c1Marker, c1Node);
+                }
+            } else if (endNode.control1) {
+                // No outgoing direction to inherit — degernate the dangling handle
+                endNode.control1.x = endNode.x;
+                endNode.control1.y = endNode.y;
+            }
+
+            // Connect endNode to the chain after startNode (skipping startNode itself)
+            if (startNode.nextOnCurve) {
+                endNode.nextOnCurve = startNode.nextOnCurve;
+                startNode.nextOnCurve.lastOnCurve = endNode;
+            } else {
+                endNode.nextOnCurve = null;
+            }
+
+            // Remove startNode's dangling control2 (if any) before cleaning up
+            if (startNode.control2) {
+                cm.domMap.delete(startNode.control2.main_node);
+                sourceCurve.domMap.delete(startNode.control2.main_node);
+            }
+            // Remove startNode
+            sourceCurve.startNode = startNode.nextOnCurve || null;
+            cm.domMap.delete(startNode.main_node);
+            if (startNode.control1) cm.domMap.delete(startNode.control1.main_node);
+            if (startNode.control2) cm.domMap.delete(startNode.control2.main_node);
+
+            // Migrate all remaining sourceCurve nodes to targetCurve
+            let walk = endNode.nextOnCurve;
+            while (walk) {
+                walk.curve = targetCurve;
+                if (walk === sourceCurve.endNode) break;
+                walk = walk.nextOnCurve;
+            }
+            targetCurve.endNode = sourceCurve.endNode;
+            sourceCurve.endNode = null;
+
+            // Remove the now-empty source curve
+            cm.remove_curve(sourceCurve.id);
+            changed = true;
+        }
+
+        if (!changed) return false;
+        // Stale markers remain in Store selection after runtime mutations; clear them.
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
+            payload: { strategy: "clear" }
+        });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this._commitHistory("joinSelectedNodes");
+        return true;
+    }
+
+    /**
+     * Command: break path at selected nodes.
+     * For each selected node: if the curve is closed, open it at that node.
+     * If the curve is open (and node is not an endpoint), split the break-node
+     * into two—one on each side—each inheriting the control handle pointing
+     * in its direction (left side keeps control2/incoming, right side keeps
+     * control1/outgoing). The other handle on each side is made degenerate.
+     */
+    breakPathAtSelectedNodes() {
+        const markers = resolveMarkersFromCanvas(commandCanvas(this));
+        if (markers.length === 0) return false;
+
+        const cm = this.curve_manager;
+        let changed = false;
+
+        for (const marker of markers) {
+            const node = cm.find_node_by_curve(marker);
+            if (!node || !node.curve) continue;
+            const curve = node.curve;
+
+            if (curve.closed) {
+                // Open at this node: reorder so the node becomes both start and end
+                const oldStart = curve.startNode;
+                if (node !== oldStart) {
+                    let walk = node;
+                    while (walk.nextOnCurve && walk.nextOnCurve !== oldStart) {
+                        walk = walk.nextOnCurve;
+                    }
+                    if (walk.nextOnCurve === oldStart) {
+                        walk.nextOnCurve = null;
+                        oldStart.lastOnCurve = null;
+                    }
+                    curve.startNode = node;
+                    curve.endNode = walk;
+                }
+                curve.closed = false;
+                changed = true;
+            } else if (node !== curve.startNode && node !== curve.endNode) {
+                // Split open curve at this internal node.
+                // Keep the ORIGINAL node on the LEFT curve (becomes endNode).
+                // Create a COPY for the RIGHT curve (becomes startNode).
+                const nextNode = node.nextOnCurve;
+                const prevNode = node.lastOnCurve;
+                if (!nextNode || !prevNode) continue;
+
+                // LEFT curve: node stays, becomes endNode. Disconnect forward.
+                node.nextOnCurve = null;
+                curve.endNode = node;
+
+                // Save control1 BEFORE nulling it — we need it for the copy on the right.
+                const savedControl1 = node.control1
+                    ? { x: node.control1.x, y: node.control1.y }
+                    : null;
+
+                // Remove control1 from the left node (outgoing toward right, now meaningless for an endNode)
+                if (node.control1) {
+                    cm.domMap.delete(node.control1.main_node);
+                    curve.domMap.delete(node.control1.main_node);
+                    node.control1 = null;
+                }
+
+                // Build the right curve
+                const newCurve = cm.create_temp_curve();
+                newCurve.closed = false;
+                newCurve.stroke_width = curve.stroke_width;
+                newCurve.smart_stroke = curve.smart_stroke;
+                newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise;
+                newCurve.show_skeleton = curve.show_skeleton;
+
+                // RIGHT curve: create a copy of the node as new startNode
+                const copyMarker = generateMarker("vertex");
+                const copyNode = new CurveNode(copyMarker, "vertex",
+                    node.x, node.y, nextNode, null, String(copyMarker.id));
+                copyNode.curve = newCurve;
+                copyNode.control_mode = node.control_mode;
+                // Inherit saved control1 (outgoing toward nextNode) — meaningful for a startNode
+                if (savedControl1) {
+                    const c1Marker = generateMarker("circle");
+                    copyNode.control1 = new CurveNode(c1Marker, null,
+                        savedControl1.x, savedControl1.y, copyNode, null, String(c1Marker.id));
+                    copyNode.control1.curve = newCurve;
+                }
+                // control2 is meaningless for a startNode — leave null
+
+                newCurve.startNode = copyNode;
+                nextNode.lastOnCurve = copyNode;
+
+                // Walk the tail chain (from nextNode to original endNode)
+                // and reassign all nodes to newCurve.
+                let tail = nextNode;
+                let prev = copyNode;
+                while (tail) {
+                    tail.curve = newCurve;
+                    prev = tail;
+                    tail = tail.nextOnCurve;
+                }
+                newCurve.endNode = prev;
+
+                // Register all domMap entries for the copied node
+                cm.domMap.set(copyMarker, copyNode);
+                newCurve.domMap.set(copyMarker, copyNode);
+                if (copyNode.control1) {
+                    cm.domMap.set(copyNode.control1.main_node, copyNode.control1);
+                    newCurve.domMap.set(copyNode.control1.main_node, copyNode.control1);
+                }
+
+                cm.addPath(newCurve, curve.groupId);
+                changed = true;
+            }
+        }
+
+        if (!changed) return false;
+        // Stale markers remain in Store selection after runtime mutations; clear them.
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
+            payload: { strategy: "clear" }
+        });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this._commitHistory("breakPathAtSelectedNodes");
+        return true;
+    }
+
+    /**
+     * Command: add a new segment between pairs of end nodes, merging curves.
+     * Filters markers to endpoints only, then for each pair (0,1), (2,3)...:
+     * - If both are on the same curve (start+end): close the curve.
+     * - If on different curves: connect endNode of first to startNode of second,
+     *   merging them into a single curve with control handles preserved.
+     * The last odd marker is discarded.
+     */
+    addSegmentBetweenEndnodes() {
+        const markers = resolveMarkersFromCanvas(commandCanvas(this));
+        if (markers.length < 2) return false;
+
+        const cm = this.curve_manager;
+        // Filter to endpoint nodes only
+        const endMarkers = [];
+        for (const m of markers) {
+            const n = cm.find_node_by_curve(m);
+            if (n && n.curve && (n === n.curve.startNode || n === n.curve.endNode)) {
+                endMarkers.push(m);
+            }
+        }
+        if (endMarkers.length < 2) return false;
+
+        let changed = false;
+        for (let i = 0; i + 1 < endMarkers.length; i += 2) {
+            const m1 = endMarkers[i];
+            const m2 = endMarkers[i + 1];
+            const n1 = cm.find_node_by_curve(m1);
+            const n2 = cm.find_node_by_curve(m2);
+            if (!n1 || !n2 || !n1.curve || !n2.curve) continue;
+
+            const c1 = n1.curve;
+            const c2 = n2.curve;
+
+            // Same curve: close if start+end
+            if (c1 === c2) {
+                if ((n1 === c1.startNode && n2 === c1.endNode) ||
+                    (n2 === c1.startNode && n1 === c1.endNode)) {
+                    c1.closed = true;
+                    changed = true;
+                }
+                continue;
+            }
+
+            // Different curves: find endNode and startNode to connect.
+            let endNode = (n1 === c1.endNode) ? n1 : (n2 === c2.endNode ? n2 : null);
+            let startNode = (n2 === c2.startNode) ? n2 : (n1 === c1.startNode ? n1 : null);
+
+            // Fallback: both endpoints are the same type (both endNodes or both startNodes).
+            // Reverse one curve's chain so the pairing works.
+            // Uses Curve.reverseSkeletonDirection() which correctly swaps per-node
+            // control handles — a simple linked-list reversal would corrupt the Bezier segments.
+            if (!endNode || !startNode) {
+                if (n1 === c1.endNode && n2 === c2.endNode) {
+                    c2.reverseSkeletonDirection();
+                    startNode = n2;  // n2 is now c2.startNode
+                    endNode = n1;
+                } else if (n1 === c1.startNode && n2 === c2.startNode) {
+                    c1.reverseSkeletonDirection();
+                    endNode = n1;  // n1 is now c1.endNode
+                    startNode = n2;
+                } else {
+                    continue;
+                }
+            }
+            if (endNode.curve === startNode.curve) continue;
+
+            // Connect endNode.nextOnCurve = startNode
+            endNode.nextOnCurve = startNode;
+            startNode.lastOnCurve = endNode;
+
+            // Two cases for chain flow direction:
+            //   Case A: endNode is on c1 → flow is c1(endNode) → c2(startNode)
+            //     Combined chain: c1.startNode...endNode→startNode...c2.endNode
+            //     c1 absorbs c2 (tail). Migrate c2's nodes from startNode onward.
+            //     c1.startNode stays, c1.endNode = c2.endNode.
+            //
+            //   Case B: endNode is on c2 → flow is c2(endNode) → c1(startNode)
+            //     Combined chain: c2.startNode...endNode→startNode...c1.endNode
+            //     c1 absorbs c2 (head). Migrate c2's nodes from c2.startNode.
+            //     c1.startNode = c2.startNode, c1.endNode stays unchanged.
+
+            if (endNode.curve === c1) {
+                // Case A: c2's chain (from startNode onward) gets absorbed into c1
+                let walk = startNode;
+                while (walk) {
+                    walk.curve = c1;
+                    if (walk === c2.endNode) break;
+                    walk = walk.nextOnCurve;
+                }
+                c1.endNode = c2.endNode;
+            } else {
+                // Case B: c2's chain (from c2.startNode to endNode) gets absorbed into c1
+                let walk = c2.startNode;
+                while (walk) {
+                    walk.curve = c1;
+                    if (walk === c2.endNode) break;
+                    walk = walk.nextOnCurve;
+                }
+                c1.startNode = c2.startNode;
+                // c1.endNode stays unchanged (original end of c1's chain)
+            }
+
+            c2.endNode = null;
+            cm.remove_curve(c2.id);
+            changed = true;
+        }
+
+        if (!changed) return false;
+        // Stale markers remain in Store selection after runtime mutations; clear them.
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
+            payload: { strategy: "clear" }
+        });
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this._commitHistory("addSegmentBetweenEndnodes");
+        return true;
+    }
+
+    /**
+     * Command: delete the segment between each selected pair of adjacent nodes.
+     *
+     * Instead of pairing markers by their index in the selection list (which
+     * depends on selection order), this walks each curve's chain to find
+     * consecutive selected node pairs in chain order. This guarantees that
+     * selecting 3 consecutive nodes always deletes both connecting segments
+     * regardless of selection order.
+     *
+     * Deletes only the Bezier segment between the pair — never removes nodes.
+     * If the segment is at path boundaries, the path is truncated and the
+     * orphaned node is extracted into its own single-node curve so it remains
+     * visible and selectable. For closed paths, the segment removal opens the path.
+     * For internal segments, the path is split into two curves.
+     */
+    deleteSegmentBetweenNodes() {
+        const markers = resolveMarkersFromCanvas(commandCanvas(this));
+        if (markers.length < 2) return false;
+
+        const cm = this.curve_manager;
+        let changed = false;
+
+        // Helper: extract an orphan node into its own single-node curve so it
+        // remains visible, selectable, and its properties are preserved exactly.
+        const adoptOrphan = (node, groupId) => {
+            if (!node) return;
+            const orphanCurve = cm.create_temp_curve();
+            orphanCurve.closed = false;
+            orphanCurve.startNode = node;
+            orphanCurve.endNode = node;
+            node.nextOnCurve = null;
+            node.lastOnCurve = null;
+            node.curve = orphanCurve;
+            cm.addPath(orphanCurve, groupId);
+        };
+
+        // Build a Set of selected marker objects for fast lookup
+        const selectedMarkers = new Set(markers);
+
+        // Collect adjacent pairs by walking each curve's chain in order.
+        // This is order-independent: marker list order doesn't matter,
+        // only chain adjacency determines which segments to delete.
+        const curvesSeen = new Set();
+        const pairs = []; // { leadNode, trailNode }
+
+        for (const m of markers) {
+            const seed = cm.find_node_by_curve(m);
+            if (!seed || !seed.curve || curvesSeen.has(seed.curve)) continue;
+            curvesSeen.add(seed.curve);
+
+            const curve = seed.curve;
+
+            // Collect all nodes in chain order
+            const chainNodes = [];
+            let n = curve.startNode;
+            while (n) {
+                chainNodes.push(n);
+                if (!curve.closed && n === curve.endNode) break;
+                if (curve.closed && n.nextOnCurve === curve.startNode) break;
+                n = n.nextOnCurve;
+            }
+
+            // Find consecutive selected pairs — uses chain order, not selection order
+            for (let i = 0; i < chainNodes.length; i++) {
+                const curr = chainNodes[i];
+                const next = chainNodes[(i + 1) % chainNodes.length];
+                // Only check if curr has a forward link to next
+                if (curr.nextOnCurve !== next) continue;
+                if (!selectedMarkers.has(curr.main_node) || !selectedMarkers.has(next.main_node)) continue;
+                pairs.push({ leadNode: curr, trailNode: next });
+                if (!curve.closed && curr === curve.endNode) break;
+            }
+        }
+
+        // Process each pair. Use leadNode.curve at processing time so that
+        // nodes reassigned by a previous Case-4 split are on the correct curve.
+        for (const { leadNode, trailNode } of pairs) {
+            const curve = leadNode.curve;
+            if (!curve || leadNode.curve !== trailNode.curve) continue;
+            // Verify the forward adjacency still holds (curve may have been
+            // modified by a prior pair's head/tail truncation or split).
+            if (leadNode.nextOnCurve !== trailNode) continue;
+
+            // Case 1: Closed path — open it by disconnecting the segment.
+            // leadNode is orphaned — extracted as its own curve.
+            if (curve.closed) {
+                // Walk from trailNode forward to find where it wraps around to leadNode
+                let walk = trailNode;
+                while (walk.nextOnCurve && walk.nextOnCurve !== leadNode) {
+                    walk = walk.nextOnCurve;
+                }
+                if (walk.nextOnCurve === leadNode) {
+                    walk.nextOnCurve = null;
+                }
+                leadNode.lastOnCurve = null;
+                leadNode.nextOnCurve = null;
+                trailNode.lastOnCurve = null;
+                curve.startNode = trailNode;
+                curve.endNode = walk;
+                curve.closed = false;
+                adoptOrphan(leadNode, curve.groupId);
+                changed = true;
+                continue;
+            }
+
+            // Case 2: leadNode is startNode — truncate from the start.
+            // leadNode (old startNode) becomes orphaned.
+            if (leadNode === curve.startNode) {
+                trailNode.lastOnCurve = null;
+                leadNode.nextOnCurve = null;
+                curve.startNode = trailNode;
+                adoptOrphan(leadNode, curve.groupId);
+                changed = true;
+                continue;
+            }
+
+            // Case 3: trailNode is endNode — truncate from the tail.
+            // trailNode (old endNode) becomes orphaned.
+            if (trailNode === curve.endNode) {
+                leadNode.nextOnCurve = null;
+                trailNode.lastOnCurve = null;
+                curve.endNode = leadNode;
+                adoptOrphan(trailNode, curve.groupId);
+                changed = true;
+                continue;
+            }
+
+            // Case 4: Internal segment — split the path into two curves.
+            // leadNode becomes endNode of the left curve (original).
+            // trailNode becomes startNode of the right curve (new).
+            // Both remain in their active chains — no orphan.
+            const originalEndNode = curve.endNode;
+
+            const rightCurve = cm.create_temp_curve();
+            rightCurve.closed = false;
+            rightCurve.stroke_width = curve.stroke_width;
+            rightCurve.smart_stroke = curve.smart_stroke;
+            rightCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise;
+            rightCurve.show_skeleton = curve.show_skeleton;
+
+            leadNode.nextOnCurve = null;
+            curve.endNode = leadNode;
+            trailNode.lastOnCurve = null;
+
+            let walk = trailNode;
+            while (walk) {
+                walk.curve = rightCurve;
+                if (walk === originalEndNode) break;
+                walk = walk.nextOnCurve;
+            }
+            rightCurve.startNode = trailNode;
+            rightCurve.endNode = originalEndNode;
+
+            cm.addPath(rightCurve, curve.groupId);
+            changed = true;
+        }
+
+        if (!changed) return false;
+        // Stale markers remain in Store selection after runtime mutations; clear them.
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
+            payload: { strategy: "clear" }
+        });
+        cm.notifyModelUpdate();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this._commitHistory("deleteSegmentBetweenNodes");
+        return true;
+    }
+
+    // =========================================================================
+    // Boolean operations (batch)
+    // =========================================================================
+
+    /**
+     * Validates that all selected tree items are curves in the same group.
+     * @returns {{ validCurves: Curve[], groupId: string|null }|null}
+     */
+    _resolveBooleanTargets() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return null;
+
+        let firstGroupId = null;
+        const validCurves = [];
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') {
+                console.warn("[Boolean] Please select ONLY basic paths.");
+                return null;
+            }
+            const curve = cm.curves.find(c => c.id === item.curveId);
+            if (!curve) continue;
+            if (firstGroupId === null) {
+                firstGroupId = curve.groupId;
+            } else if (curve.groupId !== firstGroupId) {
+                console.warn("[Boolean] All selected paths must belong to the same Group.");
+                return null;
+            }
+            validCurves.push(curve);
+        }
+        if (validCurves.length === 0) return null;
+        return { validCurves, groupId: firstGroupId };
+    }
+
+    /**
+     * Command: boolean intersection of selected paths.
+     */
+    booleanIntersectionSelectedCurves() {
+        const targets = this._resolveBooleanTargets();
+        if (!targets) return false;
+        const changed = this.curve_manager.executeBooleanIntersection(targets.validCurves, targets.groupId);
+        if (!changed) return false;
+        this.curve_manager.notifyTreeUpdate();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
+     * Command: boolean difference of selected paths (bottom minus top).
+     * The bottom-most path (first in tree order) is the base; all others are subtracted from it.
+     */
+    booleanDifferenceSelectedCurves() {
+        const targets = this._resolveBooleanTargets();
+        if (!targets) return false;
+        const changed = this.curve_manager.executeBooleanDifference(targets.validCurves, targets.groupId);
+        if (!changed) return false;
+        this.curve_manager.notifyTreeUpdate();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
+     * Command: boolean exclusion (xor) of selected paths.
+     */
+    booleanExclusionSelectedCurves() {
+        const targets = this._resolveBooleanTargets();
+        if (!targets) return false;
+        const changed = this.curve_manager.executeBooleanExclusion(targets.validCurves, targets.groupId);
+        if (!changed) return false;
+        this.curve_manager.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;

@@ -60,6 +60,15 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_REDO, action: CANVAS_ACTIONS.REDO, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_EXPAND_STROKE, action: CANVAS_ACTIONS.EXPAND_STROKE, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_BOOLEAN_UNION, action: CANVAS_ACTIONS.BOOLEAN_UNION, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_BOOLEAN_INTERSECTION, action: CANVAS_ACTIONS.BOOLEAN_INTERSECTION, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_BOOLEAN_DIFFERENCE, action: CANVAS_ACTIONS.BOOLEAN_DIFFERENCE, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_BOOLEAN_EXCLUSION, action: CANVAS_ACTIONS.BOOLEAN_EXCLUSION, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_INSERT_NODE, action: CANVAS_ACTIONS.INSERT_NODE, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_DELETE_NODE, action: CANVAS_ACTIONS.DELETE_NODE, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_JOIN_NODE, action: CANVAS_ACTIONS.JOIN_NODE, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_BREAK_NODE, action: CANVAS_ACTIONS.BREAK_NODE, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_ADD_SEGMENT, action: CANVAS_ACTIONS.ADD_SEGMENT, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_DELETE_SEGMENT, action: CANVAS_ACTIONS.DELETE_SEGMENT, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_UNLINK, action: CANVAS_ACTIONS.UNLINK, mapPayload: (d) => ({ ids: d?.ids || [] }) },
     { event: CANVAS_EVENTS.REQUEST_IMPORT, action: CANVAS_ACTIONS.IMPORT_IMAGE, mapPayload: () => ({}) }
 ];

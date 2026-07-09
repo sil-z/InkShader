@@ -552,14 +552,20 @@ export class CurveManager {
     // Boolean operations
     // =========================================================================
 
-    executeBooleanUnion(targetCurves, parentGroupId) {
+    _executeBooleanOp(targetCurves, parentGroupId, engineMethod) {
         if (!targetCurves || targetCurves.length === 0) return false;
         try {
             const cmProxy = {
                 curves: this.curveStore.curves,
                 domMap: this.curveStore.domMap,
                 treeItems: this.treeStore.treeItems,
-                create_temp_curve: (prefix) => this.create_temp_curve(),
+                create_temp_curve: () => {
+                    // ensureUniqueName only checks treeItems, not curves, so it
+                    // returns the same name for multiple curves created inside a
+                    // single boolean op.  Use a unique timestamp-based ID instead.
+                    const uid = "Bool_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+                    return this.curveStore.createCurve(uid);
+                },
                 add_node_by_curve: (...a) => this.curveStore.add_node_by_curve(...a),
                 find_node_by_curve: (...a) => this.curveStore.find_node_by_curve(...a),
                 commit_curve: (...a) => this.curveStore.commit_curve(...a),
@@ -567,7 +573,7 @@ export class CurveManager {
                 ensureUniqueName: (...a) => this.treeStore.ensureUniqueName(...a),
             };
             const boolEngine = new BooleanEngine(cmProxy);
-            const newCurves = boolEngine.executeUnion(targetCurves, parentGroupId);
+            const newCurves = boolEngine[engineMethod](targetCurves, parentGroupId);
             if (!newCurves || newCurves.length === 0) return false;
 
             // Clean up old curves: remove DOM markers, delete tree items,
@@ -601,6 +607,22 @@ export class CurveManager {
             console.error("Boolean Operation Failed:", err);
             return false;
         }
+    }
+
+    executeBooleanUnion(targetCurves, parentGroupId) {
+        return this._executeBooleanOp(targetCurves, parentGroupId, 'executeUnion');
+    }
+
+    executeBooleanIntersection(targetCurves, parentGroupId) {
+        return this._executeBooleanOp(targetCurves, parentGroupId, 'executeIntersection');
+    }
+
+    executeBooleanDifference(targetCurves, parentGroupId) {
+        return this._executeBooleanOp(targetCurves, parentGroupId, 'executeDifference');
+    }
+
+    executeBooleanExclusion(targetCurves, parentGroupId) {
+        return this._executeBooleanOp(targetCurves, parentGroupId, 'executeExclusion');
     }
 
     // =========================================================================

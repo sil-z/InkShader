@@ -253,7 +253,7 @@
         "closed": { "type": "boolean", "description": "Whether the path is closed", "default": false },
         "stroke_width": { "type": "number", "description": "Stroke width in UPM units", "default": 8, "minimum": 0 },
         "smart_stroke": { "type": "boolean", "description": "Whether smart expand stroke is enabled", "default": false },
-        "smart_stroke_clockwise": { "type": "boolean", "description": "Smart stroke winding direction", "default": true },
+        "smart_stroke_clockwise": { "type": "boolean", "description": "Smart stroke winding direction", "default": false },
         "show_skeleton": { "type": "boolean", "description": "Whether skeleton lines are shown in editor", "default": false },
         "visible": { "type": "boolean", "description": "Whether the path is visible", "default": true },
         "locked": { "type": "boolean", "description": "Whether editing this path is locked", "default": false },

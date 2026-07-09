@@ -9,7 +9,7 @@ export class Curve {
     id; closed = true; 
     stroke_width = 0; 
     smart_stroke = true;  
-    smart_stroke_clockwise = true;
+    smart_stroke_clockwise = false;
     show_skeleton = true; 
     visible = true; 
     locked = false; 

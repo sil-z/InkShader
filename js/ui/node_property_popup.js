@@ -86,6 +86,7 @@ export class NodePropertyPopup extends HTMLElement {
         this._positionReady = false;
         this._inputSnapshot = null;
         this._skipCommitTarget = null;
+        this._lastDraggingNodeId = null;
     }
 
     get docked() { return this._docked; }
@@ -178,10 +179,34 @@ export class NodePropertyPopup extends HTMLElement {
             return;
         }
 
-        const anchorId = nextState.draggingNodeId ||
-            (Array.isArray(nextState.selectedNodeIds) && nextState.selectedNodeIds.length > 0
-                ? nextState.selectedNodeIds[nextState.selectedNodeIds.length - 1]
-                : null);
+        // Remember the dragging node so the anchor stays on it after drag ends
+        if (nextState.draggingNodeId) {
+            this._lastDraggingNodeId = nextState.draggingNodeId;
+        }
+
+        // Determine anchor:
+        // 1. Currently dragging node
+        // 2. Drag just ended — keep anchor on the dragged node if still selected
+        // 3. Last-selected node
+        let anchorId;
+        if (nextState.draggingNodeId) {
+            anchorId = nextState.draggingNodeId;
+        } else if (this._lastDraggingNodeId &&
+                   Array.isArray(nextState.selectedNodeIds) &&
+                   nextState.selectedNodeIds.includes(this._lastDraggingNodeId)) {
+            anchorId = this._lastDraggingNodeId;
+        } else if (Array.isArray(nextState.selectedNodeIds) && nextState.selectedNodeIds.length > 0) {
+            anchorId = nextState.selectedNodeIds[nextState.selectedNodeIds.length - 1];
+        } else {
+            anchorId = null;
+        }
+
+        // Clear _lastDraggingNodeId when the node is no longer in the selection
+        if (this._lastDraggingNodeId &&
+            Array.isArray(nextState.selectedNodeIds) &&
+            !nextState.selectedNodeIds.includes(this._lastDraggingNodeId)) {
+            this._lastDraggingNodeId = null;
+        }
 
         if (!anchorId) {
             if (this._docked) {

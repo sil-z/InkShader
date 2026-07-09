@@ -27,6 +27,8 @@ export const translations = {
         "tool.select": "Select and transform objects", "tool.node": "Edit paths by nodes", "tool.draw": "Draw Bezier curves", "tool.ellipse": "Create Ellipses", "tool.measure": "Measure objects",
         "mode.corner": "Make selected nodes corner", "mode.smooth": "Make selected nodes smooth", "mode.symmetric": "Make selected nodes symmetric",
         "action.union": "Create union of selected paths", "action.expand": "Expand a stroke into a filled path",
+        "action.insert_node": "Insert new nodes into selected segments", "action.delete_node": "Delete selected nodes", "action.join_node": "Join selected nodes", "action.break_node": "Break path at selected nodes", "action.add_segment": "Join selected endnodes with a new segment", "action.delete_segment": "Delete segment between selected nodes",
+        "action.intersection": "Create intersection of selected paths", "action.difference": "Create difference of selected paths (bottom minus top)", "action.exclusion": "Create exclusive or of selected paths",
         
         "pref.title": "Preferences", "pref.general": "General", "pref.appearance": "Appearance", "pref.lang": "Language", "pref.theme": "Color Theme", "pref.theme.light": "Light Mode (Default)", "pref.theme.dark": "Dark Mode", "pref.override": "Canvas Colors Override", "pref.reset": "Reset to Theme Default",
         
@@ -90,6 +92,8 @@ export const translations = {
         "tool.select": "选择与变换对象", "tool.node": "编辑路径节点", "tool.draw": "绘制贝塞尔曲线", "tool.ellipse": "创建椭圆", "tool.measure": "测量对象",
         "mode.corner": "使选中节点成为角点", "mode.smooth": "使选中节点平滑", "mode.symmetric": "使选中节点对称",
         "action.union": "合并选中的路径", "action.expand": "将描边扩展为填充路径",
+        "action.insert_node": "在选中线段中插入新节点", "action.delete_node": "删除选中节点", "action.join_node": "连接选中的节点", "action.break_node": "在选中节点处断开路径", "action.add_segment": "在选中端点间添加新线段", "action.delete_segment": "删除选中节点间的线段",
+        "action.intersection": "创建选中路径的交集", "action.difference": "创建选中路径的差集", "action.exclusion": "创建选中路径的异或",
         
         "pref.title": "首选项", "pref.general": "通用", "pref.appearance": "外观", "pref.lang": "语言 (Language)", "pref.theme": "颜色主题", "pref.theme.light": "浅色模式", "pref.theme.dark": "深色模式", "pref.override": "画布颜色覆盖", "pref.reset": "恢复默认",
         

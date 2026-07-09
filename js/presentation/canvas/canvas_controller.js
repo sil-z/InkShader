@@ -99,6 +99,15 @@ export class CanvasController {
                       });
             case CANVAS_ACTIONS.EXPAND_STROKE: return c.commands.expandSelectedStroke();
             case CANVAS_ACTIONS.BOOLEAN_UNION: return c.commands.booleanUnionSelectedCurves();
+            case CANVAS_ACTIONS.BOOLEAN_INTERSECTION: return c.commands.booleanIntersectionSelectedCurves();
+            case CANVAS_ACTIONS.BOOLEAN_DIFFERENCE: return c.commands.booleanDifferenceSelectedCurves();
+            case CANVAS_ACTIONS.BOOLEAN_EXCLUSION: return c.commands.booleanExclusionSelectedCurves();
+            case CANVAS_ACTIONS.INSERT_NODE: return c.commands.insertNodeSelectedSegments();
+            case CANVAS_ACTIONS.DELETE_NODE: return c.commands.deleteSelectedNodes();
+            case CANVAS_ACTIONS.JOIN_NODE: return c.commands.joinSelectedNodes();
+            case CANVAS_ACTIONS.BREAK_NODE: return c.commands.breakPathAtSelectedNodes();
+            case CANVAS_ACTIONS.ADD_SEGMENT: return c.commands.addSegmentBetweenEndnodes();
+            case CANVAS_ACTIONS.DELETE_SEGMENT: return c.commands.deleteSegmentBetweenNodes();
             case CANVAS_ACTIONS.UNLINK: return c.commands.unlinkSelectedReferences(payload.ids || []);
             case CANVAS_ACTIONS.IMPORT_IMAGE: c.io.triggerImportImage(); return true;
             case CANVAS_ACTIONS.UNDO:

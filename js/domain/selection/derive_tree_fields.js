@@ -13,6 +13,8 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
 
     if (nodeIds.length > 0 && catalog) {
         const selectedTreeIds = new Set();
+        const selectedCurveIds = [];
+        const seenCurveIds = new Set();
         let lastGroupId = state.activeGroupId ?? null;
         const refId = state._nodeSelectionRefId ?? null;
 
@@ -26,13 +28,17 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
             const marker = catalog.resolveMarkerById(markerId);
             if (!marker) continue;
             const curve = catalog.findCurveByMarker(marker);
+            if (curve && !seenCurveIds.has(curve.id)) {
+                seenCurveIds.add(curve.id);
+                selectedCurveIds.push(curve.id);
+            }
             const treeId = resolveTreeIdForCurve(treeItems, curve);
             if (treeId) {
                 selectedTreeIds.add(treeId);
                 if (curve?.groupId) lastGroupId = curve.groupId;
             }
         }
-        return { selectedTreeIds: [...selectedTreeIds], activeGroupId: lastGroupId };
+        return { selectedTreeIds: [...selectedTreeIds], selectedCurveIds, activeGroupId: lastGroupId };
     }
 
     if ((state.selectedTreeIds || []).length > 0) {
