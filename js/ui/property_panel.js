@@ -28,6 +28,7 @@ const TEMPLATE_HTML = `
 `;
 
 const PROPS_DOCK_KEY = 'props_section_dock';
+const Y_PROPS = new Set(['prop_y', 'prop_in_y', 'prop_out_y', 'sel_prop_y']);
 
 export class PropertyPanel extends HTMLElement {
     constructor() {
@@ -48,6 +49,7 @@ export class PropertyPanel extends HTMLElement {
         this._dragState = null;
         this._renderPending = false;
         this._inputSnapshots = new WeakMap();
+        this._canvasSizeHeight = 1000;
     }
 
     _loadSectionDockState() {
@@ -282,6 +284,7 @@ export class PropertyPanel extends HTMLElement {
             return;
         }
         this.interaction.applyEventDetail(e?.detail);
+        this._canvasSizeHeight = nextState.canvasSizeHeight ?? this._canvasSizeHeight;
         if (typeof nextState.currentTool === "string") {
             this.currentTool = nextState.currentTool;
         }
@@ -389,7 +392,8 @@ export class PropertyPanel extends HTMLElement {
             snapshot.kind = 'nodeProp';
             snapshot.marker = marker;
             snapshot.propId = id;
-            snapshot.valueForProp = numberFromInput(target);
+            // Store model Y (convert from display Y) so _restoreInputSnapshot writes correct model value
+            snapshot.valueForProp = Y_PROPS.has(id) ? this._canvasSizeHeight - numberFromInput(target) : numberFromInput(target);
         } else if (id === 'g_advance') {
             const groupId = this._resolveInputGroupId(selectedIds);
             const item = groupId ? EditorModel.getTreeItem(groupId) : null;
@@ -1050,6 +1054,7 @@ export class PropertyPanel extends HTMLElement {
 
     patchValues(item, selectedCurves, bounds, nodeCount, selectedIds) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const ch = this._canvasSizeHeight;
         const patch = (id, val, disable = false) => {
             let el = this.container.querySelector('#' + id);
             if (!el) return;
@@ -1219,7 +1224,7 @@ export class PropertyPanel extends HTMLElement {
 
         if (bounds) {
             patch('sel_prop_x', bounds.minX.toFixed(1));
-            patch('sel_prop_y', bounds.minY.toFixed(1));
+            patch('sel_prop_y', (ch - bounds.minY).toFixed(1));
             patch('sel_prop_w', (bounds.maxX - bounds.minX).toFixed(1));
             patch('sel_prop_h', (bounds.maxY - bounds.minY).toFixed(1));
         }
@@ -1240,16 +1245,16 @@ export class PropertyPanel extends HTMLElement {
             if (node) {
                 const multiNode = nodeCount > 1;
                 patch('prop_x', node.x.toFixed(1));
-                patch('prop_y', node.y.toFixed(1));
+                patch('prop_y', (ch - node.y).toFixed(1));
 
                 let hasC1 = !!node.control1;
                 patch('prop_in_x', multiNode ? '' : (hasC1 ? node.control1.x.toFixed(1) : ''), !hasC1 || multiNode);
-                patch('prop_in_y', multiNode ? '' : (hasC1 ? node.control1.y.toFixed(1) : ''), !hasC1 || multiNode);
+                patch('prop_in_y', multiNode ? '' : (hasC1 ? (ch - node.control1.y).toFixed(1) : ''), !hasC1 || multiNode);
                 patch('prop_in_a', multiNode ? '' : (hasC1 ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC1 || multiNode);
 
                 let hasC2 = !!node.control2;
                 patch('prop_out_x', multiNode ? '' : (hasC2 ? node.control2.x.toFixed(1) : ''), !hasC2 || multiNode);
-                patch('prop_out_y', multiNode ? '' : (hasC2 ? node.control2.y.toFixed(1) : ''), !hasC2 || multiNode);
+                patch('prop_out_y', multiNode ? '' : (hasC2 ? (ch - node.control2.y).toFixed(1) : ''), !hasC2 || multiNode);
                 patch('prop_out_a', multiNode ? '' : (hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC2 || multiNode);
             }
         }
@@ -1372,6 +1377,8 @@ export class PropertyPanel extends HTMLElement {
             const isValidNumber = !isNaN(numVal);
             const isSizeProp = (prop === 'w' || prop === 'h');
             const isValidSize = !isSizeProp || numVal >= 0;
+            // Convert display Y (Y-up, 0 at bottom) to model Y (Y-down, 0 at top)
+            if (prop === 'y') numVal = this._canvasSizeHeight - numVal;
 
             if (isValidNumber && isValidSize) {
                 CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, numVal, {
@@ -1397,6 +1404,8 @@ export class PropertyPanel extends HTMLElement {
             } else {
                 marker = this._resolvePrimaryNodeMarker();
             }
+            // Convert display Y (Y-up, 0 at bottom) to model Y (Y-down, 0 at top)
+            if (Y_PROPS.has(id)) numVal = this._canvasSizeHeight - numVal;
             CanvasDispatcher.requestUpdateNodeProperty(marker, id, numVal, { recordHistory: e.type === 'change' });
             return;
         }

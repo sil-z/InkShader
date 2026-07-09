@@ -139,7 +139,8 @@ export function pickViewFieldsFromCanvas(canvas, state = {}) {
     return {
         currentState: canvas.current_state ?? state.currentState,
         scale: canvas.scale ?? state.scale,
-        offset: canvas.offset ? { ...canvas.offset } : state.offset ? { ...state.offset } : { x: 0, y: 0 }
+        offset: canvas.offset ? { ...canvas.offset } : state.offset ? { ...state.offset } : { x: 0, y: 0 },
+        canvasSizeHeight: canvas.canvas_size_height ?? state.canvasSizeHeight ?? 1000
     };
 }
 

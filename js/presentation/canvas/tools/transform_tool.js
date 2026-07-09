@@ -29,7 +29,9 @@ export class TransformTool {
      */
     _resolvePivot(c, bounds) {
         if (c.transform_center_pivot) {
-            return { x: c.transform_center_pivot.x, y: c.transform_center_pivot.y };
+            const cx = (bounds.minX + bounds.maxX) / 2;
+            const cy = (bounds.minY + bounds.maxY) / 2;
+            return { x: cx + c.transform_center_pivot.dx, y: cy + c.transform_center_pivot.dy };
         }
         if (bounds) {
             return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
@@ -185,9 +187,14 @@ export class TransformTool {
         let action = c.transform_action;
         let pivot = c.transform_pivot;
 
-        // Pivot drag: move the custom pivot point
+        // Pivot drag: move the custom pivot point (store as offset from bounds center)
         if (action === 'pivot') {
-            c.transform_center_pivot = { x: worldX, y: worldY };
+            const bounds = c.utils.getSelectionBounds();
+            if (bounds) {
+                const cx = (bounds.minX + bounds.maxX) / 2;
+                const cy = (bounds.minY + bounds.maxY) / 2;
+                c.transform_center_pivot = { dx: worldX - cx, dy: worldY - cy };
+            }
             c.is_dirty = true;
             return;
         }

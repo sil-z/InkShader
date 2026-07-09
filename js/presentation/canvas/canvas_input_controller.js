@@ -114,9 +114,7 @@ export class CanvasInputController {
                     if (c.hovered_curve_segment !== (hitCurveSegment ? hitCurveSegment.curve : null)) { c.hovered_curve_segment = hitCurveSegment; hoverStateChanged = true; }
                     if (hoverStateChanged) c.is_dirty = true;
                 }
-                if (c._hoveredUserGuideId !== null) {
-                    // Guide hover takes priority — skip cursor override
-                } else if (c.current_state === 'IDLE' && tool === 'SELECT') {
+                if (c.current_state === 'IDLE' && tool === 'SELECT') {
                     let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
                     if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
                     else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
@@ -127,12 +125,16 @@ export class CanvasInputController {
                     else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
                     else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
                     else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
-                    else {
+                    else if (c._hoveredUserGuideId !== null) {
+                        // Guide hover overrides curve/object hit but not handles
+                    } else {
                         let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                         const ix = c.getInteractionSnapshot();
                         const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
                         c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
                     }
+                } else if (c._hoveredUserGuideId !== null) {
+                    // Guide hover for non-SELECT tools
                 } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
@@ -541,7 +543,10 @@ export class CanvasInputController {
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
                 if (divHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
-                else if (tool === 'SELECT') ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
+                else if (tool === 'SELECT') {
+                    if (handleHit) e.stopImmediatePropagation();
+                    ic.handleSelectMouseDown(mouseX, mouseY, handleHit, hitCurveSegment, e.shiftKey, e.clientX, e.clientY);
+                }
                 else if (hitMarker && (tool === 'NODE' || tool === 'DRAW')) ic.handleNodeHitMouseDown(mouseX, mouseY, hitResult, hitMarker, e.shiftKey, e.ctrlKey);
                 else if (tool === 'NODE') ic.handleNodeMissMouseDown(mouseX, mouseY, e.shiftKey);
                 else if (tool === 'DRAW') ic.handleDrawMouseDown(mouseX, mouseY, worldX, worldY);
@@ -635,9 +640,7 @@ export class CanvasInputController {
                 if (c.hovered_curve_segment !== (hitCurveSegment ? hitCurveSegment.curve : null)) { c.hovered_curve_segment = hitCurveSegment; hoverStateChanged = true; }
                 if (hoverStateChanged) c.is_dirty = true;
             }
-            if (c._hoveredUserGuideId !== null) {
-                // Guide hover takes priority — skip cursor override
-            } else if (c.current_state === 'IDLE' && tool === 'SELECT') {
+            if (c.current_state === 'IDLE' && tool === 'SELECT') {
                 let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
                 if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
                 else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
@@ -648,12 +651,16 @@ export class CanvasInputController {
                 else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
                 else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
                 else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
-                else {
+                else if (c._hoveredUserGuideId !== null) {
+                    // Guide hover overrides curve/object hit but not handles
+                } else {
                     let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                     const ix = c.getInteractionSnapshot();
                     const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
                     c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
                 }
+            } else if (c._hoveredUserGuideId !== null) {
+                // Guide hover for non-SELECT tools
             } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
@@ -907,7 +914,8 @@ export class CanvasInputController {
             const tool = c.getActiveTool();
             const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
             const hitCurveSegment = tool === 'SELECT' ? c.utils.hitTestCurve(pointer.x, pointer.y) : null;
-            const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && hitCurveSegment);
+            const handleHit = tool === 'SELECT' ? c.utils.hitTestTransformHandles(pointer.x, pointer.y) : null;
+            const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && (handleHit || hitCurveSegment));
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;

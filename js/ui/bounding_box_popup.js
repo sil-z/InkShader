@@ -52,6 +52,7 @@ export class BoundingBoxPopup extends HTMLElement {
         this._dragSL = 0;
         this._dragST = 0;
         this._docked = false;
+        this._canvasSizeHeight = 1000;
         this._positionReady = false;
         this._focusedInput = null;
         this._inputSnapshot = null;
@@ -149,6 +150,7 @@ export class BoundingBoxPopup extends HTMLElement {
         }
 
         this._selectedTreeIds = [...selIds];
+        this._canvasSizeHeight = nextState.canvasSizeHeight ?? this._canvasSizeHeight;
         this._bounds = EditorModel.getSelectionBounds('transform');
 
         if (this._docked) {
@@ -163,6 +165,7 @@ export class BoundingBoxPopup extends HTMLElement {
 
     _patchValues() {
         if (!this._bounds) return;
+        const ch = this._canvasSizeHeight;
         const patch = (id, val) => {
             const el = this.container.querySelector(`#${id}`);
             if (!el) return;
@@ -170,7 +173,7 @@ export class BoundingBoxPopup extends HTMLElement {
             el.value = val != null ? String(val) : '';
         };
         patch('bbox_x', this._bounds.minX.toFixed(1));
-        patch('bbox_y', this._bounds.minY.toFixed(1));
+        patch('bbox_y', (ch - this._bounds.minY).toFixed(1));
         patch('bbox_w', (this._bounds.maxX - this._bounds.minX).toFixed(1));
         patch('bbox_h', (this._bounds.maxY - this._bounds.minY).toFixed(1));
     }
@@ -187,7 +190,9 @@ export class BoundingBoxPopup extends HTMLElement {
             if (recordHistory) this._restoreInput(target);
             return;
         }
-        CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, numVal, {
+        // Convert display Y (Y-up, 0 at bottom) to model Y (Y-down, 0 at top)
+        const modelVal = prop === 'y' ? this._canvasSizeHeight - numVal : numVal;
+        CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, modelVal, {
             recordHistory,
             useBoundsSession: isSizeProp,
             commitBoundsSession: isSizeProp && recordHistory

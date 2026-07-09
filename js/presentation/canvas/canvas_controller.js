@@ -54,6 +54,7 @@ export class CanvasController {
             case CANVAS_ACTIONS.SET_TREE_SELECTION:
                 return c.commands.setTreeSelection(payload.ids || [], payload.activeGroupId);
             case CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION:
+                c.transform_center_pivot = null;
                 return c.commands.changeObjectSelection(payload.strategy || "replace", payload);
             case CANVAS_ACTIONS.CHANGE_NODE_SELECTION:
                 return c.commands.changeNodeSelection(payload.strategy || "replace", payload);

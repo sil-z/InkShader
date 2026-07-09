@@ -97,8 +97,12 @@ export class CanvasUtilsService {
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
         let px, py;
         if (c.transform_center_pivot) {
-            px = c.transform_center_pivot.x * c.scale + offsetX;
-            py = c.transform_center_pivot.y * c.scale + offsetY;
+            const cx = (bounds.minX + bounds.maxX) / 2;
+            const cy = (bounds.minY + bounds.maxY) / 2;
+            const absX = cx + c.transform_center_pivot.dx;
+            const absY = cy + c.transform_center_pivot.dy;
+            px = absX * c.scale + offsetX;
+            py = absY * c.scale + offsetY;
         } else {
             px = ((bounds.minX + bounds.maxX) / 2) * c.scale + offsetX;
             py = ((bounds.minY + bounds.maxY) / 2) * c.scale + offsetY;

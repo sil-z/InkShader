@@ -57,6 +57,7 @@ const POPUP_HTML = `
 </div>`;
 
 const REALTIME_IDS = ['npp_x', 'npp_y', 'npp_in_x', 'npp_in_y', 'npp_out_x', 'npp_out_y', 'npp_in_a', 'npp_out_a'];
+const Y_PROPS = new Set(['prop_y', 'prop_in_y', 'prop_out_y']);
 const PROP_MAP = {
     'npp_x': 'prop_x',
     'npp_y': 'prop_y',
@@ -70,11 +71,16 @@ const PROP_MAP = {
 const POS_KEY = 'npp_pos';
 const DOCK_KEY = 'npp_docked';
 
+function _toModelY(propId, value, canvasHeight) {
+    return Y_PROPS.has(propId) ? canvasHeight - value : value;
+}
+
 export class NodePropertyPopup extends HTMLElement {
     constructor() {
         super();
         this.interaction = createEmptyEditorInteractionState();
         this._anchorNodeId = null;
+        this._canvasSizeHeight = 1000;
         this._globalCleanups = [];
         this._dragging = false;
         this._dragSX = 0;
@@ -142,7 +148,7 @@ export class NodePropertyPopup extends HTMLElement {
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
-            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, numVal, { recordHistory: false });
+            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, _toModelY(propId, numVal, this._canvasSizeHeight), { recordHistory: false });
         });
 
         this.container.addEventListener('change', (e) => {
@@ -155,7 +161,7 @@ export class NodePropertyPopup extends HTMLElement {
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
-            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, numVal, { recordHistory: true });
+            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, _toModelY(propId, numVal, this._canvasSizeHeight), { recordHistory: true });
         });
 
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this._handleStoreStateChanged(e));
@@ -219,6 +225,7 @@ export class NodePropertyPopup extends HTMLElement {
         }
 
         this._anchorNodeId = anchorId;
+        this._canvasSizeHeight = nextState.canvasSizeHeight ?? this._canvasSizeHeight;
 
         if (this._docked) {
             this._hide();
@@ -255,19 +262,20 @@ export class NodePropertyPopup extends HTMLElement {
             }
         };
 
+        const ch = this._canvasSizeHeight;
         patch('npp_x', node.x.toFixed(1));
-        patch('npp_y', node.y.toFixed(1));
+        patch('npp_y', (ch - node.y).toFixed(1));
 
         const hasC1 = !!node.control1;
         patch('npp_in_x', hasC1 ? node.control1.x.toFixed(1) : '', !hasC1);
-        patch('npp_in_y', hasC1 ? node.control1.y.toFixed(1) : '', !hasC1);
+        patch('npp_in_y', hasC1 ? (ch - node.control1.y).toFixed(1) : '', !hasC1);
         patch('npp_in_a', hasC1
             ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC1);
 
         const hasC2 = !!node.control2;
         patch('npp_out_x', hasC2 ? node.control2.x.toFixed(1) : '', !hasC2);
-        patch('npp_out_y', hasC2 ? node.control2.y.toFixed(1) : '', !hasC2);
+        patch('npp_out_y', hasC2 ? (ch - node.control2.y).toFixed(1) : '', !hasC2);
         patch('npp_out_a', hasC2
             ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC2);
@@ -275,11 +283,13 @@ export class NodePropertyPopup extends HTMLElement {
 
     _captureInputSnapshot(target) {
         const marker = this._resolveMarker(this._anchorNodeId);
+        const propId = PROP_MAP[target.id];
         this._inputSnapshot = {
             id: target.id,
             marker,
-            propId: PROP_MAP[target.id],
-            value: numberFromInput(target)
+            propId,
+            // Convert display Y → model Y so _restoreInput writes the correct value
+            value: _toModelY(propId, numberFromInput(target), this._canvasSizeHeight)
         };
     }
 
