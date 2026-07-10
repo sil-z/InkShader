@@ -102,6 +102,36 @@ export class NodeTool extends BaseTool {
             c.drag_initial_target.angle = Math.atan2(dragged_n.y - p.y, dragged_n.x - p.x);
         }
         c.previewData = null;
+
+        // Snapshot original node positions of all affected curves for drag ghost preview
+        c.drag_preview = null;
+        {
+            const affectedCurveIds = new Set();
+            for (const marker of c.drag_initial_nodes.keys()) {
+                const n = c.curve_manager.find_node_by_curve(marker);
+                if (n && n.curve) affectedCurveIds.add(n.curve.id);
+            }
+            if (affectedCurveIds.size > 0) {
+                const nodePositions = new Map();
+                for (const curveId of affectedCurveIds) {
+                    const curve = c.curve_manager.curves.find(crv => crv.id === curveId);
+                    if (!curve?.startNode) continue;
+                    let current = curve.startNode;
+                    while (current) {
+                        nodePositions.set(current.main_node, {
+                            x: current.x, y: current.y,
+                            c1x: current.control1?.x ?? null,
+                            c1y: current.control1?.y ?? null,
+                            c2x: current.control2?.x ?? null,
+                            c2y: current.control2?.y ?? null
+                        });
+                        current = current.nextOnCurve;
+                    }
+                }
+                c.drag_preview = { curveIds: affectedCurveIds, nodePositions };
+            }
+        }
+
         c.notifyPropertiesUpdate();
         c.is_dirty = true;
     }
@@ -212,6 +242,7 @@ export class NodeTool extends BaseTool {
         }
 
         c.current_state = 'IDLE';
+        c.drag_preview = null;
         c.dragging_node_marker = null; c.dragging_node_seq_idx = -1;
         c.dragging_node_matrix = null; c.dragging_node_refId = null;
 

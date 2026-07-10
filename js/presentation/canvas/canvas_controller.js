@@ -161,6 +161,7 @@ export class CanvasController {
             c.drawing_seq_offset = undefined;
             c.closing_path_on_mouseup = false;
             c.current_state = "IDLE";
+            c.drag_preview = null;
             c._ellipseWorldStartX = undefined;
             c._ellipseWorldStartY = undefined;
             c._ellipseWorldEndX = undefined;

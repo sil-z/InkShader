@@ -12,6 +12,7 @@ import {
     isCurveStrokePreview
 } from "../rendering/curve_renderer.js";
 import { drawCurveNode } from "../rendering/node_renderer.js";
+import { createViewportTransform } from "../rendering/viewport_transform.js";
 export class CanvasRendererService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -185,6 +186,74 @@ export class CanvasRendererService {
         // Ellipse drag preview
         if (c._ellipseWorldStartX !== undefined && c._ellipseWorldEndX !== undefined) {
             this._drawEllipsePreview(c, p);
+        }
+        // Node drag: ghost preview of affected curves at original (pre-drag) positions
+        if (c.drag_preview && (c.current_state === 'DRAGGING_NODE' || c.current_state === 'DRAGGING_NODE_READY')) {
+            c.ctx.save();
+            for (let i = 0; i < seqTokens.length; i++) {
+                const seqOffsetX = c.curve_manager.getSeqOffset(i);
+                const token = seqTokens[i];
+                const groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                const curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+                for (const cd of curveDataList) {
+                    if (!cd.curve?.startNode || !c.drag_preview.curveIds.has(cd.curve.id)) continue;
+                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                    const mapPoint = createViewportTransform(viewport);
+                    const nodePositions = c.drag_preview.nodePositions;
+                    // Build ordered node list from snapshot data, tracking which nodes are being dragged
+                    const nodes = [];
+                    const isDragged = [];
+                    let current = cd.curve.startNode;
+                    while (current) {
+                        const snap = nodePositions.get(current.main_node);
+                        nodes.push(snap || {
+                            x: current.x, y: current.y,
+                            c1x: current.control1?.x ?? null,
+                            c1y: current.control1?.y ?? null,
+                            c2x: current.control2?.x ?? null,
+                            c2y: current.control2?.y ?? null
+                        });
+                        isDragged.push(c.drag_initial_nodes.has(current.main_node));
+                        current = current.nextOnCurve;
+                    }
+                    if (nodes.length < 2) continue;
+                    c.ctx.beginPath();
+                    let hasSegment = false;
+                    const emitSegment = (curr, next) => {
+                        const p0 = mapPoint(curr.x, curr.y);
+                        if (!hasSegment) { c.ctx.moveTo(p0.x, p0.y); hasSegment = true; }
+                        const cp1 = mapPoint(curr.c1x ?? curr.x, curr.c1y ?? curr.y);
+                        const cp2 = mapPoint(next.c2x ?? next.x, next.c2y ?? next.y);
+                        const end = mapPoint(next.x, next.y);
+                        c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
+                    };
+                    for (let j = 0; j < nodes.length - 1; j++) {
+                        // Only draw segments adjacent to at least one dragged node
+                        if (!isDragged[j] && !isDragged[j + 1]) continue;
+                        emitSegment(nodes[j], nodes[j + 1]);
+                    }
+                    if (cd.curve.closed && nodes.length > 1) {
+                        // Closing segment (endNode -> startNode): only if either endpoint is dragged
+                        if (isDragged[nodes.length - 1] || isDragged[0]) {
+                            const lastNode = nodes[nodes.length - 1];
+                            const firstNode = nodes[0];
+                            // Always moveTo the closing segment start; pen may be elsewhere
+                            const pCurr = mapPoint(lastNode.x, lastNode.y);
+                            c.ctx.moveTo(pCurr.x, pCurr.y);
+                            if (!hasSegment) hasSegment = true;
+                            const cp1 = mapPoint(lastNode.c1x ?? lastNode.x, lastNode.c1y ?? lastNode.y);
+                            const cp2 = mapPoint(firstNode.c2x ?? firstNode.x, firstNode.c2y ?? firstNode.y);
+                            const end = mapPoint(firstNode.x, firstNode.y);
+                            c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
+                        }
+                    }
+                    if (!hasSegment) continue;
+                    c.ctx.strokeStyle = p.preview_color;
+                    c.ctx.lineWidth = 0.5;
+                    c.ctx.stroke();
+                }
+            }
+            c.ctx.restore();
         }
         {
             const rad = Math.PI / 180;
