@@ -880,7 +880,12 @@ logger-panel {
 .right:hover::-webkit-scrollbar-thumb,
 #property_container:hover::-webkit-scrollbar-thumb,
 .dock-content:hover::-webkit-scrollbar-thumb,
-.tree_panel:hover::-webkit-scrollbar-thumb {
+.tree_panel:hover::-webkit-scrollbar-thumb,
+.placeholder[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.right[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+#property_container[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.dock-content[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.tree_panel[data-scrollbar-visible]::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
@@ -888,7 +893,12 @@ logger-panel {
 .right::-webkit-scrollbar-thumb:hover,
 #property_container::-webkit-scrollbar-thumb:hover,
 .dock-content::-webkit-scrollbar-thumb:hover,
-.tree_panel::-webkit-scrollbar-thumb:hover {
+.tree_panel::-webkit-scrollbar-thumb:hover,
+.placeholder[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.right[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+#property_container[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.dock-content[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.tree_panel[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
@@ -960,12 +970,16 @@ logger-panel {
     transition: background 0.35s ease 0.5s;
 }
 .pref_modal_body:hover::-webkit-scrollbar-thumb,
-.pref_content_area:hover::-webkit-scrollbar-thumb {
+.pref_content_area:hover::-webkit-scrollbar-thumb,
+.pref_modal_body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.pref_content_area[data-scrollbar-visible]::-webkit-scrollbar-thumb {
     background: var(--ui-border-light);
     transition: background 0.05s ease 0s;
 }
 .pref_modal_body::-webkit-scrollbar-thumb:hover,
-.pref_content_area::-webkit-scrollbar-thumb:hover {
+.pref_content_area::-webkit-scrollbar-thumb:hover,
+.pref_modal_body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.pref_content_area[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover {
     background: var(--ui-text-muted);
     transition: background 0.05s ease 0s;
 }
@@ -1001,15 +1015,8 @@ logger-panel {
     border: none;
 }
 
-/* Firefox：通过 data-scrollbar-visible 属性控制（scrollbar-color 由 scrollbar_visibility.js 运行时设置） */
-.placeholder[data-scrollbar-visible], .tree_panel[data-scrollbar-visible],
-.sequence-add-menu[data-scrollbar-visible],
-.pref_modal_body[data-scrollbar-visible],
-.pref_content_area[data-scrollbar-visible],
-.logger-output[data-scrollbar-visible],
-.pen-tool-popup-body[data-scrollbar-visible] {
-    scrollbar-color: var(--ui-border-light) transparent;
-}
+/* scrollbar-color 已移至 scrollbar_visibility.js 内联控制（Firefox only）— 
+   不在 CSS 中写，防止 Chrome 121+ 也匹配并覆盖 ::-webkit-scrollbar 自定义样式 */
 .placeholder span, .property_panel label {
     white-space: nowrap;
 }
