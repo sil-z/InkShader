@@ -98,6 +98,7 @@ export function initializeLayoutShell() {
     document.getElementById("btn_tool_draw")?.addEventListener("click", () => dispatchToolMode("DRAW"));
     document.getElementById("btn_tool_measure")?.addEventListener("click", () => dispatchToolMode("MEASURE"));
     document.getElementById("btn_tool_ellipse")?.addEventListener("click", () => dispatchToolMode("ELLIPSE"));
+    document.getElementById("btn_action_import_image")?.addEventListener("click", () => CanvasDispatcher.requestImport());
     updateToolModeUI("DRAW");
 
     // ── Top menu bar ──
@@ -160,8 +161,6 @@ export function initializeLayoutShell() {
                 i18n: 'file.load_cache',
                 children: []  // Will be populated async
             },
-            { separator: true },
-            makeItem('file.import_image', false, () => CanvasDispatcher.requestImport()),
             { separator: true },
             makeItem('file.save_json', false, () => CanvasDispatcher.requestSave()),
             makeItem('file.save_ufo', false, () => CanvasDispatcher.requestExport()),
