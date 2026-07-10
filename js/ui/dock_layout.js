@@ -318,7 +318,7 @@ export class DockLayout {
 
         body.appendChild(comp);
 
-        const minW = 120, minH = 60;
+        const minW = 200, minH = 100;
         const resizeEdges = ["n","s","e","w","ne","nw","se","sw"];
         resizeEdges.forEach(edge => {
             const h = document.createElement("div");
@@ -947,7 +947,8 @@ export class DockLayout {
         const delta = pos - r.startPos;
         const pct = delta / r.total;
 
-        const minPct = 15;
+        const minPixel = r.direction === "h" ? 200 : 100;
+        const minPct = Math.max(5, (minPixel / r.total) * 100);
         const deltaPct = pct * 100;
         const newPcts = [...r.startPcts];
 
@@ -955,30 +956,32 @@ export class DockLayout {
             const toShrink = -deltaPct;
             let capacity = 0;
             for (let i = 0; i <= r.leftIdx; i++) capacity += r.startPcts[i] - minPct;
-            if (toShrink > capacity) return;
-
-            let remaining = toShrink;
+            // Clamp to available capacity instead of returning — prevents
+            // "premature lock" when dragging fast past the minimum then
+            // slowly dragging back (which would cause a sudden jump as the
+            // first mouse-move past the threshold applies the full delta).
+            const clampedShrink = Math.min(toShrink, capacity);
+            let remaining = clampedShrink;
             for (let i = r.leftIdx; i >= 0 && remaining > 0; i--) {
                 const avail = r.startPcts[i] - minPct;
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
             }
-            newPcts[r.leftIdx + 1] = r.startPcts[r.leftIdx + 1] + toShrink;
+            newPcts[r.leftIdx + 1] = r.startPcts[r.leftIdx + 1] + clampedShrink;
         } else if (deltaPct > 0) {
             const toShrink = deltaPct;
             let capacity = 0;
             for (let i = r.leftIdx + 1; i < newPcts.length; i++) capacity += r.startPcts[i] - minPct;
-            if (toShrink > capacity) return;
-
-            let remaining = toShrink;
+            const clampedShrink = Math.min(toShrink, capacity);
+            let remaining = clampedShrink;
             for (let i = r.leftIdx + 1; i < newPcts.length && remaining > 0; i++) {
                 const avail = r.startPcts[i] - minPct;
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
             }
-            newPcts[r.leftIdx] = r.startPcts[r.leftIdx] + toShrink;
+            newPcts[r.leftIdx] = r.startPcts[r.leftIdx] + clampedShrink;
         }
 
         r.children.forEach((ch, i) => {

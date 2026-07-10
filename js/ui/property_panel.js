@@ -653,9 +653,9 @@ export class PropertyPanel extends HTMLElement {
         }
 
         this.container.classList.remove("is_empty");
-        const st = this.container.scrollTop;
+        const st = this.scrollTop;
         this.container.replaceChildren(frag);
-        this.container.scrollTop = st;
+        this.scrollTop = st;
 
         this._initSectionReorder();
     }

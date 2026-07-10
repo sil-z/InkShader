@@ -184,8 +184,6 @@ main-canvas {
 .prop_panel_title_wrapper {
     padding: 5px 6px 9px 6px;
     flex-shrink: 0;
-    position: sticky;
-    top: 0;
     z-index: 1;
     background: var(--ui-bg-placeholder);
 }
@@ -650,27 +648,57 @@ glyph-sequence-bar {
     display: flex;
     flex-direction: column;
 }
+/* ── Dock Panel Resizer ──
+     flex: 0 0 1px keeps layout tight (no extra whitespace).
+     Visual 1px line drawn via ::after border — Chrome on Windows
+     renders borders (stroke) with consistent subpixel anti-aliasing,
+     avoiding the 1⇔2 physical-pixel jitter that background fill
+     exhibits at fractional flex positions × fractional DPI.
+     ::before — invisible hit area extension for easier mouse grabbing.
+   ── */
 .dock-resizer {
     flex: 0 0 1px;
-    background: var(--ui-border);
     position: relative;
     margin: 0;
+    background: transparent;
 }
 .dock-resizer::before {
     content: '';
     position: absolute;
     z-index: 10;
 }
+.dock-resizer::after {
+    content: '';
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+}
+/* V-split (horizontal bar): 1px border-top at top edge */
 .dock-split-v > .dock-resizer::before {
     inset: -2.5px 0;
     cursor: ns-resize;
 }
+.dock-split-v > .dock-resizer::after {
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 0;
+    border-top: 1px solid var(--ui-border);
+}
+/* H-split (vertical bar): 1px border-left at left edge */
 .dock-split-h > .dock-resizer {
     cursor: ew-resize;
 }
 .dock-split-h > .dock-resizer::before {
     inset: 0 -2.5px;
     cursor: ew-resize;
+}
+.dock-split-h > .dock-resizer::after {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    border-left: 1px solid var(--ui-border);
 }
 .dock-preview {
     position: fixed;
@@ -714,8 +742,8 @@ glyph-sequence-bar {
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
     overflow: hidden;
-    min-width: 120px;
-    min-height: 60px;
+    min-width: 200px;
+    min-height: 100px;
 }
 .dock-float-window .dock-tab-bar {
     cursor: move;
@@ -809,6 +837,7 @@ logger-panel {
     min-height: 0;
     min-width: 0;
     overflow: hidden;
+    transform: translateZ(0);
 }
 .placeholder:focus, .tree_panel:focus, #object_tree:focus, .tree_item:focus {
     outline: none;
@@ -1189,6 +1218,7 @@ object-tree {
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    transform: translateZ(0);
 }
 .tree_panel {
     padding: 0 6px 4px 6px;
@@ -1197,6 +1227,7 @@ object-tree {
     white-space: nowrap;
     overflow-y: auto;
     overflow-x: auto;
+    transform: translateZ(0);
 }
 .property_panel {
     display: flex;
@@ -1204,8 +1235,10 @@ object-tree {
     padding: 0;
     flex: 1;
     min-height: 0;
-    overflow: auto;
     position: relative;
+    overflow: auto;
+    overscroll-behavior: contain;
+    transform: translateZ(0);
 }
 .property_panel label {
     font-size: 13px;
@@ -1886,12 +1919,10 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     color: var(--ui-text-muted);
 }
 .tree_item {
-    display: flex;
-    align-items: center;
     position: relative;
+    overflow: hidden;
     user-select: none;
     width: 100%;
-    padding-right: 0;      
     background-color: var(--ui-bg-placeholder);
     transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s;
 }
@@ -1928,15 +1959,24 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     align-items: center; 
     gap: 2px; 
     pointer-events: none; 
+    padding-right: 48px;
+    overflow: hidden;
 }
 .tree_right {
-    margin-left: auto;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     gap: 1px;
-    padding-right: 4px;
+    padding: 0 1px;
     pointer-events: auto;
-    flex-shrink: 0;
+    background-color: inherit;
+    z-index: 1;
+}
+.tree_item[data-type="group"]:not(.group-reference) .tree_left {
+    padding-right: 0;
 }
 .tree_lock_btn,
 .tree_hide_btn {
@@ -2034,7 +2074,7 @@ ellipse-tool-popup .npp-row input[type="checkbox"] {
     display: none;
 }
 .tree_toggle img { width: 12px; height: 12px; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-.tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; padding-bottom: 1px; }
+.tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; padding-bottom: 1px; min-width: 0; }
 .tree_label_group { font-weight: 600; }
 .group-reference .tree_label_group { font-style: italic; color: var(--ui-text-muted); }
 
@@ -2603,7 +2643,7 @@ ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):f
    ========================================= */
 .tree_content {
     min-width: 100%;
-    width: max-content;
+    width: 100%;
 }
 [data-theme="dark"] .tool_button img,
 [data-theme="dark"] .lock_guideline_icon,
