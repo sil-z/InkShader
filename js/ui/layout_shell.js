@@ -241,10 +241,47 @@ export function initializeLayoutShell() {
                 if (c) c.history?.saveCurrentViewState?.();
             }),
             { separator: true },
-            makeToggle('edit.divider_visible', c?.divider_visible !== false, () => {
-                if (c) c.divider_visible = !c.divider_visible;
-                if (c) c.history?.saveCurrentViewState?.();
-            })
+            {
+                label: I18nManager.t('edit.guides'),
+                i18n: 'edit.guides',
+                children: [
+                    { label: I18nManager.t('edit.guides.section_divider'), disabled: true },
+                    makeToggle('edit.guides.lock_divider', c?.divider_locked !== false, () => {
+                        if (c) c.divider_locked = !c.divider_locked;
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.divider', c?.divider_visible !== false, () => {
+                        if (c) c.divider_visible = !c.divider_visible;
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    { separator: true },
+                    { label: I18nManager.t('edit.guides.section_metric'), disabled: true },
+                    makeToggle('edit.guides.lock_metric', c?.metric_guidelines?.locked === true, () => {
+                        if (c) c.metric_guidelines.locked = !c.metric_guidelines.locked;
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.ascender', c?.metric_guidelines?.items?.ascender?.visible !== false, () => {
+                        if (c) { c.metric_guidelines.items.ascender.visible = !c.metric_guidelines.items.ascender.visible; }
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.descender', c?.metric_guidelines?.items?.descender?.visible !== false, () => {
+                        if (c) { c.metric_guidelines.items.descender.visible = !c.metric_guidelines.items.descender.visible; }
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.x_height', c?.metric_guidelines?.items?.x_height?.visible !== false, () => {
+                        if (c) { c.metric_guidelines.items.x_height.visible = !c.metric_guidelines.items.x_height.visible; }
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.cap_height', c?.metric_guidelines?.items?.cap_height?.visible !== false, () => {
+                        if (c) { c.metric_guidelines.items.cap_height.visible = !c.metric_guidelines.items.cap_height.visible; }
+                        if (c) c.history?.saveCurrentViewState?.();
+                    }),
+                    makeToggle('edit.guides.baseline', c?.metric_guidelines?.items?.baseline?.visible !== false, () => {
+                        if (c) { c.metric_guidelines.items.baseline.visible = !c.metric_guidelines.items.baseline.visible; }
+                        if (c) c.history?.saveCurrentViewState?.();
+                    })
+                ]
+            }
         ];
 
         menu.show(btnEdit, items);

@@ -188,11 +188,69 @@ export class CanvasInputController {
                 c.canvasObj.dataset.cursor = 'ew-resize';
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
                 const dx = pointer.x - div.startScreenX;
-                const newAdvance = Math.max(0, div.startAdvance + dx / c.scale);
-                const group = c.curve_manager.treeItems.get(div.groupId);
-                if (group) {
-                    group.advance = newAdvance;
-                    group.is_modified = true;
+                const deltaAdv = dx / c.scale;
+                const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
+                const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
+                if (leftGroup && rightGroup) {
+                    if (div.modifyRight) {
+                        // RIGHT active: right group advance decreases AND paths shift left
+                        // (left edge of right group moves right → LSB decreases, right edge moves left)
+                        const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                        leftGroup.advance = div.startLeftAdvance;
+                        leftGroup.is_modified = true;
+                        rightGroup.advance = newRightAdv;
+                        rightGroup.is_modified = true;
+                        // Shift right group's paths LEFT → LSB decreases (left edge moves right, content shifts left)
+                        if (!div._rightNodeOrigins) {
+                            div._rightNodeOrigins = [];
+                            const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
+                            for (const cd of curves) {
+                                let node = cd.curve?.startNode;
+                                while (node) {
+                                    div._rightNodeOrigins.push({
+                                        node, x: node.x,
+                                        c1x: node.control1?.x,
+                                        c2x: node.control2?.x
+                                    });
+                                    node = node.nextOnCurve;
+                                }
+                            }
+                        }
+                        for (const o of div._rightNodeOrigins) {
+                            o.node.x = o.x - deltaAdv;
+                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
+                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
+                        }
+                        c.curve_manager.calculateSequenceOffsets();
+                    } else {
+                        // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
+                        const newLeftAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
+                        leftGroup.advance = newLeftAdv;
+                        leftGroup.is_modified = true;
+                        rightGroup.advance = div.startRightAdvance;
+                        rightGroup.is_modified = true;
+                        c.curve_manager.calculateSequenceOffsets();
+                    }
+                } else if (rightGroup) {
+                    // Left edge: no left group, just adjust right group's advance
+                    if (div.modifyRight) {
+                        // RIGHT active: right group widens rightward
+                        const newAdv = Math.max(0, div.startRightAdvance + deltaAdv);
+                        rightGroup.advance = newAdv;
+                        rightGroup.is_modified = true;
+                        c.curve_manager.calculateSequenceOffsets();
+                    } else {
+                        // LEFT active: right group shrinks from right
+                        const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                        rightGroup.advance = newAdv;
+                        rightGroup.is_modified = true;
+                        c.curve_manager.calculateSequenceOffsets();
+                    }
+                } else if (leftGroup) {
+                    // Rightmost divider: only left group exists (right edge of last glyph)
+                    const newAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
+                    leftGroup.advance = newAdv;
+                    leftGroup.is_modified = true;
                     c.curve_manager.calculateSequenceOffsets();
                 }
                 c.is_dirty = true;
@@ -231,29 +289,7 @@ export class CanvasInputController {
                 }
                 c.is_dirty = true;
             });
-            c.addGlobalListener('window', "mouseup", (e) => {
-                if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
-                const div = c._draggingDivider;
-                c._draggingDivider = null;
-                c.current_state = 'IDLE';
-                const group = c.curve_manager.treeItems.get(div.groupId);
-                if (!div._dragStarted) {
-                    if (group) {
-                        group.advance = div.startAdvance;
-                        group.is_modified = true;
-                        c.curve_manager.calculateSequenceOffsets();
-                    }
-                    c.is_dirty = true;
-                    return;
-                }
-                if (group) {
-                    const currentAdv = group.advance;
-                    group.advance = div.startAdvance;
-                    CanvasDispatcher.requestSetGroupAdvance(div.groupId, currentAdv, { recordHistory: true });
-                } else {
-                    c.is_dirty = true;
-                }
-            });
+            // NOTE: divider drag mouseup is handled in the modern handler below
             c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
                 if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
                 if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
@@ -282,7 +318,7 @@ export class CanvasInputController {
                     }
                 }
                 const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
-                const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + "-r" : null;
+                const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
                 if (c._hoveredDividerId !== divId) {
                     c._hoveredDividerId = divId;
                     c.is_dirty = true;
@@ -367,40 +403,70 @@ export class CanvasInputController {
                     guide._clientY = e.clientY;
                     return;
                 }
-                const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
-                if (divHit) {
-                    if (c.guideline_lock) return;
-                    if (tool === 'DRAW' || tool === 'ELLIPSE') return;
-                    if (hasInteractiveHit) return;
-                    const group = c.curve_manager.treeItems.get(divHit.groupId);
-                    if (group && group.locked) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    c.current_state = 'DRAGGING_DIVIDER';
-                    c._draggingDivider = {
-                        groupId: divHit.groupId,
-                        dividerId: divHit.groupId + "-" + divHit.seqIndex + "-r",
-                        startScreenX: divHit.screenX,
-                        startAdvance: group ? group.advance : 1000,
-                        _clientX: e.clientX,
-                        _clientY: e.clientY,
-                        _dragStarted: false
-                    };
-                    return;
-                }
-            });
-            c.addGlobalListener(c.canvasObj, "contextmenu", (e) => {
-                if (c.getActiveTool() === "MEASURE") {
-                    const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-                    const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
-                    if (rulerHit) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
-                        c.is_dirty = true;
+            const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+            if (divHit) {
+                if (c.divider_locked) return;
+                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                if (hasInteractiveHit) return;
+                let leftGroupId = divHit.isLeftEdge ? null : divHit.groupId;
+                let rightGroupId = null;
+                let seqIndex = divHit.seqIndex;
+                let modifyRight = false;
+                if (divHit.isLeftEdge) {
+                    rightGroupId = divHit.groupId;
+                    seqIndex = 0;
+                } else {
+                    const leftGroup = c.curve_manager.treeItems.get(leftGroupId);
+                    if (leftGroup && leftGroup.locked) return;
+                    const seqTokens = c.curve_manager.sequenceTokens || [];
+                    for (let si = 0; si < seqTokens.length; si++) {
+                        if (si === divHit.seqIndex + 1) {
+                            const t = seqTokens[si];
+                            rightGroupId = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                            break;
+                        }
+                    }
+                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+                    if (rightGroupId && activeGroupId === rightGroupId) {
+                        modifyRight = true;
+                    } else if (!activeGroupId && leftGroupId) {
+                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
                     }
                 }
-            });
+                const rightGroup = rightGroupId ? c.curve_manager.treeItems.get(rightGroupId) : null;
+                const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+                e.preventDefault();
+                e.stopPropagation();
+                c._hoveredDividerId = null;
+                c.current_state = 'DRAGGING_DIVIDER';
+                c._draggingDivider = {
+                    leftGroupId: leftGroupId,
+                    rightGroupId: rightGroupId,
+                    groupId: rightGroupId || leftGroupId,
+                    modifyRight: modifyRight,
+                    dividerId: (leftGroupId || rightGroupId) + "-" + seqIndex + (divHit.isLeftEdge ? "-l" : "-r"),
+                    startScreenX: divHit.screenX,
+                    startLeftAdvance: leftGroup ? leftGroup.advance : 0,
+                    startRightAdvance: rightGroup ? rightGroup.advance : 1000,
+                    _clientX: e.clientX,
+                    _clientY: e.clientY,
+                    _dragStarted: false
+                };
+                return;
+            }
+        });
+        c.addGlobalListener(c.canvasObj, "contextmenu", (e) => {
+            if (c.getActiveTool() === "MEASURE") {
+                const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+                const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
+                if (rulerHit) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
+                    c.is_dirty = true;
+                }
+            }
+        });
             c.addGlobalListener('window', "mouseup", c.handleMouseUp);
             c.addGlobalListener('window', "contextmenu", e => e.preventDefault());
             c.addGlobalListener('window', "keydown", (e) => {
@@ -541,7 +607,7 @@ export class CanvasInputController {
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
                 if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                if (divHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
+                if (divHit && !c.divider_locked && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') {
                     if (handleHit) e.stopImmediatePropagation();
@@ -750,11 +816,67 @@ export class CanvasInputController {
             c.canvasObj.dataset.cursor = 'ew-resize';
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const dx = pointer.x - div.startScreenX;
-            const newAdvance = Math.max(0, div.startAdvance + dx / c.scale);
-            const group = c.curve_manager.treeItems.get(div.groupId);
-            if (group) {
-                group.advance = newAdvance;
-                group.is_modified = true;
+            const deltaAdv = dx / c.scale;
+            const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
+            const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
+            if (leftGroup && rightGroup) {
+                if (div.modifyRight) {
+                    // RIGHT active: right group advance decreases AND paths shift left
+                    const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                    leftGroup.advance = div.startLeftAdvance;
+                    leftGroup.is_modified = true;
+                    rightGroup.advance = newRightAdv;
+                    rightGroup.is_modified = true;
+                    if (!div._rightNodeOrigins) {
+                        div._rightNodeOrigins = [];
+                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
+                        for (const cd of curves) {
+                            let node = cd.curve?.startNode;
+                            while (node) {
+                                div._rightNodeOrigins.push({
+                                    node, x: node.x,
+                                    c1x: node.control1?.x,
+                                    c2x: node.control2?.x
+                                });
+                                node = node.nextOnCurve;
+                            }
+                        }
+                    }
+                    for (const o of div._rightNodeOrigins) {
+                        o.node.x = o.x - deltaAdv;
+                        if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
+                        if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
+                    }
+                    c.curve_manager.calculateSequenceOffsets();
+                } else {
+                    // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
+                    const newLeftAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
+                    leftGroup.advance = newLeftAdv;
+                    leftGroup.is_modified = true;
+                    rightGroup.advance = div.startRightAdvance;
+                    rightGroup.is_modified = true;
+                    c.curve_manager.calculateSequenceOffsets();
+                }
+            } else if (rightGroup) {
+                // Left edge: no left group, just adjust right group's advance
+                if (div.modifyRight) {
+                    // RIGHT active: right group widens rightward
+                    const newAdv = Math.max(0, div.startRightAdvance + deltaAdv);
+                    rightGroup.advance = newAdv;
+                    rightGroup.is_modified = true;
+                    c.curve_manager.calculateSequenceOffsets();
+                } else {
+                    // LEFT active: right group shrinks from right
+                    const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                    rightGroup.advance = newAdv;
+                    rightGroup.is_modified = true;
+                    c.curve_manager.calculateSequenceOffsets();
+                }
+            } else if (leftGroup) {
+                // Rightmost divider: only left group exists (right edge of last glyph)
+                const newAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
+                leftGroup.advance = newAdv;
+                leftGroup.is_modified = true;
                 c.curve_manager.calculateSequenceOffsets();
             }
             c.is_dirty = true;
@@ -793,28 +915,63 @@ export class CanvasInputController {
             }
             c.is_dirty = true;
         });
+        // Divider drag mouseup
+        const commitDividerDrag = (div) => {
+            const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
+            const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
+            if (div._dragStarted) {
+                if (div.modifyRight) {
+                    // RIGHT active: right group advance inc + paths shifted right
+                    // State is already final after drag, just checkpoint history
+                    if (leftGroup) {
+                        leftGroup.advance = div.startLeftAdvance;
+                        leftGroup.is_modified = true;
+                        c.curve_manager.invalidateGroupCache(div.leftGroupId);
+                    }
+                    if (rightGroup) {
+                        rightGroup.is_modified = true;
+                        c.curve_manager.invalidateGroupCache(div.rightGroupId);
+                    }
+                    if (leftGroup || rightGroup) {
+                        c.curve_manager.calculateSequenceOffsets();
+                    }
+                    delete div._rightNodeOrigins;
+                    CanvasDispatcher.requestHistoryCommit("dividerDragRight", { groupId: div.rightGroupId });
+                } else {
+                    // LEFT active: commit advance changes
+                    if (leftGroup && rightGroup) {
+                        const currentLeftAdv = leftGroup.advance;
+                        leftGroup.advance = div.startLeftAdvance;
+                        rightGroup.advance = div.startRightAdvance;
+                        CanvasDispatcher.requestSetGroupAdvance(div.leftGroupId, currentLeftAdv, { recordHistory: true });
+                    } else if (rightGroup) {
+                        // Left edge LEFT active: commit right group's advance shrink
+                        const currentAdv = rightGroup.advance;
+                        rightGroup.advance = div.startRightAdvance;
+                        CanvasDispatcher.requestSetGroupAdvance(div.rightGroupId, currentAdv, { recordHistory: true });
+                    } else if (leftGroup) {
+                        // Rightmost divider: commit left group's advance increase
+                        const currentAdv = leftGroup.advance;
+                        leftGroup.advance = div.startLeftAdvance;
+                        CanvasDispatcher.requestSetGroupAdvance(div.leftGroupId, currentAdv, { recordHistory: true });
+                    }
+                }
+            } else if (leftGroup && rightGroup) {
+                // Click without drag: restore originals
+                leftGroup.advance = div.startLeftAdvance;
+                leftGroup.is_modified = true;
+                rightGroup.advance = div.startRightAdvance;
+                rightGroup.is_modified = true;
+                c.curve_manager.calculateSequenceOffsets();
+            }
+            c.is_dirty = true;
+        };
         c.addGlobalListener('window', "mouseup", (e) => {
             if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
             const div = c._draggingDivider;
             c._draggingDivider = null;
             c.current_state = 'IDLE';
-            const group = c.curve_manager.treeItems.get(div.groupId);
-            if (!div._dragStarted) {
-                if (group) {
-                    group.advance = div.startAdvance;
-                    group.is_modified = true;
-                    c.curve_manager.calculateSequenceOffsets();
-                }
-                c.is_dirty = true;
-                return;
-            }
-            if (group) {
-                const currentAdv = group.advance;
-                group.advance = div.startAdvance;
-                CanvasDispatcher.requestSetGroupAdvance(div.groupId, currentAdv, { recordHistory: true });
-            } else {
-                c.is_dirty = true;
-            }
+            commitDividerDrag(div);
         });
         c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
@@ -839,13 +996,14 @@ export class CanvasInputController {
                 const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                 const newId = hit ? hit.guide.id : null;
                 if (c._hoveredUserGuideId !== newId) {
+                    console.log('[GUIDE] hover changed:', c._hoveredUserGuideId, '->', newId);
                     c._hoveredUserGuideId = newId;
                     c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                     c.is_dirty = true;
                 }
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
-            const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + "-r" : null;
+            const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
             if (c._hoveredDividerId !== divId) {
                 c._hoveredDividerId = divId;
                 c.is_dirty = true;
@@ -896,7 +1054,7 @@ export class CanvasInputController {
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
-                if (c.guideline_lock) return;
+                if (c.divider_locked) return;
                 if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
                 const group = c.curve_manager.treeItems.get(divHit.groupId);
                 if (group && group.locked) return;
@@ -910,6 +1068,7 @@ export class CanvasInputController {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            console.log('[DIVIDER] GLOBAL mousedown', pointer.x, pointer.y);
             // Node/curve hits take priority over guideline/divider drag
             const tool = c.getActiveTool();
             const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
@@ -936,19 +1095,58 @@ export class CanvasInputController {
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
-                if (c.guideline_lock) return;
+                if (c.divider_locked) return;
                 if (tool === 'DRAW' || tool === 'ELLIPSE') return;
                 if (hasInteractiveHit) return;
-                const group = c.curve_manager.treeItems.get(divHit.groupId);
-                if (group && group.locked) return;
+                let leftGroupId = divHit.isLeftEdge ? null : divHit.groupId;
+                let rightGroupId = null;
+                let seqIndex = divHit.seqIndex;
+                let rightSeqIndex = -1;
+                let modifyRight = false;
+                if (divHit.isLeftEdge) {
+                    rightGroupId = divHit.groupId;
+                    rightSeqIndex = 0;
+                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+                    if (rightGroupId && activeGroupId === rightGroupId) {
+                        modifyRight = true;
+                    }
+                } else {
+                    const leftGroup = c.curve_manager.treeItems.get(leftGroupId);
+                    if (leftGroup && leftGroup.locked) return;
+                    const seqTokens = c.curve_manager.sequenceTokens || [];
+                    for (let si = 0; si < seqTokens.length; si++) {
+                        if (si === divHit.seqIndex + 1) {
+                            const t = seqTokens[si];
+                            rightGroupId = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                            rightSeqIndex = si;
+                            break;
+                        }
+                    }
+                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+                    if (rightGroupId && activeGroupId === rightGroupId) {
+                        modifyRight = true;
+                    } else if (!activeGroupId && leftGroupId) {
+                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
+                    }
+                }
+                const rightGroup = rightGroupId ? c.curve_manager.treeItems.get(rightGroupId) : null;
+                const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+                const startRightSeqOffset = rightSeqIndex >= 0 ? c.curve_manager.getSeqOffset(rightSeqIndex) : 0;
                 e.preventDefault();
                 e.stopPropagation();
+                c._hoveredDividerId = null;
                 c.current_state = 'DRAGGING_DIVIDER';
                 c._draggingDivider = {
-                    groupId: divHit.groupId,
-                    dividerId: divHit.groupId + "-" + divHit.seqIndex + "-r",
+                    leftGroupId: leftGroupId,
+                    rightGroupId: rightGroupId,
+                    groupId: rightGroupId || leftGroupId,
+                    rightSeqIndex: rightSeqIndex,
+                    startRightSeqOffset: startRightSeqOffset,
+                    modifyRight: modifyRight,
+                    dividerId: (leftGroupId || rightGroupId) + "-" + seqIndex + (divHit.isLeftEdge ? "-l" : "-r"),
                     startScreenX: divHit.screenX,
-                    startAdvance: group ? group.advance : 1000,
+                    startLeftAdvance: leftGroup ? leftGroup.advance : 0,
+                    startRightAdvance: rightGroup ? rightGroup.advance : 1000,
                     _clientX: e.clientX,
                     _clientY: e.clientY,
                     _dragStarted: false
@@ -1190,20 +1388,7 @@ export class CanvasInputController {
                 const div = c._draggingDivider;
                 c._draggingDivider = null;
                 c.current_state = 'IDLE';
-                if (div) {
-                    const group = c.curve_manager.treeItems.get(div.groupId);
-                    if (div._dragStarted) {
-                        if (group) {
-                            const currentAdv = group.advance;
-                            group.advance = div.startAdvance;
-                            CanvasDispatcher.requestSetGroupAdvance(div.groupId, currentAdv, { recordHistory: true });
-                        }
-                    } else if (group) {
-                        group.advance = div.startAdvance;
-                        group.is_modified = true;
-                        c.curve_manager.calculateSequenceOffsets();
-                    }
-                }
+                if (div) commitDividerDrag(div);
                 c.is_dirty = true;
                 return;
             }

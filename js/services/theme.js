@@ -37,6 +37,8 @@ export function updateThemeParams() {
         "guide_hover_fill": getVar('--cvs-guide-hover-fill', 'rgba(250, 204, 21, 0.6)'),
         "guide_drag_stroke": getVar('--cvs-guide-drag-stroke', 'rgba(250, 204, 21, 0.7)'),
         "guide_drag_fill": getVar('--cvs-guide-drag-fill', 'rgba(250, 204, 21, 0.5)'),
+        "metric_guide_color": getVar('--cvs-metric-guide', 'rgba(100, 100, 200, 0.5)'),
+        "metric_guide_label": getVar('--cvs-metric-label', '#6666cc'),
         "divider_highlight": getVar('--cvs-divider-highlight', 'rgba(250, 204, 21, 0.8)'),
         "measure_hover_color": getVar('--cvs-measure-hover', '#facc15'),
         "preview_fallback": getVar('--cvs-preview-fallback', 'rgba(128, 128, 128, 0.4)'),

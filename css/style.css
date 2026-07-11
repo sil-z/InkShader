@@ -63,6 +63,8 @@
     --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.7);
     --cvs-guide-drag-fill: rgba(250, 204, 21, 0.5);
     --cvs-divider-highlight: rgba(250, 204, 21, 0.8);
+    --cvs-metric-guide: rgba(128, 128, 128, 0.4);
+    --cvs-metric-label: #999999;
     --cvs-measure-hover: #facc15;
     --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
     --cvs-boolean-fill: #000000;
@@ -126,6 +128,8 @@
     --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.8);
     --cvs-guide-drag-fill: rgba(250, 204, 21, 0.6);
     --cvs-divider-highlight: rgba(250, 204, 21, 0.9);
+    --cvs-metric-guide: rgba(180, 180, 180, 0.4);
+    --cvs-metric-label: #bbbbbb;
     --cvs-measure-hover: #fde047;
     --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
     --cvs-boolean-fill: #f8fafc;

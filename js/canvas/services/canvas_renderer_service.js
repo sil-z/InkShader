@@ -447,25 +447,86 @@ export class CanvasRendererService {
             }
         }
         let unselectedNodeRenders = []; let selectedNodeRenders = [];
+
+        // ── Render metric guidelines (ascender, descender, x-height, cap-height, baseline) ──
+        {
+            const mg = c.metric_guidelines;
+            if (mg && mg.items && !mg.locked) {
+                const fs = c.fontSettings || {};
+                const upm = fs.upm || 1000;
+                const fontH = c.canvas_size_height * c.scale;
+                const baselineY = offsetY + 0.8 * fontH;
+                const cw = logicalW;
+                const metricTypes = [
+                    { key: 'ascender',   value: fs.ascender ?? 800,   label: 'Ascender' },
+                    { key: 'descender',  value: fs.descender ?? -200, label: 'Descender' },
+                    { key: 'x_height',   value: fs.x_height ?? 500,  label: 'x-Height' },
+                    { key: 'cap_height', value: fs.cap_height ?? 700,label: 'Cap Height' },
+                    { key: 'baseline',   value: 0,                    label: 'Baseline' }
+                ];
+                c.ctx.save();
+                for (const mt of metricTypes) {
+                    const item = mg.items[mt.key];
+                    if (!item || item.visible === false) continue;
+                    const sy = baselineY - (mt.value / upm) * fontH;
+                    c.ctx.strokeStyle = p.metric_guide_color;
+                    c.ctx.lineWidth = 1;
+                    c.ctx.setLineDash([4, 4]);
+                    c.ctx.beginPath();
+                    c.ctx.moveTo(0, sy);
+                    c.ctx.lineTo(cw, sy);
+                    c.ctx.stroke();
+                    c.ctx.setLineDash([]);
+                    // Label
+                    c.ctx.fillStyle = p.metric_guide_label;
+                    c.ctx.font = '10px sans-serif';
+                    c.ctx.textAlign = 'left';
+                    c.ctx.textBaseline = 'bottom';
+                    c.ctx.fillText(mt.label + ' ' + mt.value, c.ruler_size + 4, sy - 2);
+                }
+                c.ctx.restore();
+            }
+        }
+
+        // ── Render dividers ──
         if (c.curve_manager.activeSequenceIndices.size > 0 && c.divider_visible !== false) {
             c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
             let hoveredScreenX = null;
+            let hoveredLeftGid = null;
+            let hoveredRightGid = null;
+            let hoveredLeftAdvance = null;
             let drawnPositions = new Set();
             for (let i = 0; i < seqTokens.length; i++) {
                 if (!activeIndices.has(i)) continue;
-                let seqOffsetX = c.curve_manager.getSeqOffset(i); let sx = seqOffsetX * c.scale + offsetX;
-                if (!drawnPositions.has(sx)) {
-                    c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH);
-                    drawnPositions.add(sx);
-                }
+                let seqOffsetX = c.curve_manager.getSeqOffset(i);
                 let token = seqTokens[i]; let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
                 let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
+                let sx = seqOffsetX * c.scale + offsetX;
                 let ex = (seqOffsetX + advance) * c.scale + offsetX;
+                if (!drawnPositions.has(sx)) {
+                    // Left-edge hover — leftmost divider of first glyph shows LSB of its only right group
+                    let leftId = gid + "-" + i + "-l";
+                    if (!c.divider_locked && c._hoveredDividerId === leftId && hoveredScreenX === null) {
+                        hoveredScreenX = sx;
+                        hoveredLeftGid = null;
+                        hoveredRightGid = gid;
+                        hoveredLeftAdvance = null;
+                    } else {
+                        c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH);
+                    }
+                    drawnPositions.add(sx);
+                }
                 if (drawnPositions.has(ex)) continue;
                 let rightId = gid + "-" + i + "-r";
-                let isHov = !c.guideline_lock && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
+                let isHov = !c.divider_locked && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
                 if (isHov) {
                     hoveredScreenX = ex;
+                    hoveredLeftGid = gid;
+                    hoveredLeftAdvance = advance;
+                    if (i + 1 < seqTokens.length) {
+                        let nextTok = seqTokens[i + 1];
+                        hoveredRightGid = nextTok.isChar ? c.curve_manager.getDefaultGroupForChar(nextTok.value) : nextTok.value;
+                    }
                 } else {
                     c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
                     drawnPositions.add(ex);
@@ -473,8 +534,52 @@ export class CanvasRendererService {
             }
             c.ctx.stroke(); c.ctx.restore();
             if (hoveredScreenX !== null) {
-                c.ctx.save(); c.ctx.strokeStyle = p.divider_highlight; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
-                c.ctx.beginPath(); c.ctx.moveTo(hoveredScreenX, 0); c.ctx.lineTo(hoveredScreenX, logicalH); c.ctx.stroke(); c.ctx.restore();
+                c.ctx.save();
+                c.ctx.strokeStyle = p.divider_highlight; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
+                c.ctx.beginPath(); c.ctx.moveTo(hoveredScreenX, 0); c.ctx.lineTo(hoveredScreenX, logicalH); c.ctx.stroke();
+                // LSB/RSB display — always attempt when a divider is hovered
+                if (hoveredLeftGid != null || hoveredRightGid != null) {
+                    const computeExtents = (gid) => {
+                        const cdList = c.curve_manager.getCurvesForGroup(gid) || [];
+                        let minX = Infinity, maxX = -Infinity;
+                        for (const cd of cdList) {
+                            if (!cd.effectiveVis || !cd.curve?.startNode) continue;
+                            let node = cd.curve.startNode;
+                            while (node) {
+                                if (Number.isFinite(node.x)) {
+                                    if (node.x < minX) minX = node.x;
+                                    if (node.x > maxX) maxX = node.x;
+                                }
+                                node = node.nextOnCurve;
+                            }
+                        }
+                        return { minX: minX === Infinity ? 0 : minX, maxX: maxX === -Infinity ? 0 : maxX };
+                    };
+                    c.ctx.font = '11px sans-serif';
+                    c.ctx.textBaseline = 'top';
+                    const lx = hoveredScreenX;
+                    const paintLeft = offsetX;
+                    const paintRight = logicalW + offsetX - paintLeft; // same as logicalW
+                    const labelY = offsetY + c.canvas_size_height * c.scale - 18;
+                    if (hoveredLeftGid) {
+                        const leftExt = computeExtents(hoveredLeftGid);
+                        let leftGroup = c.curve_manager.treeItems.get(hoveredLeftGid);
+                        let leftAdv = (leftGroup && leftGroup.advance !== undefined) ? leftGroup.advance : 1000;
+                        const rsb = leftAdv - leftExt.maxX;
+                        c.ctx.fillStyle = p.divider_highlight;
+                        c.ctx.textAlign = 'right';
+                        c.ctx.fillText('RSB ' + Math.round(rsb), Math.max(lx - 6, paintLeft), labelY);
+                    }
+                    if (hoveredRightGid) {
+                        const rightExt = computeExtents(hoveredRightGid);
+                        const lsb = rightExt.minX;
+                        c.ctx.fillStyle = p.divider_highlight;
+                        c.ctx.textAlign = 'left';
+                        c.ctx.fillText('LSB ' + Math.round(lsb), Math.min(lx + 6, paintRight - 60), labelY);
+                    }
+                    c.ctx.restore();
+                }
+                c.ctx.restore();
             }
         }
         for (let i = 0; i < seqTokens.length; i++) {

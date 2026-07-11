@@ -439,6 +439,10 @@ export class CanvasUtilsService {
                     let prevGid = prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value;
                     bestDist = dl;
                     best = { groupId: prevGid, isRight: true, screenX: sx, seqIndex: i - 1 };
+                } else {
+                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
+                    bestDist = dl;
+                    best = { groupId: gid, screenX: sx, seqIndex: 0, isLeftEdge: true };
                 }
             }
             if (dr < HIT_THRESHOLD && dr < bestDist) {

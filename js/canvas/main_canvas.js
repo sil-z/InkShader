@@ -58,6 +58,18 @@ class MainCanvasBase extends HTMLElement {
         this.snap_alignment_enabled = true;
         this.snap_coincident_enabled = true;
         this.divider_visible = true;
+        this.divider_locked = false;
+        /** Metric guideline state (independent of user guidelines and guideline_lock) */
+        this.metric_guidelines = {
+            locked: false,
+            items: {
+                ascender:  { visible: true },
+                descender: { visible: true },
+                x_height:  { visible: true },
+                cap_height:{ visible: true },
+                baseline:  { visible: true }
+            }
+        };
         this.viewportConfig = {
             rulerWidth: this.ruler_size,
             rulerHeight: this.ruler_size,
