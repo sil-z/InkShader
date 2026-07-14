@@ -379,14 +379,15 @@ export class CanvasUtilsService {
     }
     hitTestUserGuides(mouseX, mouseY) {
         const c = this.canvas;
-        if (!c.user_guidelines || c.user_guidelines.length === 0) return null;
+        if (!c.guidelines || c.guidelines.length === 0) return null;
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
         const rad = Math.PI / 180;
         const LINE_HIT = 8;
         const DOT_HIT = 6;
         let bestDot = null, bestDotDist = Infinity;
         let bestLine = null, bestLineDist = Infinity;
-        for (const g of c.user_guidelines) {
+        for (const g of c.guidelines) {
+            if (g._temp) continue;
             const sx = g.x * c.scale + offsetX;
             const sy = g.y * c.scale + offsetY;
             const dotDist = Math.hypot(mouseX - sx, mouseY - sy);
@@ -448,6 +449,42 @@ export class CanvasUtilsService {
             if (dr < HIT_THRESHOLD && dr < bestDist) {
                 bestDist = dr;
                 best = { groupId: gid, isRight: true, screenX: ex, seqIndex: i };
+            }
+        }
+        return best;
+    }
+    hitTestMetricGuidelines(mouseX, mouseY) {
+        const c = this.canvas;
+        const mg = c.metric_guidelines;
+        if (!mg || !mg.items) return null;
+        const fs = c.fontSettings || {};
+        const upm = fs.upm || 1000;
+        const fontH = c.canvas_size_height * c.scale;
+        const { x: offsetX, y: offsetY } = this.getLogicalOffset();
+        const baselineY = offsetY + 0.8 * fontH;
+        const metricTypes = [
+            { key: 'ascender',   value: fs.ascender ?? 800 },
+            { key: 'descender',  value: fs.descender ?? -200 },
+            { key: 'x_height',   value: fs.x_height ?? 500 },
+            { key: 'cap_height', value: fs.cap_height ?? 700 },
+            { key: 'baseline',   value: 0 }
+        ];
+        const HIT_THRESHOLD = 8;
+        const { width: logicalW } = c.viewportService.getCanvasUserSpaceSize();
+        let best = null, bestDist = Infinity;
+        for (const mt of metricTypes) {
+            const item = mg.items[mt.key];
+            if (!item || item.visible === false) continue;
+            const sy = baselineY - (mt.value / upm) * fontH;
+            // Horizontal line from (0, sy) to (logicalW, sy)
+            const dx = mouseX - 0;
+            const dy = mouseY - sy;
+            // Distance from point to horizontal line = absolute vertical distance
+            const dist = Math.abs(dy);
+            // Check if mouseX is within horizontal range (with padding)
+            if (mouseX >= -HIT_THRESHOLD && mouseX <= logicalW + HIT_THRESHOLD && dist < HIT_THRESHOLD && dist < bestDist) {
+                bestDist = dist;
+                best = mt.key;
             }
         }
         return best;

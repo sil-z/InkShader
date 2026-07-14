@@ -1,6 +1,11 @@
 // js/core/bezier/snapshot_serializer.js — Snapshot serialization/deserialization (JSON I/O)
 import { Curve } from './curve.js';
 import { CurveNode } from './node.js';
+
+const CONTROL_MODE_TO_STR = { 0: "corner", 1: "smooth", 2: "symmetric" };
+const CONTROL_MODE_FROM_STR = Object.fromEntries(
+    Object.entries(CONTROL_MODE_TO_STR).map(([k, v]) => [v, Number(k)])
+);
 /**
  * SnapshotSerializer: handles file format import/export, snapshot object deserialization and reconstruction.
  * Depends on CurveStore (node reconstruction) and TreeStore (tree structure reconstruction).
@@ -55,32 +60,18 @@ export class SnapshotSerializer {
             this._sequenceService.activeSequenceIndices = new Set(data.editor_active_indices);
         }
         this._sequenceService.defaultGlyphs.clear();
-        if (data.editor_default_glyphs) {
-            for (let [charCode, groupName] of Object.entries(data.editor_default_glyphs)) {
-                this._sequenceService.defaultGlyphs.set(charCode, groupName);
-            }
-        }
         let hasPartialErrors = false;
-        if (data.components) {
-            for (let compKey in data.components) {
-                try {
-                    let comp = data.components[compKey];
-                    let gid = comp.name || compKey;
-                    this._reconstructGroup(gid, comp, null, comp.char_code || null);
-                } catch (e) {
-                    hasPartialErrors = true;
-                }
-            }
-        }
-        if (data.ch) {
-            for (let charKey in data.ch) {
-                try {
-                    let charData = data.ch[charKey];
-                    let gid = charData.name || charKey;
-                    let charCode = charData.char_code !== undefined ? charData.char_code : charKey;
-                    this._reconstructGroup(gid, charData, null, charCode);
-                } catch (e) {
-                    hasPartialErrors = true;
+        if (data.glyphs) {
+            for (let groupName in data.glyphs) {
+                if (Object.prototype.hasOwnProperty.call(data.glyphs, groupName)) {
+                    try {
+                        const gData = data.glyphs[groupName];
+                        const gid = gData.name || groupName;
+                        const charCode = gData.char_code !== undefined ? gData.char_code : null;
+                        this._reconstructGroup(gid, gData, null, charCode);
+                    } catch (e) {
+                        hasPartialErrors = true;
+                    }
                 }
             }
         }
@@ -106,39 +97,33 @@ export class SnapshotSerializer {
                 this._sequenceService.defaultGlyphs.set(charCode, gid);
             }
         }
-        if (gData.paths) {
-            for (let pathName in gData.paths) {
+        if (gData.children) {
+            for (let childIdx = 0; childIdx < gData.children.length; childIdx++) {
                 try {
-                    const pData = gData.paths[pathName];
-                    const uniqueCurveId = this._treeStore.ensureUniqueName(pathName);
-                    this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, pData, gid);
-                    const itemId = uniqueCurveId;
-                    this._treeStore.treeItems.set(itemId, {
-                        id: itemId, type: 'curve', curveId: uniqueCurveId, name: uniqueCurveId, parentId: gid,
-                        locked: pData.locked === true,
-                        visible: pData.visible !== false
-                    });
-                    this._treeStore.treeItems.get(gid).children.push(itemId);
-                } catch (e) { /* skip corrupted path */ }
+                    const child = gData.children[childIdx];
+                    if (child.type === 'path') {
+                        const uniqueCurveId = this._treeStore.ensureUniqueName(child.name);
+                        this._curveStore.reconstructCurveFromSnapshotData(uniqueCurveId, child, gid);
+                        this._treeStore.treeItems.set(uniqueCurveId, {
+                            id: uniqueCurveId, type: 'curve', curveId: uniqueCurveId, name: uniqueCurveId, parentId: gid,
+                            locked: child.locked === true,
+                            visible: child.visible !== false
+                        });
+                        this._treeStore.treeItems.get(gid).children.push(uniqueCurveId);
+                    } else if (child.type === 'component') {
+                        const matrix = Array.isArray(child.transform) ? new DOMMatrix(child.transform) : new DOMMatrix();
+                        const uniqueRefName = this._treeStore.ensureUniqueName(child.name);
+                        this._treeStore.treeItems.set(uniqueRefName, {
+                            id: uniqueRefName, type: 'group', name: uniqueRefName, parentId: gid,
+                            children: [], isRef: true, refId: child.component_id, transform: matrix,
+                            locked: child.locked === true,
+                            visible: child.visible !== false
+                        });
+                        this._treeStore.treeItems.get(gid).children.push(uniqueRefName);
+                    }
+                } catch (e) { /* skip corrupted child */ }
             }
         }
-        if (gData.components) {
-            for (let refName in gData.components) {
-                try {
-                    const rData = gData.components[refName];
-                    const matrix = Array.isArray(rData.transform) ? new DOMMatrix(rData.transform) : new DOMMatrix();
-                    const uniqueRefName = this._treeStore.ensureUniqueName(refName);
-                    this._treeStore.treeItems.set(uniqueRefName, {
-                        id: uniqueRefName, type: 'group', name: uniqueRefName, parentId: gid,
-                        children: [], isRef: true, refId: rData.component_id, transform: matrix,
-                        locked: rData.locked === true,
-                        visible: rData.visible !== false
-                    });
-                    this._treeStore.treeItems.get(gid).children.push(uniqueRefName);
-                } catch (e) { /* skip corrupted ref */ }
-            }
-        }
-        this._treeStore.applyTreeChildOrder(gid, gData.tree_child_order);
     }
     // =========================================================================
     // Incremental replacement (undo/redo patch)
@@ -172,16 +157,17 @@ export class SnapshotSerializer {
     // =========================================================================
     // Export
     // =========================================================================
-    exportJSON(editorState) {
+    exportJSON(editorState, extraState = {}) {
+        const { prevGlyphs, dirtyGlyphs } = extraState;
         const fontSettings = editorState.font_settings || {};
         let file = {
-            "version": "1.0", "canvas_size_width": editorState.canvas_size_width, "canvas_size_height": editorState.canvas_size_height,
-            "editor_guideline_h": editorState.guidelines_h || [], "editor_guideline_v": editorState.guidelines_v || [],
+            "version": "1.0",
+            "editor_guidelines": (editorState.guidelines || []).map(g => ({
+                id: g.id, x: g.x, y: g.y, angle: g.angle
+            })),
             "editor_guideline_lock": editorState.guideline_lock || false,
-            "editor_user_guidelines": (editorState.user_guidelines || []).map(g => ({ id: g.id, type: g.type, x: g.x, y: g.y, angle: g.angle || 0 })),
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
-            "editor_fill_color": editorState.fill_color, "editor_stroke_color": editorState.stroke_color,
             "family_name": fontSettings.family || "InkShader_Default_Font",
             "project_name": fontSettings.project_name || "",
             "basic_spacing": fontSettings.basic_spacing ?? 1000,
@@ -207,69 +193,98 @@ export class SnapshotSerializer {
             "x_height": fontSettings.x_height ?? 500,
             "cap_height": fontSettings.cap_height ?? 700,
             "font_version": fontSettings.version || "1.0",
-            "ch": {}, "components": {}
+            "glyphs": {}
         };
-        const serializeCurve = (curve) => {
-            let pathData = {
-                "closed": curve.closed, "stroke_width": curve.stroke_width, "smart_stroke": curve.smart_stroke,
-                "smart_stroke_clockwise": curve.smart_stroke_clockwise !== false,
-                "show_skeleton": curve.show_skeleton, "visible": curve.visible !== false, "locked": curve.locked === true,
-                "render_mode": "auto", "vertices": {}
-            };
-            let current = curve.startNode; let order = 0;
+        const serializeVertices = (curve) => {
+            const vertices = [];
+            let current = curve.startNode;
             while (current) {
-                let cleanNodeId = current.node_id || `n_${Date.now().toString(36)}_${Math.floor(Math.random() * 10000)}`;
-                pathData.vertices[cleanNodeId] = {
-                    "order": order, "node_id": cleanNodeId, "x": current.x, "y": current.y,
-                    "start": current === curve.startNode, "end": current === curve.endNode,
-                    "smooth": current.control_mode === 1 || current.control_mode === 2, "control_mode": current.control_mode,
-                    "relate_last": null, "relate_next": null,
-                    "control_1": { "active": current.control1 !== null, "x": current.control1 ? current.control1.x : current.x, "y": current.control1 ? current.control1.y : current.y },
-                    "control_2": { "active": current.control2 !== null, "x": current.control2 ? current.control2.x : current.x, "y": current.control2 ? current.control2.y : current.y }
+                const v = {
+                    "x": current.x, "y": current.y,
+                    "control_mode": CONTROL_MODE_TO_STR[current.control_mode] ?? "corner"
                 };
-                order++; current = current.nextOnCurve;
+                if (current.control1) {
+                    v.control_1 = { "x": current.control1.x, "y": current.control1.y };
+                }
+                if (current.control2) {
+                    v.control_2 = { "x": current.control2.x, "y": current.control2.y };
+                }
+                vertices.push(v);
+                current = current.nextOnCurve;
             }
-            return pathData;
+            return vertices;
         };
-        const serializeGroup = (groupItem) => {
-            let result = {
-                "original_id": groupItem.name, "name": groupItem.name, "char_code": groupItem.charCode,
-                "advance": groupItem.advance !== undefined ? groupItem.advance : 1000, "paths": {}, "components": {},
-                "locked": groupItem.locked === true,
-                "visible": groupItem.visible !== false,
-                "tree_child_order": groupItem.children
-                    .map((cid) => this._treeStore.treeItems.get(cid)?.name || cid)
-                    .filter(Boolean)
-            };
+        const serializeChildren = (groupItem) => {
+            const children = [];
             for (let childId of groupItem.children) {
                 let child = this._treeStore.treeItems.get(childId);
                 if (!child) continue;
                 if (child.type === 'curve') {
                     let curve = this._curveStore.curves.find(c => c.id === child.curveId);
-                    if (curve) result.paths[child.name] = serializeCurve(curve);
+                    if (curve) {
+                        children.push({
+                            "type": "path",
+                            "name": child.name,
+                            "closed": curve.closed,
+                            "stroke_width": curve.stroke_width,
+                            "smart_stroke": curve.smart_stroke,
+                            "smart_stroke_clockwise": curve.smart_stroke_clockwise !== false,
+                            "show_skeleton": curve.show_skeleton,
+                            "visible": curve.visible !== false,
+                            "locked": curve.locked === true,
+                            "vertices": serializeVertices(curve)
+                        });
+                    }
                 } else if (child.type === 'group') {
                     if (child.isRef) {
                         let targetGroup = this._treeStore.treeItems.get(child.refId);
-                        result.components[child.name] = {
+                        children.push({
+                            "type": "component",
+                            "name": child.name,
                             "component_id": targetGroup ? targetGroup.name : child.refId,
                             "transform": [1, 0, 0, 1, child.transform.e, child.transform.f],
-                            "visible": child.visible !== false, "locked": child.locked === true
-                        };
+                            "visible": child.visible !== false,
+                            "locked": child.locked === true
+                        });
                     } else {
-                        result.components[child.name] = { "component_id": child.name, "transform": [1, 0, 0, 1, 0, 0] };
+                        children.push({
+                            "type": "component",
+                            "name": child.name,
+                            "component_id": child.name,
+                            "transform": [1, 0, 0, 1, 0, 0],
+                            "visible": child.visible !== false,
+                            "locked": child.locked === true
+                        });
                     }
                 }
             }
-            return result;
+            return children;
         };
         file.editor_root_order = this._treeStore.rootChildren
             .map((cid) => this._treeStore.treeItems.get(cid)?.name || cid)
             .filter(Boolean);
+        const hasPrevGlyphs = prevGlyphs && typeof prevGlyphs === 'object' && !Array.isArray(prevGlyphs);
+        const hasDirtyGlyphs = dirtyGlyphs && dirtyGlyphs instanceof Set && dirtyGlyphs.size > 0;
+        const useIncremental = hasPrevGlyphs;
+
         for (let [id, item] of this._treeStore.treeItems.entries()) {
             if (item.type === 'group' && !item.isRef && item.parentId === null) {
-                let serializedData = serializeGroup(item);
-                if (item.charCode !== null && item.charCode !== undefined) file.ch[item.name] = serializedData;
-                else file.components[item.name] = serializedData;
+                if (useIncremental && !hasDirtyGlyphs && prevGlyphs[item.name] !== undefined) {
+                    // No dirty glyphs at all — reuse every glyph from previous snapshot
+                    file.glyphs[item.name] = prevGlyphs[item.name];
+                } else if (useIncremental && hasDirtyGlyphs && !dirtyGlyphs.has(item.name) && prevGlyphs[item.name] !== undefined) {
+                    // This specific glyph is clean — reuse its previous snapshot data
+                    file.glyphs[item.name] = prevGlyphs[item.name];
+                } else {
+                    file.glyphs[item.name] = {
+                        "name": item.name,
+                        "char_code": item.charCode,
+                        "advance": item.advance !== undefined ? item.advance : 1000,
+                        "locked": item.locked === true,
+                        "visible": item.visible !== false,
+                        "children": serializeChildren(item)
+                    };
+                }
             }
         }
         return JSON.stringify(file, null, 4);

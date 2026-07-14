@@ -72,7 +72,9 @@ const POS_KEY = 'npp_pos';
 const DOCK_KEY = 'npp_docked';
 
 function _toModelY(propId, value, canvasHeight) {
-    return Y_PROPS.has(propId) ? canvasHeight - value : value;
+    // design coordinate: baseline = 0, ascender = +800, descender = -200
+    // internal node.y: baseline = 800, ascender = 0, descender = 1000
+    return Y_PROPS.has(propId) ? 0.8 * canvasHeight - value : value;
 }
 
 export class NodePropertyPopup extends HTMLElement {
@@ -148,7 +150,13 @@ export class NodePropertyPopup extends HTMLElement {
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
-            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, _toModelY(propId, numVal, this._canvasSizeHeight), { recordHistory: false });
+            if (propId) {
+                let modelVal = _toModelY(propId, numVal, this._canvasSizeHeight);
+                if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
+                    modelVal = this._displayXToModelX(modelVal);
+                }
+                CanvasDispatcher.requestUpdateNodeProperty(marker, propId, modelVal, { recordHistory: false });
+            }
         });
 
         this.container.addEventListener('change', (e) => {
@@ -161,7 +169,13 @@ export class NodePropertyPopup extends HTMLElement {
             const marker = this._resolveMarker(this._anchorNodeId);
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
-            if (propId) CanvasDispatcher.requestUpdateNodeProperty(marker, propId, _toModelY(propId, numVal, this._canvasSizeHeight), { recordHistory: true });
+            if (propId) {
+                let modelVal = _toModelY(propId, numVal, this._canvasSizeHeight);
+                if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
+                    modelVal = this._displayXToModelX(modelVal);
+                }
+                CanvasDispatcher.requestUpdateNodeProperty(marker, propId, modelVal, { recordHistory: true });
+            }
         });
 
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this._handleStoreStateChanged(e));
@@ -244,6 +258,15 @@ export class NodePropertyPopup extends HTMLElement {
         return EditorModel.resolveNodeMarker(anchorId);
     }
 
+    _displayXToModelX(displayX) {
+        const marker = this._resolveMarker(this._anchorNodeId);
+        if (!marker?.id) return displayX;
+        const node = EditorModel.getNodeReadByMarkerId(marker.id);
+        if (!node?.groupId) return displayX;
+        const off = EditorModel.getSeqOffsetForGroup(node.groupId) || 0;
+        return displayX - off;
+    }
+
     _patchValues(anchorId) {
         if (!anchorId) return;
         const node = EditorModel.getNodeReadByMarkerId(anchorId);
@@ -263,19 +286,20 @@ export class NodePropertyPopup extends HTMLElement {
         };
 
         const ch = this._canvasSizeHeight;
-        patch('npp_x', node.x.toFixed(1));
-        patch('npp_y', (ch - node.y).toFixed(1));
+        const seqOff = node.groupId ? (EditorModel.getSeqOffsetForGroup(node.groupId) || 0) : 0;
+        patch('npp_x', (node.x + seqOff).toFixed(1));
+        patch('npp_y', (0.8 * ch - node.y).toFixed(1));
 
         const hasC1 = !!node.control1;
-        patch('npp_in_x', hasC1 ? node.control1.x.toFixed(1) : '', !hasC1);
-        patch('npp_in_y', hasC1 ? (ch - node.control1.y).toFixed(1) : '', !hasC1);
+        patch('npp_in_x', hasC1 ? (node.control1.x + seqOff).toFixed(1) : '', !hasC1);
+        patch('npp_in_y', hasC1 ? (0.8 * ch - node.control1.y).toFixed(1) : '', !hasC1);
         patch('npp_in_a', hasC1
             ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC1);
 
         const hasC2 = !!node.control2;
-        patch('npp_out_x', hasC2 ? node.control2.x.toFixed(1) : '', !hasC2);
-        patch('npp_out_y', hasC2 ? (ch - node.control2.y).toFixed(1) : '', !hasC2);
+        patch('npp_out_x', hasC2 ? (node.control2.x + seqOff).toFixed(1) : '', !hasC2);
+        patch('npp_out_y', hasC2 ? (0.8 * ch - node.control2.y).toFixed(1) : '', !hasC2);
         patch('npp_out_a', hasC2
             ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC2);
@@ -284,12 +308,16 @@ export class NodePropertyPopup extends HTMLElement {
     _captureInputSnapshot(target) {
         const marker = this._resolveMarker(this._anchorNodeId);
         const propId = PROP_MAP[target.id];
+        let snapVal = _toModelY(propId, numberFromInput(target), this._canvasSizeHeight);
+        if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
+            snapVal = this._displayXToModelX(snapVal);
+        }
         this._inputSnapshot = {
             id: target.id,
             marker,
             propId,
-            // Convert display Y → model Y so _restoreInput writes the correct value
-            value: _toModelY(propId, numberFromInput(target), this._canvasSizeHeight)
+            // Convert display Y → model Y so _restoreInputSnapshot writes the correct model value
+            value: snapVal
         };
     }
 

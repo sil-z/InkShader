@@ -41,6 +41,7 @@ export function pickNodesReadSnapshot(curveManager, markerIds = []) {
         nodesByMarkerId[markerId] = {
             x: node.x,
             y: node.y,
+            groupId: node.curve?.groupId || null,
             control1: node.control1
                 ? { x: node.control1.x, y: node.control1.y }
                 : null,

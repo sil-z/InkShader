@@ -383,35 +383,40 @@ export class CanvasController {
             if (activeName) {
                 const projectData = await StorageUtils.loadProject(activeName);
                 if (projectData) {
-                    let snapshotStr = "";
-                    let data = null;
-                    if (projectData.latestSnapshot) {
-                        snapshotStr = JSON.stringify(projectData.latestSnapshot);
-                        data = projectData.latestSnapshot;
-                    } else if (typeof projectData === 'string') {
-                        snapshotStr = projectData;
-                        data = JSON.parse(projectData);
-                    } else {
-                        snapshotStr = JSON.stringify(projectData);
-                        data = projectData;
-                    }
-                    await c.commands.loadSnapshotCommand(snapshotStr);
-                    const sanitize = (entry) => (typeof c.history._sanitizeCommandEntry === 'function' ? c.history._sanitizeCommandEntry(entry) : entry);
-                    c.commandStack = Array.isArray(projectData.commandStack) ? projectData.commandStack.map(sanitize).filter(Boolean) : [];
-                    c.redoCommandStack = Array.isArray(projectData.redoCommandStack) ? projectData.redoCommandStack.map(sanitize).filter(Boolean) : [];
-                    loaded = true;
+                    try {
+                        let snapshotStr = "";
+                        let data = null;
+                        if (projectData.latestSnapshot) {
+                            snapshotStr = JSON.stringify(projectData.latestSnapshot);
+                            data = projectData.latestSnapshot;
+                        } else if (typeof projectData === 'string') {
+                            snapshotStr = projectData;
+                            data = JSON.parse(projectData);
+                        } else {
+                            snapshotStr = JSON.stringify(projectData);
+                            data = projectData;
+                        }
+                        await c.commands.loadSnapshotCommand(snapshotStr);
+                        const sanitize = (entry) => (typeof c.history._sanitizeCommandEntry === 'function' ? c.history._sanitizeCommandEntry(entry) : entry);
+                        c.commandStack = Array.isArray(projectData.commandStack) ? projectData.commandStack.map(sanitize).filter(Boolean) : [];
+                        c.redoCommandStack = Array.isArray(projectData.redoCommandStack) ? projectData.redoCommandStack.map(sanitize).filter(Boolean) : [];
+                        loaded = true;
 
-                    let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
-                    let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
-                    if (!seqActiveIndices.length && seqText) {
-                        let tokens = c.curve_manager.parseSequence(seqText);
-                        seqActiveIndices = tokens.map((_, i) => i);
+                        let seqText = viewState?.sequence_text ?? data?.editor_sequence ?? "";
+                        let seqActiveIndices = viewState?.active_sequence_indices ?? data?.editor_active_indices ?? [];
+                        if (!seqActiveIndices.length && seqText) {
+                            let tokens = c.curve_manager.parseSequence(seqText);
+                            seqActiveIndices = tokens.map((_, i) => i);
+                        }
+                        this.dispatchAction(
+                            CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                            { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
+                            { source: "restore-state" }
+                        );
+                    } catch (loadError) {
+                        console.error(`[Restore] Failed to load project "${activeName}":`, loadError);
+                        // Fall through to !loaded path below
                     }
-                    this.dispatchAction(
-                        CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
-                        { payload: { text: seqText, activeIndices: seqActiveIndices }, options: { recordHistory: false } },
-                        { source: "restore-state" }
-                    );
                 }
             }
 
@@ -423,7 +428,7 @@ export class CanvasController {
                     if (typeof savedState === 'string') {
                         snapshotStr = savedState;
                         data = JSON.parse(savedState);
-                    } else if (savedState.runtimeVersion === 2 && savedState.latestSnapshot) {
+                    } else if (savedState.latestSnapshot) {
                         snapshotStr = JSON.stringify(savedState.latestSnapshot);
                         data = savedState.latestSnapshot;
                     } else {
@@ -456,7 +461,6 @@ export class CanvasController {
 
             c.is_dirty = true;
             c.currentStateObj = c.history.getHistoryState();
-            if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') c.history._reconcileRuntimeHistoryStacks();
 
             if (viewState && viewState.selected_tree_ids?.length) {
                 const validIds = viewState.selected_tree_ids.filter((id) => c.curve_manager.treeItems.has(id));
@@ -528,6 +532,5 @@ export class CanvasController {
         }
 
         this.canvas.currentStateObj = this.canvas.history.getHistoryState();
-        if (typeof this.canvas.history._reconcileRuntimeHistoryStacks === 'function') this.canvas.history._reconcileRuntimeHistoryStacks();
     }
 }

@@ -97,10 +97,19 @@ export class TransformEngine {
         if (Math.abs(startH) > 0.01 && ['tl', 'tr', 'bl', 'br', 'tc', 'bc'].includes(action)) sy = currH / startH;
         
         // Keep aspect ratio scaling
-        if (keepRatio && ['tl', 'tr', 'bl', 'br'].includes(action)) {
-            let maxScale = Math.max(Math.abs(sx), Math.abs(sy));
-            sx = maxScale * Math.sign(sx); 
-            sy = maxScale * Math.sign(sy);
+        if (keepRatio) {
+            if (['tl', 'tr', 'bl', 'br'].includes(action)) {
+                // Corner handles: use the larger scale factor for both axes
+                let maxScale = Math.max(Math.abs(sx), Math.abs(sy));
+                sx = maxScale * Math.sign(sx);
+                sy = maxScale * Math.sign(sy);
+            } else if (['ml', 'mr'].includes(action)) {
+                // Side handles (left/right): match vertical scale to horizontal
+                sy = sx;
+            } else if (['tc', 'bc'].includes(action)) {
+                // Side handles (top/bottom): match horizontal scale to vertical
+                sx = sy;
+            }
         }
         return { sx, sy };
     }

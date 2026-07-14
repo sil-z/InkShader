@@ -80,6 +80,10 @@ export class GlyphSequenceBar extends HTMLElement {
         const onRender = () => {
             const c = this._canvas;
             if (!c) return;
+            if (c.current_state === 'DRAGGING_DIVIDER') {
+                this._render();
+                return;
+            }
             const offKey = `${c.offset?.x ?? 0},${c.scale}`;
             if (offKey !== this._offSig) {
                 this._offSig = offKey;

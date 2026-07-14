@@ -190,6 +190,7 @@ export function getNodeReadByMarkerId(markerId) {
     return {
         x: node.x,
         y: node.y,
+        groupId: node.curve?.groupId || null,
         control1: node.control1 ? { x: node.control1.x, y: node.control1.y } : null,
         control2: node.control2 ? { x: node.control2.x, y: node.control2.y } : null
     };
@@ -266,6 +267,14 @@ function resolveSequenceLayout() {
 export function getSeqIdxForGroup(groupId, focusedSeqIdx = -1) {
     const layout = resolveSequenceLayout();
     return layout ? getSeqIdxForGroupId(layout, groupId, focusedSeqIdx) : -1;
+}
+
+export function getSeqOffsetForGroup(groupId) {
+    const layout = resolveSequenceLayout();
+    if (!layout) return 0;
+    const seqIdx = getSeqIdxForGroupId(layout, groupId);
+    if (seqIdx === -1 || typeof layout.getSeqOffset !== 'function') return 0;
+    return layout.getSeqOffset(seqIdx);
 }
 
 export function getGroupByName(name) {

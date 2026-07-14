@@ -3,7 +3,8 @@
  * Uses snapshotObj (with JSON patches applied) as source of truth; path-level/group-level resync covers structural changes like node insert/delete.
  */
 import { CurveNode } from "../../core/bezier/node.js";
-const GROUP_ROOT_KEYS = new Set(["ch", "components"]);
+const GROUP_ROOT_KEYS = new Set(["glyphs"]);
+const CONTROL_MODE_FROM_STR = { "corner": 0, "smooth": 1, "symmetric": 2 };
 const FONT_SNAPSHOT_KEYS = new Set([
     "family_name",
     "project_name",
@@ -78,11 +79,13 @@ function patchValue(patch, direction) {
         value: applyReverse ? patch.oldValue : patch.newValue
     };
 }
-function getPathDataFromSnapshot(snapshotObj, charBucket, groupName, pathName) {
-    return snapshotObj?.[charBucket]?.[groupName]?.paths?.[pathName] ?? null;
+function getGroupDataFromSnapshot(snapshotObj, groupName) {
+    return snapshotObj?.glyphs?.[groupName] ?? null;
 }
-function getGroupDataFromSnapshot(snapshotObj, charBucket, groupName) {
-    return snapshotObj?.[charBucket]?.[groupName] ?? null;
+function getPathDataFromSnapshot(snapshotObj, groupName, pathName) {
+    const group = getGroupDataFromSnapshot(snapshotObj, groupName);
+    if (!group?.children) return null;
+    return group.children.find(c => c.type === 'path' && c.name === pathName) ?? null;
 }
 function findCurveByGroupAndPathName(cm, groupName, pathName) {
     const group = cm.getGroupByName(groupName);
@@ -97,7 +100,19 @@ function findCurveByGroupAndPathName(cm, groupName, pathName) {
     return null;
 }
 function findMainNodeByVertexKey(curve, vertexKey) {
-    if (!curve?.startNode || !vertexKey) return null;
+    if (!curve?.startNode) return null;
+    // If vertexKey is a number (array index), walk to that position
+    if (typeof vertexKey === 'number') {
+        let current = curve.startNode;
+        let idx = 0;
+        while (current) {
+            if (idx === vertexKey) return current;
+            idx++;
+            current = current.nextOnCurve;
+        }
+        return null;
+    }
+    if (!vertexKey) return null;
     let current = curve.startNode;
     while (current) {
         const nodeId = current.node_id;
@@ -119,17 +134,17 @@ function deleteRootGroupByName(cm, groupName) {
     if (!group) return true;
     return cm.deleteSingleObject(group.id);
 }
-function reconstructRootGroup(cm, groupName, groupData, charBucket) {
+function reconstructRootGroup(cm, groupName, groupData) {
     if (!groupData || typeof groupData !== "object") return false;
     const existing = cm.getGroupByName(groupName);
     if (existing) cm.deleteSingleObject(existing.id);
-    const charCode = charBucket === "ch" ? groupData.char_code ?? groupName : null;
+    const charCode = groupData.char_code ?? null;
     cm._reconstructGroup(groupName, groupData, null, charCode);
     return true;
 }
 /** Rebuild runtime curve from full path data in snapshot (insert/delete nodes, vertices table replacement) */
-function resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName) {
-    const pathData = getPathDataFromSnapshot(snapshotObj, charBucket, groupName, pathName);
+function resyncPathFromSnapshot(cm, snapshotObj, groupName, pathName) {
+    const pathData = getPathDataFromSnapshot(snapshotObj, groupName, pathName);
     if (!pathData) {
         const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
         if (!curve) return true;
@@ -141,27 +156,35 @@ function resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName
     return cm.replacePathFromSnapshotData(groupName, pathName, pathData);
 }
 /** Rebuild group from full snapshot data (delete objects, components reference changes, etc.) */
-function resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName) {
-    const groupData = getGroupDataFromSnapshot(snapshotObj, charBucket, groupName);
+function resyncGroupFromSnapshot(cm, snapshotObj, groupName) {
+    const groupData = getGroupDataFromSnapshot(snapshotObj, groupName);
     if (!groupData) return deleteRootGroupByName(cm, groupName);
-    return reconstructRootGroup(cm, groupName, groupData, charBucket);
+    return reconstructRootGroup(cm, groupName, groupData);
 }
 function resyncFromSnapshotForPath(cm, snapshotObj, path) {
     if (!Array.isArray(path) || path.length < 2 || !GROUP_ROOT_KEYS.has(path[0])) return false;
-    const charBucket = path[0];
     const groupName = path[1];
     if (typeof groupName !== "string") return false;
-    if (path.length >= 3 && path[2] === "tree_child_order") {
-        return resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName);
-    }
-    if (path.length >= 4 && path[2] === "paths" && typeof path[3] === "string") {
-        return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, path[3]);
-    }
-    if (path.length >= 3 && (path[2] === "components" || path[2] === "paths")) {
-        return resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName);
-    }
+    // ["glyphs", "groupName"] — full group resync
     if (path.length === 2) {
-        return resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName);
+        return resyncGroupFromSnapshot(cm, snapshotObj, groupName);
+    }
+    // ["glyphs", "groupName", "advance"] — just update advance
+    if (path.length === 3 && path[2] === "advance") {
+        const group = cm.getGroupByName(groupName);
+        const groupData = getGroupDataFromSnapshot(snapshotObj, groupName);
+        if (!group || !groupData) return false;
+        group.advance = groupData.advance;
+        group.is_modified = true;
+        return true;
+    }
+    // ["glyphs", "groupName", "children", "pathName"] — path resync
+    if (path.length >= 4 && path[2] === "children" && typeof path[3] === "string") {
+        return resyncPathFromSnapshot(cm, snapshotObj, groupName, path[3]);
+    }
+    // ["glyphs", "groupName", "children"] — full group resync (children replaced)
+    if (path.length === 3 && path[2] === "children") {
+        return resyncGroupFromSnapshot(cm, snapshotObj, groupName);
     }
     return false;
 }
@@ -169,28 +192,28 @@ function patchTouchesGroupStructure(path) {
     if (!Array.isArray(path) || path.length < 2 || !GROUP_ROOT_KEYS.has(path[0])) return false;
     if (path.length === 2) return true;
     const seg = path[2];
-    return seg === "paths" || seg === "components" || seg === "tree_child_order";
+    return seg === "children" || seg === "advance";
 }
 function collectTouchedGroupsFromPatches(patches) {
     const keys = new Set();
     for (const patch of patches) {
         const path = patch?.path;
         if (!patchTouchesGroupStructure(path)) continue;
-        if (typeof path[1] === "string") keys.add(`${path[0]}:${path[1]}`);
+        if (typeof path[1] === "string") keys.add(`glyphs:${path[1]}`);
     }
     return keys;
 }
 /** Sync all group children order from snapshot authoritative state (patch order independent) */
 export function syncTreeHierarchyFromSnapshot(cm, snapshotObj) {
     if (!cm || !snapshotObj) return;
-    for (const bucket of GROUP_ROOT_KEYS) {
-        const groups = snapshotObj[bucket];
-        if (!groups || typeof groups !== "object") continue;
+    const groups = snapshotObj.glyphs;
+    if (groups && typeof groups === "object") {
         for (const groupName of Object.keys(groups)) {
             const gData = groups[groupName];
             const group = cm.getGroupByName(groupName);
-            if (!group || !Array.isArray(gData?.tree_child_order)) continue;
-            cm.applyTreeChildOrder(group.id, gData.tree_child_order);
+            if (!group) continue;
+            // For runtime tree, child order is maintained by the children array during reconstruction.
+            // The applyTreeChildOrder call uses the runtime tree's existing order from _reconstructGroup.
         }
     }
     if (Array.isArray(snapshotObj.editor_root_order)) {
@@ -201,9 +224,8 @@ function resyncTouchedGroupsFromSnapshot(cm, snapshotObj, patches) {
     const keys = collectTouchedGroupsFromPatches(patches);
     for (const key of keys) {
         const sep = key.indexOf(":");
-        const charBucket = key.slice(0, sep);
         const groupName = key.slice(sep + 1);
-        resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName);
+        resyncGroupFromSnapshot(cm, snapshotObj, groupName);
     }
 }
 function applyVertexField(node, field, value) {
@@ -213,7 +235,9 @@ function applyVertexField(node, field, value) {
         return true;
     }
     if (field === "control_mode") {
-        node.control_mode = value;
+        node.control_mode = typeof value === "string"
+            ? (CONTROL_MODE_FROM_STR[value] ?? 0)
+            : value;
         return true;
     }
     if (field === "smooth") {
@@ -273,34 +297,14 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
             cm.activeSequenceIndices = new Set(Array.isArray(value) ? value : []);
             cm.calculateSequenceOffsets?.();
             return true;
-        case "editor_guideline_h":
-            canvas.active_guidelines = [
-                ...(canvas.active_guidelines || []).filter((g) => g.type !== "h"),
-                ...(Array.isArray(value) ? value.map((v) => ({ type: "h", value: v })) : [])
-            ];
-            return true;
-        case "editor_guideline_v":
-            canvas.active_guidelines = [
-                ...(canvas.active_guidelines || []).filter((g) => g.type !== "v"),
-                ...(Array.isArray(value) ? value.map((v) => ({ type: "v", value: v })) : [])
-            ];
-            return true;
-        case "editor_guideline_lock":
-            canvas.guideline_lock = !!value;
-            return true;
-        case "editor_user_guidelines":
+        case "editor_guidelines":
             if (Array.isArray(value)) {
-                canvas.user_guidelines = value.map(g => ({ id: g.id, type: g.type, x: g.x, y: g.y, angle: g.angle || 0 }));
-                const maxId = canvas.user_guidelines.reduce((m, g) => Math.max(m, g.id || 0), 0);
+                canvas.guidelines = value.map(g => ({ id: g.id, x: g.x, y: g.y, angle: g.angle }));
+                const maxId = canvas.guidelines.reduce((m, g) => Math.max(m, g.id || 0), 0);
                 canvas._nextUserGuideId = maxId + 1;
             }
             return true;
-        case "canvas_size_width":
-            canvas.canvas_size_width = value;
-            return true;
-        case "canvas_size_height":
-            canvas.canvas_size_height = value;
-            return true;
+        case "editor_guideline_lock":
         default:
             if (FONT_SNAPSHOT_KEYS.has(key)) {
                 const snapshotObj = canvas.currentStateObj?.snapshotObj || {};
@@ -322,7 +326,7 @@ function applySinglePatch(cm, canvas, patch, direction, snapshotObj) {
     if (typeof groupName !== "string") return false;
     if (path.length === 2) {
         if (!shouldExist) return deleteRootGroupByName(cm, groupName);
-        return reconstructRootGroup(cm, groupName, value, charBucket);
+        return reconstructRootGroup(cm, groupName, value);
     }
     if (path[2] === "advance" && path.length === 3) {
         const group = cm.getGroupByName(groupName);
@@ -331,75 +335,72 @@ function applySinglePatch(cm, canvas, patch, direction, snapshotObj) {
         group.is_modified = true;
         return true;
     }
-    if (path[2] === "tree_child_order" && path.length >= 3) {
-        const group = cm.getGroupByName(groupName);
-        if (!group) return false;
-        const order =
-            path.length === 3 && shouldExist && Array.isArray(value)
-                ? value
-                : getGroupDataFromSnapshot(snapshotObj, charBucket, groupName)?.tree_child_order;
-        if (!Array.isArray(order)) return false;
-        cm.applyTreeChildOrder(group.id, order);
-        return true;
-    }
-    if (path[2] === "components") {
-        return resyncGroupFromSnapshot(cm, snapshotObj, charBucket, groupName);
-    }
-    if (path[2] !== "paths" || typeof path[3] !== "string") {
-        return resyncFromSnapshotForPath(cm, snapshotObj, path);
-    }
-    const pathName = path[3];
-    if (path.length === 4) {
-        if (!shouldExist) {
-            const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
-            if (!curve) return true;
-            const treeItem = Array.from(cm.treeItems.values()).find(
-                (item) => item.type === "curve" && item.curveId === curve.id
-            );
-            return treeItem ? cm.deleteSingleObject(treeItem.id) : true;
-        }
-        return cm.replacePathFromSnapshotData(groupName, pathName, value);
-    }
-    if (path.length === 5 && path[4] === "vertices") {
-        return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName);
-    }
-    if (path.length === 5 && path[4] !== "vertices") {
-        const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
-        if (!curve || !shouldExist) return false;
-        const prop = path[4];
-        if (prop in curve) {
-            curve[prop] = value;
-            if (prop === "locked" || prop === "visible") {
+    if (path[2] === "children" && path.length >= 4 && typeof path[3] === "string") {
+        const pathName = path[3];
+        if (path.length === 4) {
+            if (!shouldExist) {
+                // Delete a path child
+                const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
+                if (!curve) return true;
                 const treeItem = Array.from(cm.treeItems.values()).find(
                     (item) => item.type === "curve" && item.curveId === curve.id
                 );
-                if (treeItem) treeItem[prop] = value;
+                return treeItem ? cm.deleteSingleObject(treeItem.id) : true;
             }
-            if (curve.groupId) cm.invalidateGroupCache?.(curve.groupId);
-            return true;
+            // Replace/restore a path child (value is the full path data from snapshot)
+            return cm.replacePathFromSnapshotData(groupName, pathName, value);
         }
-        return false;
+        // "children" → path-level property change
+        if (path.length === 5 && path[4] !== "vertices") {
+            const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
+            if (!curve || !shouldExist) return false;
+            const prop = path[4];
+            if (prop in curve) {
+                curve[prop] = value;
+                if (prop === "locked" || prop === "visible") {
+                    const treeItem = Array.from(cm.treeItems.values()).find(
+                        (item) => item.type === "curve" && item.curveId === curve.id
+                    );
+                    if (treeItem) treeItem[prop] = value;
+                }
+                if (curve.groupId) cm.invalidateGroupCache?.(curve.groupId);
+                return true;
+            }
+            return false;
+        }
+        // "children" → vertices change
+        if (path[4] !== "vertices" || typeof path[5] === "undefined") {
+            return resyncFromSnapshotForPath(cm, snapshotObj, path);
+        }
+        const vertexIdx = path[5]; // array index
+        if (path.length === 6) {
+            return resyncPathFromSnapshot(cm, snapshotObj, groupName, pathName);
+        }
+        const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
+        if (!curve) return resyncPathFromSnapshot(cm, snapshotObj, groupName, pathName);
+        const node = findMainNodeByVertexKey(curve, vertexIdx);
+        if (!node) {
+            return resyncPathFromSnapshot(cm, snapshotObj, groupName, pathName);
+        }
+        if (path.length === 7) {
+            if (!shouldExist) return false;
+            return applyVertexField(node, path[6], value);
+        }
+        if (path.length === 8 && (path[6] === "control_1" || path[6] === "control_2")) {
+            if (!shouldExist) return false;
+            return ensureControlHandle(node, curve, cm, path[6], path[7], value);
+        }
+        return resyncPathFromSnapshot(cm, snapshotObj, groupName, pathName);
     }
-    if (path[4] !== "vertices" || typeof path[5] !== "string") return false;
-    const nodeId = path[5];
-    if (path.length === 6) {
-        return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName);
+    // ["glyphs", "groupName", "children"] — full children replacement
+    if (path.length === 3 && path[2] === "children") {
+        if (!shouldExist) return deleteRootGroupByName(cm, groupName);
+        return reconstructRootGroup(cm, groupName, getGroupDataFromSnapshot(snapshotObj, groupName));
     }
-    const curve = findCurveByGroupAndPathName(cm, groupName, pathName);
-    if (!curve) return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName);
-    const node = findMainNodeByVertexKey(curve, nodeId);
-    if (!node) {
-        return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName);
+    // Nested group (sub-group) within children
+    if (path[2] === "children" && path.length >= 4 && typeof path[3] === "number") {
+        return resyncGroupFromSnapshot(cm, snapshotObj, groupName);
     }
-    if (path.length === 7) {
-        if (!shouldExist) return false;
-        return applyVertexField(node, path[6], value);
-    }
-    if (path.length === 8 && (path[6] === "control_1" || path[6] === "control_2")) {
-        if (!shouldExist) return false;
-        return ensureControlHandle(node, curve, cm, path[6], path[7], value);
-    }
-    return resyncPathFromSnapshot(cm, snapshotObj, charBucket, groupName, pathName);
 }
 /**
  * @returns {{ ok: boolean, incremental: boolean, failedPatch?: object }}
@@ -441,16 +442,14 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     if (!cm || !snapshotObj) return false;
     await cm.loadFromSnapshotObject(snapshotObj);
     syncTreeHierarchyFromSnapshot(cm, snapshotObj);
-    if (Array.isArray(snapshotObj.editor_guideline_h) || Array.isArray(snapshotObj.editor_guideline_v)) {
-        const h = (snapshotObj.editor_guideline_h || []).map((v) => ({ type: "h", value: v }));
-        const v = (snapshotObj.editor_guideline_v || []).map((val) => ({ type: "v", value: val }));
-        canvas.active_guidelines = [...h, ...v];
+    if (Array.isArray(snapshotObj.editor_guidelines)) {
+        canvas.guidelines = snapshotObj.editor_guidelines.map(g => ({
+            id: g.id, x: g.x, y: g.y, angle: g.angle
+        }));
     }
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
-    if (snapshotObj.canvas_size_width) canvas.canvas_size_width = snapshotObj.canvas_size_width;
-    if (snapshotObj.canvas_size_height) canvas.canvas_size_height = snapshotObj.canvas_size_height;
     canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
     return true;
 }

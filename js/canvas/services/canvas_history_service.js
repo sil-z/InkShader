@@ -87,20 +87,7 @@ export class CanvasHistoryService {
 
     _hasTreeHierarchyChange(beforeSnap, afterSnap) {
         if (!beforeSnap || !afterSnap) return false;
-        if (JSON.stringify(beforeSnap.editor_root_order || null) !== JSON.stringify(afterSnap.editor_root_order || null)) {
-            return true;
-        }
-        for (const bucket of ["ch", "components"]) {
-            const beforeBucket = beforeSnap[bucket] || {};
-            const afterBucket = afterSnap[bucket] || {};
-            const keys = new Set([...Object.keys(beforeBucket), ...Object.keys(afterBucket)]);
-            for (const groupName of keys) {
-                const a = beforeBucket[groupName]?.tree_child_order;
-                const b = afterBucket[groupName]?.tree_child_order;
-                if (JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)) return true;
-            }
-        }
-        return false;
+        return JSON.stringify(beforeSnap.editor_root_order || null) !== JSON.stringify(afterSnap.editor_root_order || null);
     }
 
     /**
@@ -180,9 +167,12 @@ export class CanvasHistoryService {
     _saveRuntimeState() {
         const c = this.canvas;
         if (!c.currentStateObj?.snapshotObj) return;
+        // Use the cached JSON string (already set by getHistoryState / _syncCurrentStateJson)
+        // instead of deepCloning the snapshotObj. This avoids re-serializing the entire document
+        // on every auto-save — the serialization cost was already paid when the snapshot was created.
+        const jsonStr = c.currentStateObj.json;
         const data = {
-            runtimeVersion: 2,
-            latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
+            latestSnapshot: jsonStr ? JSON.parse(jsonStr) : this._deepClone(c.currentStateObj.snapshotObj),
             commandStack: this._deepClone(c.commandStack || []),
             redoCommandStack: this._deepClone(c.redoCommandStack || [])
         };
@@ -242,33 +232,11 @@ export class CanvasHistoryService {
         return clean;
     }
 
+    /** @deprecated Replaced by lazy patch validation on each undo/redo — no longer needed at load time. */
     _reconcileRuntimeHistoryStacks() {
-        const c = this.canvas;
-        if (!c.currentStateObj?.snapshotObj) return;
-        const commandStack = Array.isArray(c.commandStack) ? c.commandStack : [];
-        const redoStack = Array.isArray(c.redoCommandStack) ? c.redoCommandStack : [];
-
-        let commandProbe = this._deepClone(c.currentStateObj.snapshotObj);
-        let keepCommandFrom = commandStack.length;
-        for (let i = commandStack.length - 1; i >= 0; i--) {
-            const entry = this._sanitizeCommandEntry(commandStack[i]);
-            if (!entry) break;
-            if (!this._canApplyPatches(commandProbe, entry.snapshotPatches, "undo")) break;
-            commandProbe = this._applySnapshotPatches(commandProbe, entry.snapshotPatches, "undo");
-            keepCommandFrom = i;
-        }
-        c.commandStack = commandStack.slice(keepCommandFrom).map((entry) => this._sanitizeCommandEntry(entry)).filter(Boolean);
-
-        let redoProbe = this._deepClone(c.currentStateObj.snapshotObj);
-        let keepRedoFrom = redoStack.length;
-        for (let i = redoStack.length - 1; i >= 0; i--) {
-            const entry = this._sanitizeCommandEntry(redoStack[i]);
-            if (!entry) break;
-            if (!this._canApplyPatches(redoProbe, entry.snapshotPatches, "redo")) break;
-            redoProbe = this._applySnapshotPatches(redoProbe, entry.snapshotPatches, "redo");
-            keepRedoFrom = i;
-        }
-        c.redoCommandStack = redoStack.slice(keepRedoFrom).map((entry) => this._sanitizeCommandEntry(entry)).filter(Boolean);
+        // No-op. Patch validity is now checked lazily when the user actually triggers undo/redo.
+        // The old approach replayed ALL patches on load to detect corruption early, but this was
+        // O(n * snapshot_size) on every page load — unnecessary cost for a rare edge case.
     }
 
     async _recoverAfterHistoryFailure(previousRuntimeState, commandEntry, direction, error) {
@@ -278,6 +246,13 @@ export class CanvasHistoryService {
             command: commandEntry?.commandName || "unknown-command",
             error: String(error?.message || error)
         });
+
+        alert(
+            "[InkShader DEV ALERT] undo/" + direction + " failed for command '" +
+            (commandEntry?.commandName || "?") + "': " + (error?.message || error) + "\n\n" +
+            "History recovery triggered. The corrupted history entry has been removed.\n" +
+            "This is a bug — please report it with repro steps."
+        );
 
         const brokenId = commandEntry?.id;
         if (brokenId) {
@@ -299,6 +274,10 @@ export class CanvasHistoryService {
         }
 
         if (!recovered) {
+            alert(
+                "[InkShader DEV ALERT] Primary recovery failed — falling back to current snapshot.\n" +
+                "All undo/redo history has been cleared. This indicates a serious history stack bug."
+            );
             const fallbackState = this.getHistoryState();
             c.commandStack = [];
             c.redoCommandStack = [];
@@ -358,7 +337,12 @@ export class CanvasHistoryService {
         const c = this.canvas;
         const cm = c.curve_manager;
         const meta = interactionMetaFromCanvas(c);
-        const jsonStr = c.io.save_file();
+        // Dirty glyph tracking: pass previous glyphs + dirty set to skip serializing unchanged glyphs
+        const prevGlyphs = c.currentStateObj?.snapshotObj?.glyphs || null;
+        const dirtyGlyphs = cm.getDirtyGlyphs();
+        const extraState = prevGlyphs ? { prevGlyphs, dirtyGlyphs: dirtyGlyphs.size > 0 ? dirtyGlyphs : null } : {};
+        const jsonStr = c.io.save_file(extraState);
+        cm.clearDirtyGlyphs();
         let snapshotObj = {};
         try { snapshotObj = JSON.parse(jsonStr); } catch (_) {}
         return {
@@ -557,6 +541,12 @@ export class CanvasHistoryService {
             if (forceFullSnapshotSync) {
                 await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
             } else if (patches.length === 0 && documentChanged) {
+                alert(
+                    "[InkShader DEV ALERT] undo/redo: command '" + (commandEntry?.commandName || "?") +
+                    "' reports documentChanged=true but has zero patches.\n" +
+                    "The runtime was re-synced from snapshot as fallback, but this indicates a bug\n" +
+                    "in patch generation. Please report this with repro steps."
+                );
                 await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
             } else if (patches.length > 0) {
                 if (c.history_use_patch_runtime === false) {
@@ -566,6 +556,11 @@ export class CanvasHistoryService {
                     if (!c.history_allow_snapshot_fallback) {
                         throw new Error("Patch runtime disabled and snapshot fallback is off");
                     }
+                    alert(
+                        "[InkShader DEV ALERT] history_use_patch_runtime=false — incremental patch " +
+                        "runtime is disabled. Falling back to full snapshot sync.\n" +
+                        "Command: " + (commandEntry?.commandName || "?")
+                    );
                     await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
                 } else {
                     const runtimeResult = applySnapshotPatchesToRuntime(c, patches, direction);
@@ -581,6 +576,12 @@ export class CanvasHistoryService {
                                 `Runtime patch failed at ${runtimeResult.failedPatch?.path?.join(".")}`
                             );
                         }
+                        alert(
+                            "[InkShader DEV ALERT] Runtime patch failed at " +
+                            (runtimeResult.failedPatch?.path?.join(".") || "?") +
+                            " (direction=" + direction + ", command=" + (commandEntry?.commandName || "?") + ").\n" +
+                            "Falling back to full snapshot sync. Please report this with repro steps."
+                        );
                         await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
                     }
                 }

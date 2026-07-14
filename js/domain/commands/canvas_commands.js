@@ -24,6 +24,21 @@ function snapshotNumber(snapshot, key, fallback, defaultValue) {
     return Number.isFinite(value) ? value : fallback ?? defaultValue;
 }
 
+/**
+ * Restore editor ephemeral state (guidelines, guideline_lock) from snapshot.
+ * These are top-level fields in the file format but not part of curve data.
+ */
+function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
+    if (Array.isArray(snapshotObj.editor_guidelines)) {
+        canvas.guidelines = snapshotObj.editor_guidelines.map(g => ({
+            id: g.id, x: g.x, y: g.y, angle: g.angle
+        }));
+    }
+    if (snapshotObj.editor_guideline_lock !== undefined) {
+        canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
+    }
+}
+
 function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
     return {
         family: snapshotString(snapshot, "family_name", fallback.family, "InkShader Default Font"),
@@ -71,6 +86,7 @@ export class CanvasCommands {
             await this.curve_manager.loadFromSnapshotObject(jsonStr);
             const canvas = commandCanvas(this);
             canvas.fontSettings = fontSettingsFromSnapshot(jsonStr, canvas.fontSettings);
+            restoreEditorStateFromSnapshot(canvas, jsonStr);
             return true;
         }
         if (typeof jsonStr !== "string" || jsonStr.length === 0) return false;
@@ -84,6 +100,7 @@ export class CanvasCommands {
         if (snapshotObj) {
             const canvas = commandCanvas(this);
             canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
+            restoreEditorStateFromSnapshot(canvas, snapshotObj);
         }
         return true;
     }

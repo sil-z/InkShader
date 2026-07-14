@@ -59,15 +59,17 @@ class MainCanvasBase extends HTMLElement {
         this.snap_coincident_enabled = true;
         this.divider_visible = true;
         this.divider_locked = false;
+        this._hoveredMetricGuideKey = null;
+        this._draggingMetricGuide = null;
         /** Metric guideline state (independent of user guidelines and guideline_lock) */
         this.metric_guidelines = {
             locked: false,
             items: {
+                baseline:  { visible: true },
                 ascender:  { visible: true },
                 descender: { visible: true },
                 x_height:  { visible: true },
-                cap_height:{ visible: true },
-                baseline:  { visible: true }
+                cap_height:{ visible: true }
             }
         };
         this.viewportConfig = {
@@ -89,9 +91,8 @@ class MainCanvasBase extends HTMLElement {
         this.closing_path_on_mouseup = false;
         this.previewData = null; this.mouse_pos_output = null;
         this.last_mouse_pos_x = 0; this.last_mouse_pos_y = 0;
-        this.active_guidelines = []; this.drag_initial_mouse = null;
+        this.guidelines = []; this.drag_initial_mouse = null;
         this.drag_initial_target = null; this.drag_initial_nodes = new Map();
-        this.user_guidelines = [];
         this._draggingUserGuide = null;
         this._hoveredUserGuideId = null;
         this._nextUserGuideId = 1;
@@ -108,7 +109,7 @@ class MainCanvasBase extends HTMLElement {
         this.max_command_patch_count = 800;
         this.max_granular_array_length = 256;
         this.max_granular_object_keys = 160;
-        this.granular_patch_paths = [["ch"], ["components"], ["editor_guideline_h"], ["editor_guideline_v"], ["editor_active_indices"], ["editor_user_guidelines"]];
+        this.granular_patch_paths = [["glyphs"], ["editor_guidelines"], ["editor_active_indices"]];
         this.coarse_patch_paths = [];
         /** undo/redo prefers snapshotPatches for incremental runtime updates */
         this.history_use_patch_runtime = true;

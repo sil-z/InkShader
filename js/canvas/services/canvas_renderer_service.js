@@ -36,19 +36,6 @@ export class CanvasRendererService {
             let token = seqTokens[i];
             let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
             let group = c.curve_manager.treeItems.get(groupId);
-            let advance = (group && group.advance !== undefined) ? group.advance : 1000;
-            let sx = seqOffsetX * c.scale + offsetX;
-            let sy = offsetY;
-            let sw = advance * c.scale;
-            let sh = c.canvas_size_height * c.scale;
-            c.ctx.fillStyle = p.body_bg_color;
-            c.ctx.fillRect(sx, sy, sw, sh);
-        }
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let group = c.curve_manager.treeItems.get(groupId);
             let charCode = group?.charCode;
             if (charCode != null) {
                 let displayChar;
@@ -257,10 +244,7 @@ export class CanvasRendererService {
         }
         {
             const rad = Math.PI / 180;
-            const allGuides = c.user_guidelines ? [...c.user_guidelines] : [];
-            if (c._draggingUserGuide && !allGuides.find(g => g.id === c._draggingUserGuide.id)) {
-                allGuides.push(c._draggingUserGuide);
-            }
+            const allGuides = c.guidelines || [];
             if (allGuides.length > 0) {
                 const lockActive = !!c.guideline_lock;
                 for (const g of allGuides) {
@@ -269,8 +253,9 @@ export class CanvasRendererService {
                     const a = (g.angle || 0) * rad;
                     const cosA = Math.cos(a), sinA = Math.sin(a);
                     const extend = 20000;
-                    const isHovered = !lockActive && c._hoveredUserGuideId === g.id;
-                    const isDragging = !lockActive && c._draggingUserGuide && c._draggingUserGuide.id === g.id;
+                    const isTemp = !!g._temp;
+                    const isHovered = !lockActive && !isTemp && c._hoveredUserGuideId === g.id;
+                    const isDragging = !lockActive && !isTemp && c._draggingUserGuide && c._draggingUserGuide.id === g.id;
                     let strokeColor, fillColor;
                     if (isDragging) {
                         strokeColor = p.guide_drag_stroke;
@@ -291,21 +276,15 @@ export class CanvasRendererService {
                     c.ctx.lineTo(screenX + extend * cosA, screenY - extend * sinA);
                     c.ctx.stroke();
                     c.ctx.setLineDash([]);
-                    c.ctx.fillStyle = fillColor;
-                    c.ctx.beginPath();
-                    c.ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
-                    c.ctx.fill();
+                    if (!isTemp) {
+                        c.ctx.fillStyle = fillColor;
+                        c.ctx.beginPath();
+                        c.ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
+                        c.ctx.fill();
+                    }
                     c.ctx.restore();
                 }
             }
-        }
-        if (c.active_guidelines && c.active_guidelines.length > 0) {
-            c.ctx.save(); c.ctx.strokeStyle = p.guideline_color; c.ctx.lineWidth = 1; c.ctx.setLineDash([4, 4]); c.ctx.beginPath();
-            for (let g of c.active_guidelines) {
-                if (g.type === "v") { let sx = g.value * c.scale + offsetX; c.ctx.moveTo(sx, 0); c.ctx.lineTo(sx, logicalH); }
-                else if (g.type === "h") { let sy = g.value * c.scale + offsetY; c.ctx.moveTo(0, sy); c.ctx.lineTo(logicalW, sy); }
-            }
-            c.ctx.stroke(); c.ctx.restore();
         }
         if (c.getActiveTool() === "SELECT") {
             let bounds = c.utils.getSelectionBounds();
@@ -448,10 +427,37 @@ export class CanvasRendererService {
         }
         let unselectedNodeRenders = []; let selectedNodeRenders = [];
 
-        // ── Render metric guidelines (ascender, descender, x-height, cap-height, baseline) ──
+        // ── Render baseline (permanent reference at design y=0, not draggable) ──
+        {
+            const fs = c.fontSettings || {};
+            const upm = fs.upm || 1000;
+            const fontH = c.canvas_size_height * c.scale;
+            const baselineY = offsetY + 0.8 * fontH;
+            const cw = logicalW;
+            const isBaseHovered = c._hoveredMetricGuideKey === 'baseline';
+            c.ctx.save();
+            c.ctx.strokeStyle = isBaseHovered ? p.guide_hover_stroke : p.metric_guide_color;
+            c.ctx.lineWidth = 1;
+            c.ctx.setLineDash([4, 4]);
+            c.ctx.beginPath();
+            c.ctx.moveTo(0, baselineY);
+            c.ctx.lineTo(cw, baselineY);
+            c.ctx.stroke();
+            c.ctx.setLineDash([]);
+            if (isBaseHovered) {
+                c.ctx.fillStyle = p.guide_hover_fill;
+                c.ctx.font = '10px sans-serif';
+                c.ctx.textAlign = 'left';
+                c.ctx.textBaseline = 'bottom';
+                c.ctx.fillText('Baseline: 0', c.ruler_size + 4, baselineY - 2);
+            }
+            c.ctx.restore();
+        }
+
+        // ── Render metric guidelines (ascender, descender, x-height, cap-height) ──
         {
             const mg = c.metric_guidelines;
-            if (mg && mg.items && !mg.locked) {
+            if (mg && mg.items) {
                 const fs = c.fontSettings || {};
                 const upm = fs.upm || 1000;
                 const fontH = c.canvas_size_height * c.scale;
@@ -461,15 +467,15 @@ export class CanvasRendererService {
                     { key: 'ascender',   value: fs.ascender ?? 800,   label: 'Ascender' },
                     { key: 'descender',  value: fs.descender ?? -200, label: 'Descender' },
                     { key: 'x_height',   value: fs.x_height ?? 500,  label: 'x-Height' },
-                    { key: 'cap_height', value: fs.cap_height ?? 700,label: 'Cap Height' },
-                    { key: 'baseline',   value: 0,                    label: 'Baseline' }
+                    { key: 'cap_height', value: fs.cap_height ?? 700,label: 'Cap Height' }
                 ];
                 c.ctx.save();
                 for (const mt of metricTypes) {
                     const item = mg.items[mt.key];
                     if (!item || item.visible === false) continue;
                     const sy = baselineY - (mt.value / upm) * fontH;
-                    c.ctx.strokeStyle = p.metric_guide_color;
+                    const isHovered = c._hoveredMetricGuideKey === mt.key;
+                    c.ctx.strokeStyle = isHovered ? p.guide_hover_stroke : p.metric_guide_color;
                     c.ctx.lineWidth = 1;
                     c.ctx.setLineDash([4, 4]);
                     c.ctx.beginPath();
@@ -477,12 +483,13 @@ export class CanvasRendererService {
                     c.ctx.lineTo(cw, sy);
                     c.ctx.stroke();
                     c.ctx.setLineDash([]);
-                    // Label
-                    c.ctx.fillStyle = p.metric_guide_label;
-                    c.ctx.font = '10px sans-serif';
-                    c.ctx.textAlign = 'left';
-                    c.ctx.textBaseline = 'bottom';
-                    c.ctx.fillText(mt.label + ' ' + mt.value, c.ruler_size + 4, sy - 2);
+                    if (isHovered) {
+                        c.ctx.fillStyle = p.guide_hover_fill;
+                        c.ctx.font = '10px sans-serif';
+                        c.ctx.textAlign = 'left';
+                        c.ctx.textBaseline = 'bottom';
+                        c.ctx.fillText(mt.label + ': ' + mt.value, c.ruler_size + 4, sy - 2);
+                    }
                 }
                 c.ctx.restore();
             }
@@ -543,24 +550,24 @@ export class CanvasRendererService {
                         const cdList = c.curve_manager.getCurvesForGroup(gid) || [];
                         let minX = Infinity, maxX = -Infinity;
                         for (const cd of cdList) {
-                            if (!cd.effectiveVis || !cd.curve?.startNode) continue;
-                            let node = cd.curve.startNode;
-                            while (node) {
-                                if (Number.isFinite(node.x)) {
-                                    if (node.x < minX) minX = node.x;
-                                    if (node.x > maxX) maxX = node.x;
-                                }
-                                node = node.nextOnCurve;
-                            }
+                            if (!cd.effectiveVis || !cd.curve) continue;
+                            const bounds = cd.curve.getBounds();
+                            if (!bounds) continue;
+                            if (bounds.minX < minX) minX = bounds.minX;
+                            if (bounds.maxX > maxX) maxX = bounds.maxX;
                         }
                         return { minX: minX === Infinity ? 0 : minX, maxX: maxX === -Infinity ? 0 : maxX };
                     };
-                    c.ctx.font = '11px sans-serif';
-                    c.ctx.textBaseline = 'top';
+                    const fs2 = c.fontSettings || {};
+                    const upm2 = fs2.upm || 1000;
+                    const fontH2 = c.canvas_size_height * c.scale;
+                    const baselineY2 = offsetY + 0.8 * fontH2;
+                    const descenderY = baselineY2 - ((fs2.descender ?? -200) / upm2) * fontH2;
+                    c.ctx.font = '10px sans-serif';
+                    c.ctx.textBaseline = 'bottom';
                     const lx = hoveredScreenX;
                     const paintLeft = offsetX;
                     const paintRight = logicalW + offsetX - paintLeft; // same as logicalW
-                    const labelY = offsetY + c.canvas_size_height * c.scale - 18;
                     if (hoveredLeftGid) {
                         const leftExt = computeExtents(hoveredLeftGid);
                         let leftGroup = c.curve_manager.treeItems.get(hoveredLeftGid);
@@ -568,14 +575,14 @@ export class CanvasRendererService {
                         const rsb = leftAdv - leftExt.maxX;
                         c.ctx.fillStyle = p.divider_highlight;
                         c.ctx.textAlign = 'right';
-                        c.ctx.fillText('RSB ' + Math.round(rsb), Math.max(lx - 6, paintLeft), labelY);
+                        c.ctx.fillText('Right side bearing: ' + Math.round(rsb), Math.max(lx - 6, paintLeft), descenderY);
                     }
                     if (hoveredRightGid) {
                         const rightExt = computeExtents(hoveredRightGid);
                         const lsb = rightExt.minX;
                         c.ctx.fillStyle = p.divider_highlight;
                         c.ctx.textAlign = 'left';
-                        c.ctx.fillText('LSB ' + Math.round(lsb), Math.min(lx + 6, paintRight - 60), labelY);
+                        c.ctx.fillText('Left side bearing: ' + Math.round(lsb), Math.min(lx + 6, paintRight - 60), descenderY);
                     }
                     c.ctx.restore();
                 }
@@ -688,21 +695,26 @@ export class CanvasRendererService {
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
         svg.classList.add("svg-ruler-overlay");
         const { step, precision } = this.getStepAndPrecision(c.scale);
-        const bottomOrigin = c.offset.y + c.canvas_size_height * c.scale;
+        const baselineScreenY = c.offset.y + 0.8 * c.canvas_size_height * c.scale;
         const theme = getCanvasTheme();
         const textColor = theme.ruler_text_color;
         const lineColor = theme.ruler_line_color;
-        let start_i = Math.floor(10 * (bottomOrigin - h) / (c.scale * step)) - 10;
-        let end_i = Math.ceil(10 * bottomOrigin / (c.scale * step)) + 10;
+        // designY = (baselineScreenY - screenY) / scale — baseline at 0, positive upward
+        const designY_top = baselineScreenY / c.scale;
+        const designY_bot = (baselineScreenY - h) / c.scale;
+        let start_i = Math.floor(10 * designY_bot / step) - 10;
+        let end_i = Math.ceil(10 * designY_top / step) + 10;
         for (let i = start_i; i <= end_i; i++) {
-            let j = i / 10; const y = bottomOrigin - j * c.scale * step;
+            let j = i / 10;
+            const designValue = j * step;
+            const y = baselineScreenY - designValue * c.scale;
             if (y < -c.scale * step || y > h + c.scale * step) continue;
             const line = c.env.createSVGElement("line");
             line.setAttribute("y1", String(y)); line.setAttribute("x1", String(w)); line.setAttribute("y2", String(y));
             if (i % 10 === 0) {
                 line.setAttribute("x2", "0");
                 const cx = w / 3; const cy = y - 5;
-                const text = c.env.createSVGElement("text"); text.textContent = `${(j * step).toFixed(precision)}`;
+                const text = c.env.createSVGElement("text"); text.textContent = `${designValue.toFixed(precision)}`;
                 text.setAttribute("x", String(cx)); text.setAttribute("y", String(cy)); text.setAttribute("font-size", "10px"); text.setAttribute("fill", textColor); text.setAttribute("text-anchor", "right"); text.setAttribute("dominant-baseline", "middle"); text.setAttribute("transform", `rotate(-90 ${cx} ${cy})`);
                 svg.appendChild(text);
             } else if (i % 2 === 0) { line.setAttribute("x2", String(w / 2)); } else { line.setAttribute("x2", String(w / 4 * 3)); }
@@ -728,9 +740,19 @@ export class CanvasRendererService {
         } else {
             w = c.canvas_size_width;
         }
-        c.main_canvas.style.transform = `translate(${left}px, ${top}px)`;
+        // Position the white canvas (main_canvas DIV) so its top edge aligns with
+        // the ascender line and bottom edge aligns with the descender line.
+        const fs = c.fontSettings || {};
+        const upm = fs.upm || 1000;
+        const fontH = c.canvas_size_height * c.scale;
+        const baselineY = top + 0.8 * fontH;
+        const ascenderY = baselineY - ((fs.ascender ?? 800) / upm) * fontH;
+        const descenderY = baselineY - ((fs.descender ?? -200) / upm) * fontH;
+        const newTop = ascenderY;
+        const newH = Math.max(1, descenderY - ascenderY);
+        c.main_canvas.style.transform = `translate(${left}px, ${newTop}px)`;
         c.main_canvas.style.width = `${w * c.scale}px`;
-        c.main_canvas.style.height = `${c.canvas_size_height * c.scale}px`;
+        c.main_canvas.style.height = `${newH}px`;
     }
     change_canvas_size(dy, x, y, fixed, viewportCenter = false) {
         const c = this.canvas;

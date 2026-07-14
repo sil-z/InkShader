@@ -37,7 +37,7 @@ export class SnapshotPatchExecutor {
             coarsePathPrefixes: Array.isArray(raw.coarse_patch_paths) ? raw.coarse_patch_paths : [],
             granularPathPrefixes: Array.isArray(raw.granular_patch_paths)
                 ? raw.granular_patch_paths
-                : [["ch"], ["components"], ["editor_guideline_h"], ["editor_guideline_v"], ["editor_active_indices"]]
+                : [["glyphs"], ["editor_guidelines"], ["editor_active_indices"]]
         };
     }
 
@@ -313,15 +313,16 @@ export class SnapshotPatchExecutor {
     _pathIsTreeHierarchy(path) {
         if (!Array.isArray(path)) return false;
         if (path.length === 1 && path[0] === "editor_root_order") return true;
-        return path.length === 3 && (path[0] === "ch" || path[0] === "components") && path[2] === "tree_child_order";
+        return path.length === 1 && path[0] === "editor_root_order";
     }
 
     /**
      * Tree hierarchy changes unified as full replace, avoiding per-index patch desync between runtime/undo order.
+     * In the new format, children arrays define order inherently — only root group order needs coarse treatment.
      */
     ensureTreeHierarchyCoarsePatches(beforeSnap, afterSnap, patches = []) {
         if (!beforeSnap || !afterSnap) return patches;
-        const filtered = patches.filter((p) => !this._pathIsTreeHierarchy(p.path) && !this._pathUnderTreeChildOrder(p.path));
+        const filtered = patches.filter((p) => !this._pathIsTreeHierarchy(p.path));
         const coarse = [];
 
         if (
@@ -337,34 +338,7 @@ export class SnapshotPatchExecutor {
             });
         }
 
-        for (const bucket of ["ch", "components"]) {
-            const beforeBucket = beforeSnap[bucket] || {};
-            const afterBucket = afterSnap[bucket] || {};
-            const keys = new Set([...Object.keys(beforeBucket), ...Object.keys(afterBucket)]);
-            for (const groupName of keys) {
-                const a = beforeBucket[groupName]?.tree_child_order;
-                const b = afterBucket[groupName]?.tree_child_order;
-                if (JSON.stringify(a ?? null) === JSON.stringify(b ?? null)) continue;
-                coarse.push({
-                    path: [bucket, groupName, "tree_child_order"],
-                    oldExists: Array.isArray(a),
-                    newExists: Array.isArray(b),
-                    oldValue: deepClone(a),
-                    newValue: deepClone(b)
-                });
-            }
-        }
-
         return [...filtered, ...coarse];
-    }
-
-    _pathUnderTreeChildOrder(path) {
-        return (
-            Array.isArray(path) &&
-            path.length >= 4 &&
-            (path[0] === "ch" || path[0] === "components") &&
-            path[2] === "tree_child_order"
-        );
     }
 
     sanitizeCommandEntry(entry) {

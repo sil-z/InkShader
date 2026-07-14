@@ -10,6 +10,9 @@ export class StorageUtils {
     static VIEW_SAVE_KEY = "last_view_state";
     static MAX_CACHED_PROJECTS = 5;
 
+    /** Format identifier — written on every save, checked on every load to distinguish InkShader project entries from foreign data. */
+    static PROJECT_SIGNATURE = "InkShader V1 Project";
+
     /** Ensures migration from old projects map runs at most once */
     static _migrated = false;
 
@@ -133,12 +136,22 @@ export class StorageUtils {
         return this._migrationPromise;
     }
 
+    /**
+     * Check whether a raw value loaded from IndexedDB looks like a valid InkShader project entry.
+     * Non-project entries (e.g. stale keys from other applications or corrupted data) are silently ignored.
+     */
+    static _isValidProjectData(value) {
+        if (!value || typeof value !== "object") return false;
+        return value._signature === this.PROJECT_SIGNATURE;
+    }
+
     static async saveProject(projectName, data) {
         await this._ensureMigrated();
         const key = this._PROJ_PREFIX + projectName;
         const existing = await this._idbGet(key);
+        const stamped = { _signature: this.PROJECT_SIGNATURE, ...data };
         const isNew = !existing;
-        await this._idbPut(key, data);
+        await this._idbPut(key, stamped);
         const order = await this._touchProjectOrder(projectName);
         // Enforce max cache limit: evict oldest non-current project
         if (isNew && order.length > this.MAX_CACHED_PROJECTS) {
@@ -159,18 +172,31 @@ export class StorageUtils {
     static async loadProject(projectName) {
         await this._ensureMigrated();
         const data = await this._idbGet(this._PROJ_PREFIX + projectName);
-        if (data) {
-            await this._touchProjectOrder(projectName);
+        if (!data) return null;
+        if (!this._isValidProjectData(data)) {
+            console.warn(`[Storage] Project "${projectName}" has invalid format (expected _signature="${this.PROJECT_SIGNATURE}"). Skipping.`);
+            return null;
         }
-        return data ?? null;
+        await this._touchProjectOrder(projectName);
+        return data;
     }
 
     static async listProjects() {
         await this._ensureMigrated();
         const allKeys = await this._idbKeys();
-        return allKeys
-            .filter(k => typeof k === 'string' && k.startsWith(this._PROJ_PREFIX))
-            .map(k => k.slice(this._PROJ_PREFIX.length));
+        const projectKeys = allKeys.filter(k => typeof k === 'string' && k.startsWith(this._PROJ_PREFIX));
+        const results = [];
+        for (const key of projectKeys) {
+            const name = key.slice(this._PROJ_PREFIX.length);
+            // Quick validation: try loading the key — _isValidProjectData filters bad entries
+            const data = await this._idbGet(key);
+            if (data && this._isValidProjectData(data)) {
+                results.push(name);
+            } else {
+                console.warn(`[Storage] Skipping invalid project entry "${name}" (key=${key})`);
+            }
+        }
+        return results;
     }
 
     static async deleteProject(projectName) {

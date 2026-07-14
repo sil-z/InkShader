@@ -3,6 +3,8 @@ import { Curve } from './curve.js';
 import { CurveNode } from './node.js';
 import { generateMarker } from './utils.js';
 
+const CONTROL_MODE_FROM_STR = { "corner": 0, "smooth": 1, "symmetric": 2 };
+
 /**
  * CurveStore: manages curve array, domMap global node index, node/curve CRUD.
  * Scope: geometry data only; does not involve tree/sequence/serialization.
@@ -375,22 +377,26 @@ export class CurveStore {
         curve.locked = pData.locked !== undefined ? pData.locked : false;
         curve.groupId = groupId;
 
-        const sortedNodes = Object.values(pData.vertices || {}).sort((a, b) => a.order - b.order);
+        const vertices = pData.vertices || [];
         let lastCreatedNode = null;
 
-        for (const vData of sortedNodes) {
-            const nId = vData.node_id || `n_${Date.now().toString(36)}_${Math.floor(Math.random() * 10000)}`;
+        for (let idx = 0; idx < vertices.length; idx++) {
+            const vData = vertices[idx];
+            const nId = `n_${Date.now().toString(36)}_${idx}_${Math.floor(Math.random() * 10000)}`;
             const marker = { id: `m_${nId}` };
             const node = new CurveNode(marker, "vertex", vData.x, vData.y, null, lastCreatedNode, nId);
             node.curve = curve;
-            node.control_mode = vData.control_mode;
+            const rawMode = vData.control_mode;
+            node.control_mode = typeof rawMode === "string"
+                ? CONTROL_MODE_FROM_STR[rawMode] ?? 0
+                : rawMode !== undefined ? rawMode : 0;
 
-            if (vData.control_1 && vData.control_1.active) {
+            if (vData.control_1) {
                 const m1 = { id: `c1_${nId}` };
                 node.control1 = new CurveNode(m1, null, vData.control_1.x, vData.control_1.y, node, null, m1.id);
                 node.control1.curve = curve;
             }
-            if (vData.control_2 && vData.control_2.active) {
+            if (vData.control_2) {
                 const m2 = { id: `c2_${nId}` };
                 node.control2 = new CurveNode(m2, null, vData.control_2.x, vData.control_2.y, node, null, m2.id);
                 node.control2.curve = curve;
@@ -401,8 +407,10 @@ export class CurveStore {
 
             this._registerNodeDomMarkers(curve, node);
             lastCreatedNode = node;
-            if (vData.end) curve.endNode = node;
+            if (idx === 0) { /* start is already set above */ }
         }
+        // Last node in the array is the endNode
+        if (lastCreatedNode) curve.endNode = lastCreatedNode;
 
         this.curves.push(curve);
         return curve;

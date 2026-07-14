@@ -1409,9 +1409,10 @@ object-tree {
     margin-bottom: 0;
 }
 .user-guide-edit-dialog .field-row label {
-    width: 42px;
-    font-size: 11px;
-    color: var(--ui-text-muted);
+    width: 120px;
+    font: var(--ink-field-label-font);
+    color: var(--ui-text-main);
+    letter-spacing: normal;
     flex-shrink: 0;
 }
 .user-guide-edit-dialog .field-row input {

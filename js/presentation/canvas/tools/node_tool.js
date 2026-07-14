@@ -174,7 +174,7 @@ export class NodeTool extends BaseTool {
 
         let snapped_x = raw_x;
         let snapped_y = raw_y;
-        c.active_guidelines = [];
+        c.guidelines = c.guidelines.filter(g => !g._temp);
 
         let isMainNode = dragging_node_n.type !== null;
         let dragged_seq_offset = c.dragging_node_seq_idx !== -1 ? c.curve_manager.getSeqOffset(c.dragging_node_seq_idx) : 0;
@@ -206,7 +206,7 @@ export class NodeTool extends BaseTool {
 
     handleNodeDragMouseUp(e) {
         const c = this.canvas;
-        if (c.current_state === 'DRAGGING_NODE') c.active_guidelines = [];
+        if (c.current_state === 'DRAGGING_NODE') c.guidelines = c.guidelines.filter(g => !g._temp);
 
         let isMainNode = false;
         let isStateChangingAction = (c.current_state === 'DRAGGING_NODE');
@@ -337,11 +337,50 @@ export class NodeTool extends BaseTool {
             candidateAngles.push(Math.round(currentAngle * 180 / Math.PI / 5) * 5 * Math.PI / 180);
             candidateAngles.push(c.drag_initial_target.angle);
 
-            let oppositeControl = parentNode.control1?.main_node === c.dragging_node_marker ? parentNode.control2 : parentNode.control1;
-            if (oppositeControl) {
-                let oppAng = Math.atan2(oppositeControl.y - py, oppositeControl.x - px);
-                candidateAngles.push(oppAng); candidateAngles.push(oppAng + Math.PI);
+        let oppositeControl = parentNode.control1?.main_node === c.dragging_node_marker ? parentNode.control2 : parentNode.control1;
+        if (oppositeControl) {
+            let oppAng = Math.atan2(oppositeControl.y - py, oppositeControl.x - px);
+            candidateAngles.push(oppAng); candidateAngles.push(oppAng + Math.PI);
+        }
+
+        // Collect control handle angles from other main nodes nearby
+        {
+            let parentWorldX = px + dragged_seq_offset;
+            let parentWorldY = py;
+            let threshold = 30;
+            let seqTokens = c.curve_manager.sequenceTokens || [];
+            for (let si = 0; si < seqTokens.length; si++) {
+                let seqOffX = c.curve_manager.getSeqOffset(si);
+                let token = seqTokens[si];
+                let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                let curveDataList = c.curve_manager.getCurvesForGroup(gid);
+                for (let cd of curveDataList) {
+                    if (!cd.effectiveVis || cd.effectiveLock) continue;
+                    let current = cd.curve.startNode;
+                    while (current) {
+                        if (current.main_node === parentNode.main_node) { current = current.nextOnCurve; continue; }
+                        let wx = current.x, wy = current.y;
+                        if (cd.matrix) {
+                            let tx = wx * cd.matrix.a + wy * cd.matrix.c + cd.matrix.e;
+                            let ty = wx * cd.matrix.b + wy * cd.matrix.d + cd.matrix.f;
+                            wx = tx; wy = ty;
+                        }
+                        wx += seqOffX;
+                        if (Math.hypot(wx - parentWorldX, wy - parentWorldY) <= threshold) {
+                            if (current.control1) {
+                                let ang = Math.atan2(current.control1.y - current.y, current.control1.x - current.x);
+                                candidateAngles.push(ang);
+                            }
+                            if (current.control2) {
+                                let ang = Math.atan2(current.control2.y - current.y, current.control2.x - current.x);
+                                candidateAngles.push(ang);
+                            }
+                        }
+                        current = current.nextOnCurve;
+                    }
+                }
             }
+        }
 
             let bestAngle = candidateAngles[0]; let minDiff = Infinity;
             for (let ang of candidateAngles) {
@@ -362,6 +401,10 @@ export class NodeTool extends BaseTool {
         const alignEnabled = c.snap_alignment_enabled !== false;
         const coincidentEnabled = c.snap_coincident_enabled !== false;
         if (!alignEnabled && !coincidentEnabled) {
+            return { x: raw_x, y: raw_y };
+        }
+        // Control points: skip point snapping (only main nodes need alignment/coincident)
+        if (!isMainNode) {
             return { x: raw_x, y: raw_y };
         }
 
@@ -421,12 +464,12 @@ export class NodeTool extends BaseTool {
             if (xMatch) {
                 let p = { x: xMatch.x - dragged_seq_offset, y: world_raw_y };
                 if (c.dragging_node_matrix) p = c.dragging_node_matrix.inverse().transformPoint(p);
-                snapped_x = p.x; snapped_y = p.y; c.active_guidelines.push({ type: 'v', value: xMatch.x });
+                snapped_x = p.x; snapped_y = p.y; c.guidelines.push({ x: xMatch.x, y: 0, angle: 90, _temp: true });
             }
             if (yMatch) {
                 let p = { x: world_raw_x - dragged_seq_offset, y: yMatch.y };
                 if (c.dragging_node_matrix) p = c.dragging_node_matrix.inverse().transformPoint(p);
-                snapped_x = p.x; snapped_y = p.y; c.active_guidelines.push({ type: 'h', value: yMatch.y });
+                snapped_x = p.x; snapped_y = p.y; c.guidelines.push({ x: 0, y: yMatch.y, angle: 0, _temp: true });
             }
         }
         return { x: snapped_x, y: snapped_y };

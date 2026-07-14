@@ -1,6 +1,5 @@
 import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
 import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/curve_renderer.js";
-import { getCanvasTheme } from "../rendering/canvas_theme.js";
 export class CanvasIOService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -34,19 +33,15 @@ export class CanvasIOService {
             CanvasDispatcher.requestHistoryCommit("importImageToCurrentGroup", { imageId: id, fileName });
         }
     }
-    save_file() {
+    save_file(extraState = {}) {
         const c = this.canvas;
         return c.curve_manager.exportJSON({
-            canvas_size_width: c.canvas_size_width,
-            canvas_size_height: c.canvas_size_height,
-            guidelines_h: c.active_guidelines.filter((g) => g.type === "h").map((g) => g.value),
-            guidelines_v: c.active_guidelines.filter((g) => g.type === "v").map((g) => g.value),
+            guidelines: (c.guidelines || []).filter(g => !g._temp).map(g => ({
+                id: g.id, x: g.x, y: g.y, angle: g.angle
+            })),
             guideline_lock: c.guideline_lock,
-            user_guidelines: c.user_guidelines || [],
-            fill_color: getCanvasTheme().path_fill_color,
-            stroke_color: getCanvasTheme().path_stroke_color,
             font_settings: c.fontSettings || {}
-        });
+        }, extraState);
     }
     triggerLoad() {
         const c = this.canvas;
@@ -161,7 +156,7 @@ export class CanvasIOService {
                 this.currentContour = null;
                 this.h = canvasHeight;
             }
-            _fy(y) { return this.h - y; }
+            _fy(y) { return 0.8 * this.h - y; }
             moveTo(x, y) {
                 this._flushContour();
                 this.currentContour = { closed: false, points: [] };

@@ -18,7 +18,7 @@ import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } f
  *
  * Mouse coordinate display:
  * Top-right of canvas shows world coordinates: "Mouse Pos {x} {y}"
- * (y = canvas_size_height - worldY, i.e. positive upward)
+ * (y = baselineWorldY - worldY, baseline=0, i.e. positive upward)
  */
 export class CanvasInputController {
     constructor(canvas) {
@@ -64,7 +64,8 @@ export class CanvasInputController {
                 if(!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
                 if(c.mouse_pos_output && c.current_state !== 'PANNING') {
                     const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                    c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (c.canvas_size_height - worldY).toFixed(2);
+                    const baselineWorldY = 0.8 * c.canvas_size_height;
+                    c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
                 }
                 if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
                     const pa = c.painting_area.getBoundingClientRect();
@@ -127,6 +128,8 @@ export class CanvasInputController {
                     else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
                     else if (c._hoveredUserGuideId !== null) {
                         // Guide hover overrides curve/object hit but not handles
+                    } else if (c._hoveredMetricGuideKey !== null) {
+                        // Metric guide hover overrides curve/object hit
                     } else {
                         let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                         const ix = c.getInteractionSnapshot();
@@ -135,7 +138,9 @@ export class CanvasInputController {
                     }
                 } else if (c._hoveredUserGuideId !== null) {
                     // Guide hover for non-SELECT tools
-                } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
+                } else if (c._hoveredMetricGuideKey !== null) {
+                    // Metric guide hover overrides cursor
+                } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER' && c.current_state !== 'DRAGGING_METRIC_GUIDE') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
                         c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
@@ -156,6 +161,10 @@ export class CanvasInputController {
                 }
                 if (!c._draggingDivider) {
                     c._hoveredDividerId = null;
+                    c.is_dirty = true;
+                }
+                if (!c._draggingMetricGuide) {
+                    c._hoveredMetricGuideKey = null;
                     c.is_dirty = true;
                 }
                 if (c._hoveredRulerId !== null || c._hoveredRulerEndpoint !== null) {
@@ -179,6 +188,31 @@ export class CanvasInputController {
                 c.is_dirty = true;
             });
             c.addGlobalListener('window', "mousemove", (e) => {
+                if (c.current_state !== 'DRAGGING_METRIC_GUIDE' || !c._draggingMetricGuide) return;
+                const mg = c._draggingMetricGuide;
+                if (!mg._dragStarted) {
+                    if (Math.abs(e.clientY - mg.startClientY) <= 4) return;
+                    mg._dragStarted = true;
+                }
+                const fs = c.fontSettings || {};
+                const upm = fs.upm || 1000;
+                const fontH = c.canvas_size_height * c.scale;
+                const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+                const deltaY = pointer.y - mg.startCanvasY;
+                const deltaValue = Math.round(-(deltaY / fontH) * upm);
+                const newValue = mg.startValue + deltaValue;
+                let clamped;
+                if (mg.key === 'descender') clamped = Math.min(newValue, 0);
+                else if (mg.key === 'baseline') clamped = newValue;
+                else clamped = Math.max(newValue, 0);
+                const oldVal = c.fontSettings ? c.fontSettings[mg.key] : undefined;
+                if (c.fontSettings && oldVal !== clamped) {
+                    c.fontSettings[mg.key] = clamped;
+                    c.is_dirty = true;
+                }
+                return;
+            });
+            c.addGlobalListener('window', "mousemove", (e) => {
                 if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
                 const div = c._draggingDivider;
                 if (!div._dragStarted) {
@@ -193,14 +227,12 @@ export class CanvasInputController {
                 const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
                 if (leftGroup && rightGroup) {
                     if (div.modifyRight) {
-                        // RIGHT active: right group advance decreases AND paths shift left
-                        // (left edge of right group moves right → LSB decreases, right edge moves left)
+                        // RIGHT active: right group advance decreases (LSB shrinks), canvas translates
                         const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
                         leftGroup.advance = div.startLeftAdvance;
                         leftGroup.is_modified = true;
                         rightGroup.advance = newRightAdv;
                         rightGroup.is_modified = true;
-                        // Shift right group's paths LEFT → LSB decreases (left edge moves right, content shifts left)
                         if (!div._rightNodeOrigins) {
                             div._rightNodeOrigins = [];
                             const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
@@ -221,6 +253,7 @@ export class CanvasInputController {
                             if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
                             if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
                         }
+                        c.offset.x = div.startOffsetX + dx;
                         c.curve_manager.calculateSequenceOffsets();
                     } else {
                         // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
@@ -231,8 +264,38 @@ export class CanvasInputController {
                         rightGroup.is_modified = true;
                         c.curve_manager.calculateSequenceOffsets();
                     }
+                } else if (!leftGroup && rightGroup && div.isLeftEdge) {
+                    // Leftmost divider: same pattern as modifyRight=true — decrease first
+                    // glyph's advance and shift its nodes LEFT. calculateSequenceOffsets
+                    // propagates the change to all subsequent seqOffsets, canceling with
+                    // the canvas offset shift for all downstream content.
+                    const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                    rightGroup.advance = newAdv;
+                    rightGroup.is_modified = true;
+                    if (!div._rightNodeOrigins) {
+                        div._rightNodeOrigins = [];
+                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
+                        for (const cd of curves) {
+                            let node = cd.curve?.startNode;
+                            while (node) {
+                                div._rightNodeOrigins.push({
+                                    node, x: node.x,
+                                    c1x: node.control1?.x,
+                                    c2x: node.control2?.x
+                                });
+                                node = node.nextOnCurve;
+                            }
+                        }
+                    }
+                    for (const o of div._rightNodeOrigins) {
+                        o.node.x = o.x - deltaAdv;
+                        if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
+                        if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
+                    }
+                    c.offset.x = div.startOffsetX + dx;
+                    c.curve_manager.calculateSequenceOffsets();
                 } else if (rightGroup) {
-                    // Left edge: no left group, just adjust right group's advance
+                    // Right-only group (includes leftmost divider if isLeftEdge wasn't caught above)
                     if (div.modifyRight) {
                         // RIGHT active: right group widens rightward
                         const newAdv = Math.max(0, div.startRightAdvance + deltaAdv);
@@ -256,6 +319,18 @@ export class CanvasInputController {
                 c.is_dirty = true;
             });
             c.addGlobalListener('window', "mouseup", (e) => {
+                if (c.current_state === 'DRAGGING_METRIC_GUIDE' && c._draggingMetricGuide) {
+                    const mg = c._draggingMetricGuide;
+                    c._draggingMetricGuide = null;
+                    c.current_state = 'IDLE';
+                    if (mg._dragStarted) {
+                        CanvasDispatcher.requestHistoryCommit("editMetricGuideline", { key: mg.key });
+                    }
+                    c.is_dirty = true;
+                    return;
+                }
+            });
+            c.addGlobalListener('window', "mouseup", (e) => {
                 if (c.current_state !== 'DRAGGING_USER_GUIDE' || !c._draggingUserGuide) return;
                 const guide = c._draggingUserGuide;
                 const wasNew = guide._isNew;
@@ -274,7 +349,7 @@ export class CanvasInputController {
                     const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
                     if (toRuler) {
                         if (!wasNew) {
-                            c.user_guidelines = c.user_guidelines.filter(g => g.id !== guide.id);
+                            c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                             CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                         }
                         c.is_dirty = true;
@@ -282,7 +357,7 @@ export class CanvasInputController {
                     }
                 }
                 if (wasNew) {
-                    c.user_guidelines.push(guide);
+                    c.guidelines.push(guide);
                     CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
                 } else {
                     CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
@@ -291,18 +366,11 @@ export class CanvasInputController {
             });
             // NOTE: divider drag mouseup is handled in the modern handler below
             c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
-                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
                 if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
-                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') {
-                    if (c._hoveredUserGuideId !== null || c._hoveredDividerId !== null) {
-                        c._hoveredUserGuideId = null;
-                        c._hoveredDividerId = null;
-                        c.is_dirty = true;
-                    }
-                    return;
-                }
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+                const isDrawingTool = c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE';
                 if (c.guideline_lock) {
                     if (c._hoveredUserGuideId !== null) {
                         c._hoveredUserGuideId = null;
@@ -313,7 +381,7 @@ export class CanvasInputController {
                     const newId = hit ? hit.guide.id : null;
                     if (c._hoveredUserGuideId !== newId) {
                         c._hoveredUserGuideId = newId;
-                        c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                        if (!isDrawingTool) c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                         c.is_dirty = true;
                     }
                 }
@@ -321,6 +389,12 @@ export class CanvasInputController {
                 const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
                 if (c._hoveredDividerId !== divId) {
                     c._hoveredDividerId = divId;
+                    c.is_dirty = true;
+                }
+                const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+                if (c._hoveredMetricGuideKey !== metricKey) {
+                    c._hoveredMetricGuideKey = metricKey;
+                    if (metricKey && !isDrawingTool) c.canvasObj.dataset.cursor = 'ns-resize';
                     c.is_dirty = true;
                 }
                 if (c.getActiveTool() === "MEASURE") {
@@ -374,10 +448,19 @@ export class CanvasInputController {
                     e.stopPropagation();
                     c._showDividerEditDialog(divHit.groupId, e.clientX, e.clientY);
                 }
+                const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+                if (metricKey) {
+                    if (metricKey === 'baseline') return; // baseline is fixed reference
+                    if (c.metric_guidelines?.locked) return;
+                    if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    c._showMetricGuideEditDialog(metricKey, e.clientX, e.clientY);
+                }
             });
             c.addGlobalListener(c.canvasObj, "mousedown", (e) => {
                 if (e.button !== 0) return;
-                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
                 // Node/curve hits take priority over guideline/divider drag
@@ -444,13 +527,36 @@ export class CanvasInputController {
                     rightGroupId: rightGroupId,
                     groupId: rightGroupId || leftGroupId,
                     modifyRight: modifyRight,
+                    isLeftEdge: divHit.isLeftEdge === true,
                     dividerId: (leftGroupId || rightGroupId) + "-" + seqIndex + (divHit.isLeftEdge ? "-l" : "-r"),
                     startScreenX: divHit.screenX,
                     startLeftAdvance: leftGroup ? leftGroup.advance : 0,
                     startRightAdvance: rightGroup ? rightGroup.advance : 1000,
+                    startOffsetX: c.offset.x,
                     _clientX: e.clientX,
                     _clientY: e.clientY,
                     _dragStarted: false
+                };
+                return;
+            }
+            // Metric guide drag
+            const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+            if (metricKey) {
+                if (metricKey === 'baseline') return; // baseline is fixed reference
+                if (c.metric_guidelines?.locked) return;
+                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                if (hasInteractiveHit) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const fs = c.fontSettings || {};
+                const startValue = fs[metricKey] ?? 0;
+                c._hoveredMetricGuideKey = null;
+                c.current_state = 'DRAGGING_METRIC_GUIDE';
+                c._draggingMetricGuide = {
+                    key: metricKey,
+                    startValue: startValue,
+                    startClientY: e.clientY,
+                    startCanvasY: pointer.y
                 };
                 return;
             }
@@ -593,7 +699,7 @@ export class CanvasInputController {
                 c.previewData = null; c.is_dirty = true; return;
             }
             if(e.button === 0) {
-                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+                if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
                 if (c.canvasObj.setPointerCapture && Number.isFinite(e.pointerId)) {
                     try {
                         c.canvasObj.setPointerCapture(e.pointerId);
@@ -608,6 +714,8 @@ export class CanvasInputController {
                 if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
                 if (divHit && !c.divider_locked && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
+                const metricKey = c.utils.hitTestMetricGuidelines(mouseX, mouseY);
+                if (metricKey && metricKey !== 'baseline' && !c.metric_guidelines?.locked && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 if (tool === 'MEASURE') ic.handleMeasureMouseDown(worldX, worldY);
                 else if (tool === 'SELECT') {
                     if (handleHit) e.stopImmediatePropagation();
@@ -656,7 +764,8 @@ export class CanvasInputController {
             if(!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
             if(c.mouse_pos_output && c.current_state !== 'PANNING') {
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (c.canvas_size_height - worldY).toFixed(2);
+                const baselineWorldY = 0.8 * c.canvas_size_height;
+                c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
             }
             if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
                 const pa = c.painting_area.getBoundingClientRect();
@@ -719,6 +828,8 @@ export class CanvasInputController {
                 else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
                 else if (c._hoveredUserGuideId !== null) {
                     // Guide hover overrides curve/object hit but not handles
+                } else if (c._hoveredMetricGuideKey !== null) {
+                    // Metric guide hover overrides curve/object hit
                 } else {
                     let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
                     const ix = c.getInteractionSnapshot();
@@ -727,7 +838,9 @@ export class CanvasInputController {
                 }
             } else if (c._hoveredUserGuideId !== null) {
                 // Guide hover for non-SELECT tools
-            } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER') {
+            } else if (c._hoveredMetricGuideKey !== null) {
+                // Metric guide hover overrides cursor
+            } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER' && c.current_state !== 'DRAGGING_METRIC_GUIDE') {
                     if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
                         const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
                         c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
@@ -750,6 +863,10 @@ export class CanvasInputController {
                 c._hoveredDividerId = null;
                 c.is_dirty = true;
             }
+            if (!c._draggingMetricGuide) {
+                c._hoveredMetricGuideKey = null;
+                c.is_dirty = true;
+            }
             if (c._hoveredRulerId !== null || c._hoveredRulerEndpoint !== null) {
                 c._hoveredRulerId = null;
                 c._hoveredRulerEndpoint = null;
@@ -764,7 +881,6 @@ export class CanvasInputController {
             const worldY = (pointer.y - offsetY) / c.scale;
             c._draggingUserGuide = {
                 id: c._nextUserGuideId++,
-                type: type,
                 x: worldX,
                 y: worldY,
                 angle: type === "v" ? 90 : 0,
@@ -819,36 +935,37 @@ export class CanvasInputController {
             const deltaAdv = dx / c.scale;
             const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
             const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
-            if (leftGroup && rightGroup) {
-                if (div.modifyRight) {
-                    // RIGHT active: right group advance decreases AND paths shift left
-                    const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                    leftGroup.advance = div.startLeftAdvance;
-                    leftGroup.is_modified = true;
-                    rightGroup.advance = newRightAdv;
-                    rightGroup.is_modified = true;
-                    if (!div._rightNodeOrigins) {
-                        div._rightNodeOrigins = [];
-                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
-                        for (const cd of curves) {
-                            let node = cd.curve?.startNode;
-                            while (node) {
-                                div._rightNodeOrigins.push({
-                                    node, x: node.x,
-                                    c1x: node.control1?.x,
-                                    c2x: node.control2?.x
-                                });
-                                node = node.nextOnCurve;
+                if (leftGroup && rightGroup) {
+                    if (div.modifyRight) {
+                        // RIGHT active: right group advance decreases (LSB shrinks), canvas translates
+                        const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
+                        leftGroup.advance = div.startLeftAdvance;
+                        leftGroup.is_modified = true;
+                        rightGroup.advance = newRightAdv;
+                        rightGroup.is_modified = true;
+                        if (!div._rightNodeOrigins) {
+                            div._rightNodeOrigins = [];
+                            const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
+                            for (const cd of curves) {
+                                let node = cd.curve?.startNode;
+                                while (node) {
+                                    div._rightNodeOrigins.push({
+                                        node, x: node.x,
+                                        c1x: node.control1?.x,
+                                        c2x: node.control2?.x
+                                    });
+                                    node = node.nextOnCurve;
+                                }
                             }
                         }
-                    }
-                    for (const o of div._rightNodeOrigins) {
-                        o.node.x = o.x - deltaAdv;
-                        if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
-                        if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
-                    }
-                    c.curve_manager.calculateSequenceOffsets();
-                } else {
+                        for (const o of div._rightNodeOrigins) {
+                            o.node.x = o.x - deltaAdv;
+                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
+                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
+                        }
+                        c.offset.x = div.startOffsetX + dx;
+                        c.curve_manager.calculateSequenceOffsets();
+                    } else {
                     // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
                     const newLeftAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
                     leftGroup.advance = newLeftAdv;
@@ -881,6 +998,31 @@ export class CanvasInputController {
             }
             c.is_dirty = true;
         });
+        c.addGlobalListener('window', "mousemove", (e) => {
+            if (c.current_state !== 'DRAGGING_METRIC_GUIDE' || !c._draggingMetricGuide) return;
+            const mg = c._draggingMetricGuide;
+            if (!mg._dragStarted) {
+                if (Math.abs(e.clientY - mg.startClientY) <= 4) return;
+                mg._dragStarted = true;
+            }
+            const fs = c.fontSettings || {};
+            const upm = fs.upm || 1000;
+            const fontH = c.canvas_size_height * c.scale;
+            const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+            const deltaY = pointer.y - mg.startCanvasY;
+            const deltaValue = Math.round(-(deltaY / fontH) * upm);
+            const newValue = mg.startValue + deltaValue;
+            let clamped;
+            if (mg.key === 'descender') clamped = Math.min(newValue, 0);
+            else if (mg.key === 'baseline') clamped = newValue;
+            else clamped = Math.max(newValue, 0);
+            const oldVal = c.fontSettings ? c.fontSettings[mg.key] : undefined;
+            if (c.fontSettings && oldVal !== clamped) {
+                c.fontSettings[mg.key] = clamped;
+                console.log('[DRAG] key=%s oldVal=%s clamped=%s startValue=%s deltaValue=%s', mg.key, oldVal, clamped, mg.startValue, deltaValue);
+                c.is_dirty = true;
+            }
+        });
         c.addGlobalListener('window', "mouseup", (e) => {
             if (c.current_state !== 'DRAGGING_USER_GUIDE' || !c._draggingUserGuide) return;
             const guide = c._draggingUserGuide;
@@ -900,7 +1042,7 @@ export class CanvasInputController {
                 const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
                 if (toRuler) {
                     if (!wasNew) {
-                        c.user_guidelines = c.user_guidelines.filter(g => g.id !== guide.id);
+                        c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                         CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                     }
                     c.is_dirty = true;
@@ -908,7 +1050,7 @@ export class CanvasInputController {
                 }
             }
             if (wasNew) {
-                c.user_guidelines.push(guide);
+                c.guidelines.push(guide);
                 CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
             } else {
                 CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
@@ -921,10 +1063,8 @@ export class CanvasInputController {
             const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
             if (div._dragStarted) {
                 if (div.modifyRight) {
-                    // RIGHT active: right group advance inc + paths shifted right
-                    // State is already final after drag, just checkpoint history
+                    // RIGHT active: keep LSB node shift + canvas offset, snapshot current state
                     if (leftGroup) {
-                        leftGroup.advance = div.startLeftAdvance;
                         leftGroup.is_modified = true;
                         c.curve_manager.invalidateGroupCache(div.leftGroupId);
                     }
@@ -974,19 +1114,11 @@ export class CanvasInputController {
             commitDividerDrag(div);
         });
         c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
-            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
             if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
-            // During pen / ellipse drawing, suppress all guide and divider interactions
-            if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') {
-                if (c._hoveredUserGuideId !== null || c._hoveredDividerId !== null) {
-                    c._hoveredUserGuideId = null;
-                    c._hoveredDividerId = null;
-                    c.is_dirty = true;
-                }
-                return;
-            }
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+            const isDrawingTool = c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE';
             if (c.guideline_lock) {
                 if (c._hoveredUserGuideId !== null) {
                     c._hoveredUserGuideId = null;
@@ -998,7 +1130,7 @@ export class CanvasInputController {
                 if (c._hoveredUserGuideId !== newId) {
                     console.log('[GUIDE] hover changed:', c._hoveredUserGuideId, '->', newId);
                     c._hoveredUserGuideId = newId;
-                    c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
+                    if (!isDrawingTool) c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                     c.is_dirty = true;
                 }
             }
@@ -1006,6 +1138,11 @@ export class CanvasInputController {
             const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
             if (c._hoveredDividerId !== divId) {
                 c._hoveredDividerId = divId;
+                c.is_dirty = true;
+            }
+            const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+            if (c._hoveredMetricGuideKey !== metricKey) {
+                c._hoveredMetricGuideKey = metricKey;
                 c.is_dirty = true;
             }
             // Ruler hover (only in MEASURE mode)
@@ -1061,11 +1198,21 @@ export class CanvasInputController {
                 e.preventDefault();
                 e.stopPropagation();
                 c._showDividerEditDialog(divHit.groupId, e.clientX, e.clientY);
+                return;
+            }
+            const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+            if (metricKey) {
+                if (metricKey === 'baseline') return; // baseline is fixed reference
+                if (c.metric_guidelines?.locked) return;
+                if (c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE') return;
+                e.preventDefault();
+                e.stopPropagation();
+                c._showMetricGuideEditDialog(metricKey, e.clientX, e.clientY);
             }
         });
         c.addGlobalListener(c.canvasObj, "mousedown", (e) => {
             if (e.button !== 0) return;
-            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER') return;
+            if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             console.log('[DIVIDER] GLOBAL mousedown', pointer.x, pointer.y);
@@ -1147,9 +1294,31 @@ export class CanvasInputController {
                     startScreenX: divHit.screenX,
                     startLeftAdvance: leftGroup ? leftGroup.advance : 0,
                     startRightAdvance: rightGroup ? rightGroup.advance : 1000,
+                    startOffsetX: c.offset.x,
                     _clientX: e.clientX,
                     _clientY: e.clientY,
                     _dragStarted: false
+                };
+                return;
+            }
+            // Metric guide drag (first-time path)
+            const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+            if (metricKey) {
+                if (metricKey === 'baseline') return; // baseline is fixed reference
+                if (c.metric_guidelines?.locked) return;
+                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
+                if (hasInteractiveHit) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const fs = c.fontSettings || {};
+                const startValue = fs[metricKey] ?? 0;
+                c._hoveredMetricGuideKey = null;
+                c.current_state = 'DRAGGING_METRIC_GUIDE';
+                c._draggingMetricGuide = {
+                    key: metricKey,
+                    startValue: startValue,
+                    startClientY: e.clientY,
+                    startCanvasY: pointer.y
                 };
                 return;
             }
@@ -1205,8 +1374,7 @@ export class CanvasInputController {
             const viewY = H - guide.y;
             dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${guide.x.toFixed(1)}" data-field="x"></div>
                 <div class="field-row"><label>Y</label><input type="number" step="1" value="${viewY.toFixed(1)}" data-field="y"></div>
-                <div class="field-row"><label>Angle</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>
-                <div class="btn-row"><button class="btn-cancel">Cancel</button><button class="btn-ok">OK</button></div>`;
+                <div class="field-row"><label>Angle</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>`;
             overlay.appendChild(dlg);
             document.body.appendChild(overlay);
             const rect = dlg.getBoundingClientRect();
@@ -1215,7 +1383,7 @@ export class CanvasInputController {
             const inputs = dlg.querySelectorAll("input");
             inputs[0].focus(); inputs[0].select();
             installDialogInputValidation([...inputs], overlay);
-            const apply = () => {
+            const commitGuide = () => {
                 const x = readDialogNumber(dlg.querySelector('[data-field="x"]'));
                 const rawY = readDialogNumber(dlg.querySelector('[data-field="y"]'));
                 const angle = readDialogNumber(dlg.querySelector('[data-field="angle"]'));
@@ -1223,17 +1391,38 @@ export class CanvasInputController {
                 guide.x = x;
                 guide.y = H - rawY;
                 guide.angle = angle;
-                overlay.remove();
                 c.is_dirty = true;
                 CanvasDispatcher.requestHistoryCommit("editUserGuideline", { id: guide.id });
             };
-            dlg.querySelector(".btn-ok").addEventListener("click", apply);
-            dlg.querySelector(".btn-cancel").addEventListener("click", () => overlay.remove());
-            overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
+            inputs.forEach(inp => inp.addEventListener("blur", commitGuide));
+            overlay.addEventListener("mousedown", (ev) => {
+                if (ev.target === overlay) { commitGuide(); overlay.remove(); }
+            });
         };
         c._showDividerEditDialog = (groupId, clientX, clientY) => {
             const group = c.curve_manager.treeItems.get(groupId);
             const currentAdv = group && group.advance !== undefined ? group.advance : 1000;
+            // Find character label from sequence tokens
+            let groupLabel = group && group.name ? group.name : groupId;
+            const seqTokens = c.curve_manager.sequenceTokens || [];
+            for (const t of seqTokens) {
+                const gid = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                if (gid === groupId) { groupLabel = t.isChar ? `'${t.value}'` : (group && group.name ? group.name : groupId); break; }
+            }
+            // Compute glyph extents from curves
+            const cdList = c.curve_manager.getCurvesForGroup(groupId) || [];
+            let minX = Infinity, maxX = -Infinity;
+            for (const cd of cdList) {
+                if (!cd.effectiveVis || !cd.curve) continue;
+                const bounds = cd.curve.getBounds();
+                if (!bounds) continue;
+                if (bounds.minX < minX) minX = bounds.minX;
+                if (bounds.maxX > maxX) maxX = bounds.maxX;
+            }
+            const glyphMinX = minX === Infinity ? 0 : minX;
+            const glyphMaxX = maxX === -Infinity ? 0 : maxX;
+            const lsb = Math.round(glyphMinX);
+            const rsb = Math.round(currentAdv - glyphMaxX);
             const old = document.querySelector(".user-guide-edit-overlay");
             if (old) old.remove();
             const overlay = document.createElement("div");
@@ -1242,8 +1431,49 @@ export class CanvasInputController {
             dlg.className = "user-guide-edit-dialog";
             dlg.style.left = `${clientX}px`;
             dlg.style.top = `${clientY}px`;
-            dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${currentAdv.toFixed(1)}" data-field="x"></div>
-                <div class="btn-row"><button class="btn-cancel">Cancel</button><button class="btn-ok">OK</button></div>`;
+            dlg.innerHTML = `<div class="property_group_title">${groupLabel}</div>
+                <div class="field-row"><label>LSB</label><input type="number" step="1" value="${lsb}" data-field="lsb"></div>
+                <div class="field-row"><label>RSB</label><input type="number" step="1" value="${rsb}" data-field="rsb"></div>`;
+            overlay.appendChild(dlg);
+            document.body.appendChild(overlay);
+            const rect = dlg.getBoundingClientRect();
+            if (rect.right > window.innerWidth) dlg.style.left = `${clientX - rect.width}px`;
+            if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
+            const inputs = dlg.querySelectorAll("input");
+            inputs[0].focus(); inputs[0].select();
+            const commitDivider = () => {
+                const newLsb = readDialogNumber(dlg.querySelector('[data-field="lsb"]'));
+                const newRsb = readDialogNumber(dlg.querySelector('[data-field="rsb"]'));
+                if (newLsb === null || newRsb === null) return;
+                const newAdv = newLsb + (glyphMaxX - glyphMinX) + newRsb;
+                if (newAdv < 0) return;
+                CanvasDispatcher.requestSetGroupAdvance(groupId, Math.max(newAdv, 0), { recordHistory: true });
+                c.is_dirty = true;
+            };
+            installDialogInputValidation([...inputs], overlay);
+            inputs.forEach(inp => inp.addEventListener("blur", (e) => {
+                commitDivider();
+                if (e.relatedTarget && overlay.contains(e.relatedTarget)) return;
+                overlay.remove();
+            }));
+            overlay.addEventListener("mousedown", (ev) => {
+                if (ev.target === overlay) { commitDivider(); overlay.remove(); }
+            });
+        };
+        c._showMetricGuideEditDialog = (metricKey, clientX, clientY) => {
+            const fs = c.fontSettings || {};
+            const upm = fs.upm || 1000;
+            const currentValue = fs[metricKey] ?? 0;
+            const labels = { ascender: 'Ascender', descender: 'Descender', x_height: 'x-Height', cap_height: 'Cap Height', baseline: 'Baseline' };
+            const old = document.querySelector(".user-guide-edit-overlay");
+            if (old) old.remove();
+            const overlay = document.createElement("div");
+            overlay.className = "user-guide-edit-overlay";
+            const dlg = document.createElement("div");
+            dlg.className = "user-guide-edit-dialog";
+            dlg.style.left = `${clientX}px`;
+            dlg.style.top = `${clientY}px`;
+            dlg.innerHTML = `<div class="field-row"><label>${labels[metricKey] || metricKey}</label><input type="number" step="1" value="${currentValue}" data-field="value"></div>`;
             overlay.appendChild(dlg);
             document.body.appendChild(overlay);
             const rect = dlg.getBoundingClientRect();
@@ -1251,16 +1481,19 @@ export class CanvasInputController {
             if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
             const input = dlg.querySelector("input");
             input.focus(); input.select();
-            installDialogInputValidation([input], overlay, { x: { min: 0 } });
-            const apply = () => {
-                const val = readDialogNumber(dlg.querySelector('[data-field="x"]'), { min: 0 });
+            const commitMetric = () => {
+                const val = readDialogNumber(dlg.querySelector('[data-field="value"]'));
                 if (val === null) return;
-                CanvasDispatcher.requestSetGroupAdvance(groupId, val, { recordHistory: true });
-                overlay.remove();
+                if (!c.fontSettings) c.fontSettings = {};
+                c.fontSettings[metricKey] = val;
+                c.is_dirty = true;
+                CanvasDispatcher.requestHistoryCommit("editMetricGuideline", { key: metricKey, value: val });
             };
-            dlg.querySelector(".btn-ok").addEventListener("click", apply);
-            dlg.querySelector(".btn-cancel").addEventListener("click", () => overlay.remove());
-            overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) overlay.remove(); });
+            installDialogInputValidation([input], overlay);
+            input.addEventListener("blur", commitMetric);
+            overlay.addEventListener("mousedown", (ev) => {
+                if (ev.target === overlay) { commitMetric(); overlay.remove(); }
+            });
         };
         c._showRulerEditDialog = (ruler, clientX, clientY) => {
             const old = document.querySelector(".user-guide-edit-overlay");
@@ -1389,6 +1622,16 @@ export class CanvasInputController {
                 c._draggingDivider = null;
                 c.current_state = 'IDLE';
                 if (div) commitDividerDrag(div);
+                c.is_dirty = true;
+                return;
+            }
+            if (c.current_state === 'DRAGGING_METRIC_GUIDE' && c._draggingMetricGuide) {
+                const mg = c._draggingMetricGuide;
+                c._draggingMetricGuide = null;
+                c.current_state = 'IDLE';
+                if (mg._dragStarted) {
+                    CanvasDispatcher.requestHistoryCommit("editMetricGuideline", { key: mg.key });
+                }
                 c.is_dirty = true;
                 return;
             }

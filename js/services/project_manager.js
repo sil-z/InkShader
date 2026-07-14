@@ -34,7 +34,6 @@ export class ProjectManager {
         // Deep-clone to prevent shared-reference contamination:
         // commandStack entries hold snapshotPatches that mutate during undo/redo
         return {
-            runtimeVersion: 2,
             latestSnapshot: this._deepClone(state.snapshotObj),
             commandStack: this._deepClone(c.commandStack || []),
             redoCommandStack: this._deepClone(c.redoCommandStack || [])
@@ -94,12 +93,8 @@ export class ProjectManager {
 
         const emptySnapshot = JSON.stringify({
             version: "1.0",
-            canvas_size_width: c.canvas_size_width || 1000,
-            canvas_size_height: c.canvas_size_height || 1000,
-            editor_guideline_h: [], editor_guideline_v: [],
-            editor_guideline_lock: false, editor_user_guidelines: [],
+            editor_guidelines: [], editor_guideline_lock: false,
             editor_sequence: "", editor_active_indices: [],
-            editor_fill_color: "#000000", editor_stroke_color: "#000000",
             family_name: "InkShader_Default_Font",
             project_name: name,
             basic_spacing: 1000,
@@ -125,7 +120,8 @@ export class ProjectManager {
             x_height: 500,
             cap_height: 700,
             font_version: "1.0",
-            ch: {}, components: {}
+            editor_root_order: [],
+            glyphs: {}
         });
 
         await c.commands.loadSnapshotCommand(emptySnapshot);
@@ -140,7 +136,6 @@ export class ProjectManager {
         c.curve_manager.activeGroupId = null;
 
         const data = {
-            runtimeVersion: 2,
             // Deep-clone snapshot to avoid shared-ref corruption via history service's _saveRuntimeState
             latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
             commandStack: [],
@@ -197,9 +192,6 @@ export class ProjectManager {
         c.curve_manager.clearAllSelection();
         c.curve_manager.activeGroupId = null;
 
-        if (typeof c.history._reconcileRuntimeHistoryStacks === 'function') {
-            c.history._reconcileRuntimeHistoryStacks();
-        }
         if (typeof c.history._flushRuntimeStateSave === 'function') {
             c.history._flushRuntimeStateSave();
         }

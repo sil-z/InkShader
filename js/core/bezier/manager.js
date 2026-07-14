@@ -48,6 +48,36 @@ export class CurveManager {
     clipboard = null;
 
     // =========================================================================
+    // Dirty glyph tracking (incremental snapshot serialization)
+    // =========================================================================
+    _dirtyGlyphs = new Set();
+    _dirtyTrackingEnabled = true;
+
+    getDirtyGlyphs() { return this._dirtyGlyphs; }
+    clearDirtyGlyphs() { this._dirtyGlyphs.clear(); }
+    setDirtyTrackingEnabled(v) { this._dirtyTrackingEnabled = v; }
+
+    /** Mark a root glyph as modified, resolving any entity ID (curve/group) that belongs to it. */
+    _markDirty(entityId) {
+        if (!this._dirtyTrackingEnabled) return;
+        if (entityId == null) return;
+        const rootId = this.treeStore.getRootGroupId(entityId);
+        if (!rootId) return;
+        const rootItem = this.treeStore.treeItems.get(rootId);
+        if (rootItem && rootItem.type === 'group' && !rootItem.isRef && rootItem.parentId === null) {
+            this._dirtyGlyphs.add(rootItem.name);
+        }
+    }
+
+    /** Resolve a node marker to its parent group and mark it dirty. */
+    _markDirtyByMarker(marker) {
+        if (!this._dirtyTrackingEnabled) return;
+        if (!marker) return;
+        const curve = this.curveStore.find_curve_by_dom(marker);
+        if (curve) this._markDirty(curve.groupId);
+    }
+
+    // =========================================================================
     // Construction
     // =========================================================================
 
@@ -169,6 +199,7 @@ export class CurveManager {
             const curve = node?.curve;
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
             else this.notifyModelUpdate();
+            this._markDirtyByMarker(marker);
         }
         return ok;
     }
@@ -180,6 +211,7 @@ export class CurveManager {
         if (ok) {
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
             else this.notifyModelUpdate();
+            this._markDirtyByMarker(marker);
         }
         return ok;
     }
@@ -191,13 +223,17 @@ export class CurveManager {
             const curve = node?.curve;
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
             else this.notifyModelUpdate();
+            this._markDirtyByMarker(marker);
         }
         return ok;
     }
 
     moveSelectedNodes(updates) {
         const { changed, affectedGroups } = this.curveStore.moveSelectedNodes(updates);
-        for (let gid of affectedGroups) this.invalidateGroupCache(gid);
+        for (let gid of affectedGroups) {
+            this.invalidateGroupCache(gid);
+            this._markDirty(gid);
+        }
         if (changed && affectedGroups.size === 0) this.notifyModelUpdate();
         return changed;
     }
@@ -209,6 +245,7 @@ export class CurveManager {
             const curve = node?.curve;
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
             else this.notifyModelUpdate();
+            this._markDirtyByMarker(marker);
         }
         return ok;
     }
@@ -218,6 +255,7 @@ export class CurveManager {
         if (!result) return false;
 
         this.removeNodeSelection([marker]);
+        this._markDirtyByMarker(marker);
 
         if (result.isEmpty) {
             this.remove_curve(result.curve.id);
@@ -232,6 +270,7 @@ export class CurveManager {
         if (!result) return false;
         if (result.curve?.groupId) this.invalidateGroupCache(result.curve.groupId);
         else this.notifyModelUpdate();
+        this._markDirtyByMarker(marker);
         return true;
     }
 
@@ -265,12 +304,15 @@ export class CurveManager {
             parent.children.push(curve.id);
             parent.is_modified = true;
         }
+        this._markDirty(parentId);
         this.notifyTreeUpdate();
     }
 
     remove_curve(id) {
+        const curve = this.curveStore.curves.find(c => c.id === id);
         if (this.curveStore.remove_curve(id)) {
             this.treeStore.deleteTreeItem(id, false);
+            if (curve) this._markDirty(curve.groupId);
             this.notifyTreeUpdate();
             return true;
         }
@@ -340,6 +382,8 @@ export class CurveManager {
 
         if (!this.treeStore.renameItem(oldId, newName)) return false;
 
+        this._markDirty(oldId);
+
         for (let [char, gid] of this.seqService.defaultGlyphs.entries()) {
             if (gid === oldId) this.seqService.defaultGlyphs.set(char, newName);
         }
@@ -356,7 +400,10 @@ export class CurveManager {
         return true;
     }
 
-    deleteTreeItem(id, cascade = true) { this.treeStore.deleteTreeItem(id, cascade); }
+    deleteTreeItem(id, cascade = true) {
+        this._markDirty(id);
+        this.treeStore.deleteTreeItem(id, cascade);
+    }
 
     getCurvesForGroup(g) { return this.treeStore.getCurvesForGroup(g); }
     invalidateGroupCache(t) {
@@ -371,6 +418,8 @@ export class CurveManager {
     deleteSingleObject(objectId) {
         const result = this.treeStore.deleteSingleObject(objectId);
         if (!result) return false;
+
+        this._markDirty(objectId);
 
         if (result.curveIdsToDelete.size > 0) {
             const invalidMarkers = [];
@@ -400,10 +449,23 @@ export class CurveManager {
         return true;
     }
 
-    changeSingleObjectGroup(o, t, m) { return this.treeStore.changeSingleObjectGroup(o, t, m); }
-    setSingleObjectProperties(id, props) { return this.treeStore.setSingleObjectProperties(id, props); }
-    toggleSingleObjectLock(id, l) { return this.treeStore.toggleSingleObjectLock(id, l); }
-    toggleSingleObjectDisplay(id, v) { return this.treeStore.toggleSingleObjectDisplay(id, v); }
+    changeSingleObjectGroup(o, t, m) {
+        this._markDirty(o);
+        this._markDirty(t);
+        return this.treeStore.changeSingleObjectGroup(o, t, m);
+    }
+    setSingleObjectProperties(id, props) {
+        this._markDirty(id);
+        return this.treeStore.setSingleObjectProperties(id, props);
+    }
+    toggleSingleObjectLock(id, l) {
+        this._markDirty(id);
+        return this.treeStore.toggleSingleObjectLock(id, l);
+    }
+    toggleSingleObjectDisplay(id, v) {
+        this._markDirty(id);
+        return this.treeStore.toggleSingleObjectDisplay(id, v);
+    }
 
     // =========================================================================
     // TreeStore delegation — transform preview
@@ -427,6 +489,12 @@ export class CurveManager {
     // =========================================================================
 
     changeSelectedObjectsBounds(prop, val, bounds, geometryBounds, options) {
+        for (const c of this.selected_curves) {
+            if (c?.groupId) this._markDirty(c.groupId);
+        }
+        for (const ref of this.selected_refs) {
+            if (ref?.id) this._markDirty(ref.id);
+        }
         return this.treeStore.changeSelectedObjectsBounds(prop, val, bounds, geometryBounds, options, {
             selectedCurves: this.selected_curves,
             selectedRefs: this.selected_refs,
@@ -464,6 +532,7 @@ export class CurveManager {
     pasteGroupRef(src, tgt, tx) {
         const id = this.treeStore.pasteGroupRef(src, tgt, tx);
         if (id) {
+            this._markDirty(tgt);
             this.invalidateGroupCache(tgt);
             this.updateSequenceParsing();
             this.notifyTreeUpdate();
@@ -538,14 +607,18 @@ export class CurveManager {
             sequenceChanged = true;
         }
 
+        this._markDirty(groupId);
+        if (targetParentId) this._markDirty(targetParentId);
         this.notifyTreeUpdate();
         return { id: result.id, sequenceChanged, activeIndices: Array.from(this.seqService.activeSequenceIndices) };
     }
 
     unlinkReferenceDeep(refId) {
-        return this.treeStore.unlinkReferenceDeep(refId, (curve, parentId) => {
+        const result = this.treeStore.unlinkReferenceDeep(refId, (curve, parentId) => {
             return this.cloneCurveToGroup(curve, parentId);
         });
+        if (result) this._markDirty(refId);
+        return result;
     }
 
     // =========================================================================
@@ -600,6 +673,7 @@ export class CurveManager {
                 this.selected_curves.add(nc);
             }
 
+            this._markDirty(parentGroupId);
             this.treeStore.invalidateGroupCache(parentGroupId);
             this.notifyTreeUpdate();
             return true;
@@ -631,7 +705,10 @@ export class CurveManager {
 
     importImageToCurrentGroup(img, name) {
         const id = this.treeStore.importImageToCurrentGroup(img, name, this.activeGroupId);
-        if (id) this.notifyTreeUpdate();
+        if (id) {
+            this._markDirty(this.activeGroupId);
+            this.notifyTreeUpdate();
+        }
         return id;
     }
 
@@ -715,10 +792,12 @@ export class CurveManager {
     // =========================================================================
 
     async loadFromJSON(jsonStr) {
+        this._dirtyGlyphs.clear();
         await this.serializer.loadFromJSON(jsonStr, (l, m) => this._reportMessage(l, m));
     }
 
     async loadFromSnapshotObject(data) {
+        this._dirtyGlyphs.clear();
         await this.serializer.loadFromSnapshotObject(data, (l, m) => this._reportMessage(l, m));
     }
 

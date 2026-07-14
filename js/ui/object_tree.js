@@ -135,7 +135,9 @@ export class ObjectTree extends HTMLElement {
         } else if (action === 'go_source') {
             const item = EditorModel.getTreeItem(contextId);
             if (item && item.isRef && item.refId) {
+                this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetTreeSelection([item.refId]);
+                queueMicrotask(() => { this._skipTreeScroll = false; });
             }
         } else if (action === 'unlink') {
             CanvasDispatcher.requestUnlink(ids);
@@ -188,15 +190,14 @@ export class ObjectTree extends HTMLElement {
         }
         const itemDiv = e.target.closest(".tree_item");
         if (!itemDiv) return;
-        // Groups: clicking non-toggle area toggles collapse, switches active group, and clears object selection
+        // Groups: clicking non-toggle area switches active group and clears object selection (no collapse toggle)
         if (itemDiv.dataset.type === "group" && itemDiv.dataset.isref !== "true") {
-            this._skipTreeScroll = true;
-            CanvasDispatcher.requestToggleGroupCollapsed(itemDiv.dataset.id);
             if (this.interaction.activeGroupId !== itemDiv.dataset.id) {
+                this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetActiveGroup(itemDiv.dataset.id);
                 CanvasDispatcher.requestSetTreeSelection([], itemDiv.dataset.id);
+                queueMicrotask(() => { this._skipTreeScroll = false; });
             }
-            queueMicrotask(() => { this._skipTreeScroll = false; });
             return;
         }
         if (e.target.classList.contains("tree_select_btn")) {
@@ -211,7 +212,9 @@ export class ObjectTree extends HTMLElement {
             const item = EditorModel.getTreeItem(id);
             if (item?.type === "group") activeGroupId = item.isRef ? item.parentId : id;
             else if (item?.parentId) activeGroupId = item.parentId;
+            this._skipTreeScroll = true;
             CanvasDispatcher.requestSetTreeSelection(Array.from(newSelection), activeGroupId);
+            queueMicrotask(() => { this._skipTreeScroll = false; });
         }
     }
     handleRightClick(e) {
@@ -226,7 +229,9 @@ export class ObjectTree extends HTMLElement {
         const currentIndex = allItems.findIndex(el => el.dataset.id === id);
         this.lastSelectedIndex = currentIndex;
         if (!this.interaction.hasTreeSelection(id)) {
+            this._skipTreeScroll = true;
             CanvasDispatcher.requestSetTreeSelection([id]);
+            queueMicrotask(() => { this._skipTreeScroll = false; });
         }
         const menu = document.createElement("div");
         menu.className = "tree_menu";
@@ -568,7 +573,9 @@ export class ObjectTree extends HTMLElement {
             const id = item.dataset.id;
             
             if (!this.interaction.hasTreeSelection(id)) {
+                this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetTreeSelection([id]);
+                queueMicrotask(() => { this._skipTreeScroll = false; });
                 this.tree.querySelectorAll('.tree_item.selected').forEach(el => {
                     el.classList.remove('selected');
                     const sb = el.querySelector('.tree_select_btn');
