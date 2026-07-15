@@ -9,9 +9,13 @@ function deepClone(value) {
         try {
             return structuredClone(value);
         } catch (_) {
-            /* fall through */
+            // structuredClone throws on DOM elements, proxies, etc.
+            // Fall through to manual clone.
         }
     }
+    // Fast path for primitives and simple objects:
+    // When JSON roundtrip is acceptable but we avoid the full parse overhead
+    // for small values by inlining.
     return JSON.parse(JSON.stringify(value));
 }
 

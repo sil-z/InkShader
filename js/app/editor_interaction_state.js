@@ -85,8 +85,8 @@ export function mergeInteractionFromStoreState(storeState = {}) {
     }
     return {
         selectedTreeIds: [...(storeState.selectedTreeIds || [])],
-        selectedNodeMarkerIds: [...(storeState.selectedNodeIds || [])],
-        selectedCurveIds: [...(storeState.selectedCurveIds || [])],
+        selectedNodeMarkerIds: new Set(storeState.selectedNodeIds || []),
+        selectedCurveIds: new Set(storeState.selectedCurveIds || []),
         selectedRefIds: [...(storeState.selectedRefIds || [])],
         activeGroupId: storeState.activeGroupId ?? null,
         focusedSeqIdx: typeof storeState.focusedSeqIdx === "number" ? storeState.focusedSeqIdx : -1
@@ -150,12 +150,12 @@ export class EditorInteractionState {
     }
 
     get nodeSelectionCount() {
-        return this._cached.selectedNodeMarkerIds.length;
+        return this._cached.selectedNodeMarkerIds.size;
     }
 }
 
 export function snapshotIncludesCurve(snapshot, curve) {
-    return !!(curve?.id && snapshot.selectedCurveIds.includes(curve.id));
+    return !!(curve?.id && snapshot.selectedCurveIds.has(curve.id));
 }
 
 export function snapshotIncludesRef(snapshot, refItem) {
@@ -168,7 +168,7 @@ export function snapshotIncludesRefById(snapshot, refId) {
 
 export function snapshotIncludesNodeMarker(snapshot, marker) {
     const id = marker && typeof marker === "object" ? marker.id : marker;
-    return !!(id && snapshot.selectedNodeMarkerIds.includes(id));
+    return !!(id && snapshot.selectedNodeMarkerIds.has(id));
 }
 
 export function snapshotActiveGroupIs(snapshot, groupId) {

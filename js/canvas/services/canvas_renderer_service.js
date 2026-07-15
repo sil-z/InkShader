@@ -1,13 +1,11 @@
 import { getCanvasTheme } from "../rendering/canvas_theme.js";
 import {
     shouldIncludeCurrentDrawingCurve,
-    snapshotIncludesCurve,
     snapshotIncludesNodeMarker
 } from "../../app/editor_interaction_state.js";
 import {
     appendCurveFillPath,
     shouldBatchFillCurve,
-    usePreviewSkeletonForBatchFill,
     drawCurveStroke,
     isCurveStrokePreview
 } from "../rendering/curve_renderer.js";
@@ -16,21 +14,34 @@ import { createViewportTransform } from "../rendering/viewport_transform.js";
 export class CanvasRendererService {
     constructor(canvas) {
         this.canvas = canvas;
+        // Ruler / canvas layout change detection (avoid DOM rebuild when unchanged)
+        this._rulerHState = null;
+        this._rulerVState = null;
+        this._canvasState = null;
     }
     renderCanvas() {
         const c = this.canvas;
         if (!c.ctx) return;
         const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
         const { width: logicalW, height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
-        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (logicalW > 0 && logicalH > 0) {
-            c.ctx.clearRect(0, 0, logicalW, logicalH);
-        }
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+
+        // ── Clear canvas ──
+        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (logicalW > 0 && logicalH > 0) c.ctx.clearRect(0, 0, logicalW, logicalH);
+
+        // Viewport bounds in world coordinates (for viewport culling)
+        const vpBounds = {
+            minX: -offsetX / c.scale,
+            minY: -offsetY / c.scale,
+            maxX: (logicalW - offsetX) / c.scale,
+            maxY: (logicalH - offsetY) / c.scale
+        };
         const ix = c.getInteractionSnapshot();
         let seqTokens = c.curve_manager.sequenceTokens || [];
         let activeIndices = c.curve_manager.activeSequenceIndices;
         const p = getCanvasTheme();
+
         for (let i = 0; i < seqTokens.length; i++) {
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
             let token = seqTokens[i];
@@ -46,6 +57,8 @@ export class CanvasRendererService {
                 }
                 if (displayChar) {
                     let advance = (group && group.advance !== undefined) ? group.advance : 1000;
+                    // Viewport culling: skip char preview if group is outside visible range
+                    if (seqOffsetX + advance < vpBounds.minX || seqOffsetX > vpBounds.maxX) continue;
                     let fontH = c.canvas_size_height * c.scale;
                     let cx = (seqOffsetX + advance / 2) * c.scale + offsetX;
                     let baselineY = offsetY + 0.8 * fontH;
@@ -63,7 +76,8 @@ export class CanvasRendererService {
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
             let token = seqTokens[i];
             let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            const childrenIds = c.curve_manager.treeItems.get(groupId)?.children || [];
+            const imgGroup = c.curve_manager.treeItems.get(groupId);
+            const childrenIds = imgGroup?.children || [];
             childrenIds.forEach((id) => {
                 const item = c.curve_manager.treeItems.get(id);
                 if (item && item.type === "image" && item.visible) {
@@ -91,6 +105,40 @@ export class CanvasRendererService {
                 c.ctx.restore();
             }
         });
+        let unselectedNodeRenders = []; let selectedNodeRenders = [];
+
+        // ── Build showHandlesSet from selection state (avoid iterating ALL nodes per frame) ──
+        let globalShowHandlesSet = new Set();
+        const curveStore = c.curve_manager.curveStore;
+        const addToShowHandles = (node, curve) => {
+            if (!node) return;
+            globalShowHandlesSet.add(node);
+            if (node.lastOnCurve) globalShowHandlesSet.add(node.lastOnCurve);
+            if (node.nextOnCurve) globalShowHandlesSet.add(node.nextOnCurve);
+            if (curve?.closed) {
+                if (node === curve.startNode && curve.endNode) globalShowHandlesSet.add(curve.endNode);
+                if (node === curve.endNode && curve.startNode) globalShowHandlesSet.add(curve.startNode);
+            }
+        };
+        const addAllNodes = (curve) => {
+            if (!curve || !curve.startNode) return;
+            let cur = curve.startNode;
+            while (cur) { addToShowHandles(cur, curve); cur = cur.nextOnCurve; }
+        };
+        for (const curveId of (ix.selectedCurveIds || [])) {
+            const curve = curveStore.curveById.get(curveId);
+            if (curve) addAllNodes(curve);
+        }
+        if (c.current_curve) addAllNodes(c.current_curve);
+        const selMarkers = ix.selectedNodeMarkerIds;
+        if (selMarkers && selMarkers.size > 0) {
+            for (const marker of selMarkers) {
+                const node = curveStore.domMap.get(marker);
+                if (node) addToShowHandles(node, node.curve);
+            }
+        }
+
+        // ── PASS 1: Curve fill + stroke ──
         for (let i = 0; i < seqTokens.length; i++) {
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
             let token = seqTokens[i];
@@ -99,35 +147,32 @@ export class CanvasRendererService {
             if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
                 if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
             }
+
+            // ── Fill (batched per-group) ──
             c.ctx.beginPath();
             let hasFill = false;
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
+                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
                     const refId = cd.refId ?? null;
                     const strokePreview = isCurveStrokePreview(c, cd.curve.id, refId);
                     if (!shouldBatchFillCurve(cd.curve, { strokePreview })) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
-                    appendCurveFillPath(c.ctx, cd.curve, viewport, {
-                        refId,
-                        strokePreview: usePreviewSkeletonForBatchFill(cd.curve, { strokePreview })
-                    });
+        appendCurveFillPath(c.ctx, cd.curve, viewport, {
+                            refId,
+                            strokePreview
+                        });
                     hasFill = true;
                 }
             }
             if (hasFill) { c.ctx.fillStyle = p.path_fill_color; c.ctx.fill("nonzero"); }
-        }
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-            }
+
+            // ── Stroke (per-curve) ──
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
+                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
                     const refId = cd.refId ?? null;
                     drawCurveStroke(c.ctx, cd.curve, viewport, p, {
@@ -137,6 +182,19 @@ export class CanvasRendererService {
                     });
                 }
             }
+        }
+
+        // ── PASS 2: Overlays ──
+        for (let i = 0; i < seqTokens.length; i++) {
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
+            }
+
+            // ── Hovered curve segment overlay ──
             if (c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
                 const seg = c.hovered_curve_segment;
                 for (const cd of curveDataList) {
@@ -158,7 +216,34 @@ export class CanvasRendererService {
                     }
                 }
             }
+
+            // ── Node handles ──
+            if (activeIndices.has(i)) {
+                for (const cd of curveDataList) {
+                    if (!cd.effectiveVis || cd.effectiveLock) continue;
+                    if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE" || c.getActiveTool() === "ELLIPSE") continue;
+                    if (c.getActiveTool() === "DRAW" && cd.curve !== c.current_curve) continue;
+                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
+                    let start_node = cd.curve.startNode;
+                    while (start_node !== null) {
+                        let isSelected = snapshotIncludesNodeMarker(ix, start_node.main_node);
+                        let showHandles = globalShowHandlesSet.has(start_node);
+                        let hoverStates = { main: c.hovered_node_marker === start_node.main_node, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node };
+                        let nodeToDraw = start_node; let z = start_node.last_touched || 0;
+                        const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                        let drawFn = () => {
+                            c.ctx.save();
+                            drawCurveNode(c.ctx, nodeToDraw, viewport, p, { isSelected, hoverStates, showHandles });
+                            c.ctx.restore();
+                        };
+                        if (isSelected) { selectedNodeRenders.push({ fn: drawFn, z: z }); } else { unselectedNodeRenders.push({ fn: drawFn, z: z }); }
+                        start_node = start_node.nextOnCurve;
+                    }
+                }
+            }
         }
+        unselectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
+        selectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
         if (c.previewData && c.last_on_curve_node_marker) {
             const pd = c.previewData;
             c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd.p2_x, pd.p2_y, pd.p3_x, pd.p3_y);
@@ -174,23 +259,39 @@ export class CanvasRendererService {
         if (c._ellipseWorldStartX !== undefined && c._ellipseWorldEndX !== undefined) {
             this._drawEllipsePreview(c, p);
         }
-        // Node drag: ghost preview of affected curves at original (pre-drag) positions
+        // Node drag: ghost preview of affected curves at original (pre-drag) positions.
+        // Instead of iterating all tokens/curves to find affected ones, build a direct
+        // lookup map from curveId → { seqOffsetX, matrix } for the affected curves only.
         if (c.drag_preview && (c.current_state === 'DRAGGING_NODE' || c.current_state === 'DRAGGING_NODE_READY')) {
             c.ctx.save();
-            for (let i = 0; i < seqTokens.length; i++) {
-                const seqOffsetX = c.curve_manager.getSeqOffset(i);
-                const token = seqTokens[i];
-                const groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-                const curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-                for (const cd of curveDataList) {
+            const seqTokens2 = seqTokens;
+            const dragCtxMap = new Map();
+            for (let i = 0; i < seqTokens2.length; i++) {
+                const seqOffX2 = c.curve_manager.getSeqOffset(i);
+                const token2 = seqTokens2[i];
+                const gid2 = token2.isChar ? c.curve_manager.getDefaultGroupForChar(token2.value) : token2.value;
+                // Group-level viewport culling
+                const dg = c.curve_manager.treeItems.get(gid2);
+                if (dg) {
+                    const dAdv = dg.advance !== undefined ? dg.advance : 1000;
+                    if (seqOffX2 + dAdv < vpBounds.minX || seqOffX2 > vpBounds.maxX) continue;
+                }
+                const cdl2 = c.curve_manager.getCurvesForGroup(gid2);
+                for (const cd of cdl2) {
                     if (!cd.curve?.startNode || !c.drag_preview.curveIds.has(cd.curve.id)) continue;
-                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
-                    const mapPoint = createViewportTransform(viewport);
-                    const nodePositions = c.drag_preview.nodePositions;
+                    dragCtxMap.set(cd.curve.id, { seqOffsetX: seqOffX2, matrix: cd.matrix || new DOMMatrix() });
+                }
+            }
+            for (const [curveId, ctx2] of dragCtxMap) {
+                const cdCurve = c.curve_manager.curveById.get(curveId);
+                if (!cdCurve?.startNode) continue;
+                const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX: ctx2.seqOffsetX, matrix: ctx2.matrix };
+                const mapPoint = createViewportTransform(viewport);
+                const nodePositions = c.drag_preview.nodePositions;
                     // Build ordered node list from snapshot data, tracking which nodes are being dragged
                     const nodes = [];
                     const isDragged = [];
-                    let current = cd.curve.startNode;
+                    let current = cdCurve.startNode;
                     while (current) {
                         const snap = nodePositions.get(current.main_node);
                         nodes.push(snap || {
@@ -206,6 +307,7 @@ export class CanvasRendererService {
                     if (nodes.length < 2) continue;
                     c.ctx.beginPath();
                     let hasSegment = false;
+                    let lastEndX = null, lastEndY = null;
                     const emitSegment = (curr, next) => {
                         const p0 = mapPoint(curr.x, curr.y);
                         if (!hasSegment) { c.ctx.moveTo(p0.x, p0.y); hasSegment = true; }
@@ -213,20 +315,22 @@ export class CanvasRendererService {
                         const cp2 = mapPoint(next.c2x ?? next.x, next.c2y ?? next.y);
                         const end = mapPoint(next.x, next.y);
                         c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
+                        lastEndX = end.x; lastEndY = end.y;
                     };
                     for (let j = 0; j < nodes.length - 1; j++) {
                         // Only draw segments adjacent to at least one dragged node
                         if (!isDragged[j] && !isDragged[j + 1]) continue;
                         emitSegment(nodes[j], nodes[j + 1]);
                     }
-                    if (cd.curve.closed && nodes.length > 1) {
+                    if (cdCurve.closed && nodes.length > 1) {
                         // Closing segment (endNode -> startNode): only if either endpoint is dragged
                         if (isDragged[nodes.length - 1] || isDragged[0]) {
                             const lastNode = nodes[nodes.length - 1];
                             const firstNode = nodes[0];
-                            // Always moveTo the closing segment start; pen may be elsewhere
                             const pCurr = mapPoint(lastNode.x, lastNode.y);
-                            c.ctx.moveTo(pCurr.x, pCurr.y);
+                            if (!hasSegment || pCurr.x !== lastEndX || pCurr.y !== lastEndY) {
+                                c.ctx.moveTo(pCurr.x, pCurr.y);
+                            }
                             if (!hasSegment) hasSegment = true;
                             const cp1 = mapPoint(lastNode.c1x ?? lastNode.x, lastNode.c1y ?? lastNode.y);
                             const cp2 = mapPoint(firstNode.c2x ?? firstNode.x, firstNode.c2y ?? firstNode.y);
@@ -239,7 +343,6 @@ export class CanvasRendererService {
                     c.ctx.lineWidth = 0.5;
                     c.ctx.stroke();
                 }
-            }
             c.ctx.restore();
         }
         {
@@ -399,33 +502,6 @@ export class CanvasRendererService {
             let midX = (sx + ex) / 2, midY = (sy + ey) / 2;
             c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, midX + 5, midY - 3); c.ctx.restore();
         }
-        let showHandlesSet = new Set();
-        for (let i = 0; i < seqTokens.length; i++) {
-            if (!activeIndices.has(i)) continue;
-            let token = seqTokens[i]; let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-            }
-            for (let cd of curveDataList) {
-                if (!cd.effectiveVis || cd.effectiveLock) continue;
-                let isCurveSelected = snapshotIncludesCurve(ix, cd.curve) || cd.curve === c.current_curve;
-                let current = cd.curve.startNode;
-                while (current) {
-                    if (snapshotIncludesNodeMarker(ix, current.main_node) || isCurveSelected) {
-                        showHandlesSet.add(current);
-                        if (current.lastOnCurve) showHandlesSet.add(current.lastOnCurve);
-                        if (current.nextOnCurve) showHandlesSet.add(current.nextOnCurve);
-                        if (cd.curve.closed) {
-                            if (current === cd.curve.startNode && cd.curve.endNode) showHandlesSet.add(cd.curve.endNode);
-                            if (current === cd.curve.endNode && cd.curve.startNode) showHandlesSet.add(cd.curve.startNode);
-                        }
-                    }
-                    current = current.nextOnCurve;
-                }
-            }
-        }
-        let unselectedNodeRenders = []; let selectedNodeRenders = [];
 
         // ── Render baseline (permanent reference at design y=0, not draggable) ──
         {
@@ -544,8 +620,9 @@ export class CanvasRendererService {
                 c.ctx.save();
                 c.ctx.strokeStyle = p.divider_highlight; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1;
                 c.ctx.beginPath(); c.ctx.moveTo(hoveredScreenX, 0); c.ctx.lineTo(hoveredScreenX, logicalH); c.ctx.stroke();
-                // LSB/RSB display — always attempt when a divider is hovered
-                if (hoveredLeftGid != null || hoveredRightGid != null) {
+                // LSB/RSB display — skip if hovered divider is off-screen
+                if ((hoveredLeftGid != null || hoveredRightGid != null) &&
+                    hoveredScreenX >= -50 && hoveredScreenX <= logicalW + 50) {
                     const computeExtents = (gid) => {
                         const cdList = c.curve_manager.getCurvesForGroup(gid) || [];
                         let minX = Infinity, maxX = -Infinity;
@@ -589,37 +666,18 @@ export class CanvasRendererService {
                 c.ctx.restore();
             }
         }
-        for (let i = 0; i < seqTokens.length; i++) {
-            if (!activeIndices.has(i)) continue;
-            let seqOffsetX = c.curve_manager.getSeqOffset(i); let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-            }
-            for (const cd of curveDataList) {
-                if (!cd.effectiveVis || cd.effectiveLock) continue;
-                if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE" || c.getActiveTool() === "ELLIPSE") continue;
-                if (c.getActiveTool() === "DRAW" && cd.curve !== c.current_curve) continue;
-                let start_node = cd.curve.startNode;
-                while (start_node !== null) {
-                    let isSelected = snapshotIncludesNodeMarker(ix, start_node.main_node);
-                    let showHandles = showHandlesSet.has(start_node);
-                    let hoverStates = { main: c.hovered_node_marker === start_node.main_node, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node };
-                    let nodeToDraw = start_node; let z = start_node.last_touched || 0;
-                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
-                    let drawFn = () => {
-                        c.ctx.save();
-                        drawCurveNode(c.ctx, nodeToDraw, viewport, p, { isSelected, hoverStates, showHandles });
-                        c.ctx.restore();
-                    };
-                    if (isSelected) { selectedNodeRenders.push({ fn: drawFn, z: z }); } else { unselectedNodeRenders.push({ fn: drawFn, z: z }); }
-                    start_node = start_node.nextOnCurve;
-                }
-            }
-        }
-        unselectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
-        selectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
+    }
+    _isCurveInViewport(curve, matrix, seqOffsetX, vpBounds) {
+        const bounds = curve.getBounds(matrix || undefined);
+        if (!bounds) return false;
+        // World-space bounds: matrix transform + seqOffsetX on X axis
+        const worldMinX = bounds.minX + seqOffsetX;
+        const worldMaxX = bounds.maxX + seqOffsetX;
+        const worldMinY = bounds.minY;
+        const worldMaxY = bounds.maxY;
+        // AABB overlap check (use <=/>= to include degenerate bounds for single-node curves)
+        return worldMinX <= vpBounds.maxX && worldMaxX >= vpBounds.minX
+            && worldMinY <= vpBounds.maxY && worldMaxY >= vpBounds.minY;
     }
     update_previewData(mouseX, mouseY) {
         const c = this.canvas;
@@ -658,6 +716,9 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0;
         const h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
         if (w <= 0 || h <= 0) return;
+        const stateKey = `${c.scale},${c.offset.x},${w}`;
+        if (stateKey === this._rulerHState) return;
+        this._rulerHState = stateKey;
         c.ruler_horizontal.replaceChildren();
         const svg = c.env.createSVGElement("svg");
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
@@ -690,6 +751,9 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
         const h = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
         if (w <= 0 || h <= 0) return;
+        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h}`;
+        if (stateKey === this._rulerVState) return;
+        this._rulerVState = stateKey;
         c.ruler_vertical.replaceChildren();
         const svg = c.env.createSVGElement("svg");
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
@@ -727,8 +791,14 @@ export class CanvasRendererService {
         const viewport = c.viewportConfig || {};
         const left = (Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size) + c.offset.x;
         const top = (Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size) + c.offset.y;
-        let w;
         const tokens = c.curve_manager?.sequenceTokens || [];
+        const tokenSummary = tokens.length > 0
+            ? `${tokens.length},${c.curve_manager.getSeqOffset(tokens.length - 1)}`
+            : '0';
+        const canvasKey = `${c.scale},${left},${top},${tokenSummary},${c.canvas_size_height}`;
+        if (canvasKey === this._canvasState) return;
+        this._canvasState = canvasKey;
+        let w;
         if (tokens.length > 0) {
             const lastIdx = tokens.length - 1;
             const lastOff = c.curve_manager.getSeqOffset(lastIdx);

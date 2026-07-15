@@ -401,7 +401,6 @@ export function initializeLayoutShell() {
             if (!activeItem || activeItem === item) return;
 
             clearTimeout(_hoverTimer);
-            clearTimeout(_hoverTimer);
             closeAnyOpenMenu();
             item.click();
         });
@@ -452,7 +451,7 @@ function _triggerExportSVG() {
         }
     }
     for (const { id } of allCurves) {
-        const curve = cm.curves.find(crv => crv.id === id);
+        const curve = cm.curveById.get(id);
         if (!curve || !curve.startNode) continue;
 
         let d = '';

@@ -94,7 +94,7 @@ function findCurveByGroupAndPathName(cm, groupName, pathName) {
         const child = cm.treeItems.get(childId);
         if (child?.type !== "curve") continue;
         if (child.name === pathName || child.curveId === pathName || child.id === pathName) {
-            return cm.curves.find((c) => c.id === child.curveId) || null;
+            return cm.curveById.get(child.curveId) || null;
         }
     }
     return null;

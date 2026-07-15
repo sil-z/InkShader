@@ -275,7 +275,7 @@ export class SelectionState {
         for (const id of idsArray) {
             const item = this.host.treeItems.get(id);
             if (item && item.type === "curve") {
-                const curve = this.host.curves.find((c) => c.id === item.curveId);
+                const curve = this.host.curveById.get(item.curveId);
                 if (curve) this.selected_curves.add(curve);
             } else if (item && item.type === "group") {
                 lastGroup = item.isRef ? item.parentId : id;

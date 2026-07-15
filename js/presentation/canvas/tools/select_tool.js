@@ -89,11 +89,30 @@ export class SelectTool extends BaseTool {
         }
 
         const rect = this.getBoxSelectRectWorld();
-        let seqTokens = c.curve_manager.sequenceTokens || [];
+        const grid = c.curve_manager.spatialGrid;
         let newlyFocusedSeqIdx = -1;
         let curvesToSelect = [];
         let refsToSelect = [];
 
+        // Spatial grid pre-filter: find curves/refs with at least one on-curve node
+        // inside the selection rect.  A curve fully contained in the rect must have
+        // ALL its on-curve nodes inside the rect, so this is a safe fast-pass.
+        let candidateCurveIds = null;
+        let candidateRefIds = null;
+        if (grid && grid.size > 0) {
+            candidateCurveIds = new Set();
+            candidateRefIds = new Set();
+            const entries = grid.queryRect(rect.x, rect.y, rect.w, rect.h);
+            for (const entry of entries) {
+                if (entry.refId) {
+                    candidateRefIds.add(entry.refId);
+                } else if (entry.curve) {
+                    candidateCurveIds.add(entry.curve.id);
+                }
+            }
+        }
+
+        let seqTokens = c.curve_manager.sequenceTokens || [];
         for (let i = 0; i < seqTokens.length; i++) {
             if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
@@ -103,6 +122,14 @@ export class SelectTool extends BaseTool {
 
             for (let cd of curveDataList) {
                 if (!cd.effectiveVis || cd.effectiveLock) continue;
+                // Spatial grid pre-filter: skip curves with no nodes inside the rect
+                if (candidateCurveIds !== null) {
+                    if (cd.refId) {
+                        if (!candidateRefIds.has(cd.refId)) continue;
+                    } else {
+                        if (!candidateCurveIds.has(cd.curve.id)) continue;
+                    }
+                }
                 let bounds = cd.curve.getBounds(cd.matrix);
                 if (bounds) {
                     if (bounds.minX + seqOffsetX >= rect.x && bounds.maxX + seqOffsetX <= rect.x + rect.w &&

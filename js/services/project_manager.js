@@ -215,6 +215,7 @@ export class ProjectManager {
         try {
             data = JSON.parse(jsonStr);
         } catch (e) {
+            console.warn("[ProjectManager] Failed to parse project file JSON:", e);
             data = null;
         }
         // Save current project before switching

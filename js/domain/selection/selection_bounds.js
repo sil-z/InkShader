@@ -15,20 +15,35 @@ export function getSeqIdxForGroupId(layout, groupId, focusedSeqIdx = -1) {
     if (!layout?.tokens?.length || !groupId) return -1;
     const { tokens, activeIndices, resolveTokenGroupId } = layout;
 
+    // Initialize cache on first call — persists for the lifetime of this layout object
+    if (!layout._seqIdxCache) layout._seqIdxCache = new Map();
+    const cached = layout._seqIdxCache.get(groupId);
+    if (cached !== undefined) return cached;
+
     if (focusedSeqIdx !== undefined && focusedSeqIdx !== -1 && focusedSeqIdx < tokens.length) {
         const gid = resolveTokenGroupId(tokens[focusedSeqIdx]);
-        if (groupId === gid && activeIndices.has(focusedSeqIdx)) return focusedSeqIdx;
+        if (groupId === gid && activeIndices.has(focusedSeqIdx)) {
+            layout._seqIdxCache.set(groupId, focusedSeqIdx);
+            return focusedSeqIdx;
+        }
     }
 
     for (let i = 0; i < tokens.length; i++) {
         const gid = resolveTokenGroupId(tokens[i]);
-        if (groupId === gid && activeIndices.has(i)) return i;
+        if (groupId === gid && activeIndices.has(i)) {
+            layout._seqIdxCache.set(groupId, i);
+            return i;
+        }
     }
 
     for (let i = 0; i < tokens.length; i++) {
         const gid = resolveTokenGroupId(tokens[i]);
-        if (groupId === gid) return i;
+        if (groupId === gid) {
+            layout._seqIdxCache.set(groupId, i);
+            return i;
+        }
     }
+    layout._seqIdxCache.set(groupId, -1);
     return -1;
 }
 

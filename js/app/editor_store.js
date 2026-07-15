@@ -289,7 +289,7 @@ export class EditorStore {
             const p = action.payload;
             if (p.strategy === "replace") {
                 if (p.refIds?.length) this.state.selectedRefIds = [...p.refIds];
-                if (p.curveIds?.length) this.state.selectedCurveIds = [...p.curveIds];
+                if (p.curveIds?.length || p.curveIds?.size) this.state.selectedCurveIds = [...p.curveIds];
             }
         }
 

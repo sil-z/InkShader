@@ -115,23 +115,29 @@ export class StorageUtils {
         if (this._migrationPromise) return this._migrationPromise;
         if (this._migrated) return;
         this._migrationPromise = (async () => {
-            const oldMap = await this._idbGet(this.PROJECTS_KEY);
-            if (!oldMap || typeof oldMap !== 'object') {
-                this._migrated = true;
-                return;
-            }
-            // Migrate each entry from the old projects map to individual keys
-            for (const [name, data] of Object.entries(oldMap)) {
-                const key = this._PROJ_PREFIX + name;
-                const existing = await this._idbGet(key);
-                if (!existing) {
-                    await this._idbPut(key, data);
-                    await this._touchProjectOrder(name);
+            try {
+                const oldMap = await this._idbGet(this.PROJECTS_KEY);
+                if (!oldMap || typeof oldMap !== 'object') {
+                    this._migrated = true;
+                    return;
                 }
+                // Migrate each entry from the old projects map to individual keys
+                for (const [name, data] of Object.entries(oldMap)) {
+                    const key = this._PROJ_PREFIX + name;
+                    const existing = await this._idbGet(key);
+                    if (!existing) {
+                        await this._idbPut(key, data);
+                        await this._touchProjectOrder(name);
+                    }
+                }
+                // Remove old map after migration
+                await this._idbDelete(this.PROJECTS_KEY);
+                this._migrated = true;
+            } catch (err) {
+                console.error("[Storage] Migration failed:", err);
+                this._migrationPromise = null; // allow retry on next call
+                throw err;
             }
-            // Remove old map after migration
-            await this._idbDelete(this.PROJECTS_KEY);
-            this._migrated = true;
         })();
         return this._migrationPromise;
     }

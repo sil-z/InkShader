@@ -16,7 +16,13 @@ export class Curve {
     groupId = null; 
     domMap = new Map();
 
-    constructor({ id }) { this.id = id; }
+    constructor({ id }) {
+        this.id = id;
+        /** @type {{minX:number,minY:number,maxX:number,maxY:number}|null} bounds cache (no matrix) */
+        this._boundsCache = null;
+        /** @type {Map<string,{minX:number,minY:number,maxX:number,maxY:number}>|null} matrix-keyed bounds cache */
+        this._matrixBoundsCache = null;
+    }
 
     _isEffectivelyClosed() {
         return !!(this.closed && this.startNode && this.endNode && this.startNode !== this.endNode);
@@ -24,9 +30,30 @@ export class Curve {
 
     invalidateBooleanCache() {
         this._lastHash = null;
+        this._boundsCache = null;
+        this._matrixBoundsCache = null;
+    }
+
+    /** Invalidate bounds cache when node geometry changes (called by CurveStore) */
+    _invalidateBounds() {
+        this._boundsCache = null;
+        this._matrixBoundsCache = null;
     }
 
     getBounds(matrix = null, options = {}) {
+        // Fast path: cached non-matrix bounds (viewport culling, LSB/RSB)
+        if (!matrix && this._boundsCache) {
+            return this._boundsCache;
+        }
+        // Fast path: cached matrix-transformed bounds
+        let _mk = null;
+        if (matrix && this._matrixBoundsCache) {
+            _mk = matrix.a.toFixed(4) + ',' + matrix.b.toFixed(4) + ','
+                + matrix.c.toFixed(4) + ',' + matrix.d.toFixed(4) + ','
+                + matrix.e.toFixed(4) + ',' + matrix.f.toFixed(4);
+            const cached = this._matrixBoundsCache.get(_mk);
+            if (cached) return cached;
+        }
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         if (!this.startNode) return null;
 
@@ -58,7 +85,14 @@ export class Curve {
             minX = Math.min(minX, bounds.minX); minY = Math.min(minY, bounds.minY);
             maxX = Math.max(maxX, bounds.maxX); maxY = Math.max(maxY, bounds.maxY);
         }
-        
+
+        // Single-node curve (during drawing): use startNode position as bounds
+        if (minX === Infinity && this.startNode) {
+            const sp = pt(this.startNode.x, this.startNode.y);
+            minX = maxX = sp.x;
+            minY = maxY = sp.y;
+        }
+
         if (minX === Infinity) return null;
 
         const strokeMode = options.strokeMode || 'legacy';
@@ -71,7 +105,17 @@ export class Curve {
 
         let expandD = includeStroke ? this.stroke_width / 2 : 0;
         if (matrix && expandD > 0) { let scaleAvg = Math.sqrt(matrix.a * matrix.a + matrix.b * matrix.b); expandD *= scaleAvg; }
-        return { minX: minX - expandD, minY: minY - expandD, maxX: maxX + expandD, maxY: maxY + expandD };
+        const result = { minX: minX - expandD, minY: minY - expandD, maxX: maxX + expandD, maxY: maxY + expandD };
+        // Cache bounds for fast viewport culling / LSB-RSB
+        if (!matrix) {
+            this._boundsCache = result;
+        } else if (_mk) {
+            if (!this._matrixBoundsCache) this._matrixBoundsCache = new Map();
+            if (this._matrixBoundsCache.size < 16) {
+                this._matrixBoundsCache.set(_mk, result);
+            }
+        }
+        return result;
     }
 
     // Bounds used by transform/property panel:
@@ -820,18 +864,32 @@ export class Curve {
         return true;
     }
 
+    /** Fast numeric geometry hash — no string allocation, 32-bit FNV-1a inspired */
     getGeometryHash() {
-        let str = `${this.stroke_width}_${this.closed}_${this.smart_stroke}_${this.smart_stroke_clockwise}_`;
+        let h = 0x811C9DC5;
+        const imul = Math.imul;
+        // Mix curve-level properties (truncate coords to 0.01 UPM)
+        h = imul(h ^ ~~(this.stroke_width * 100), 0x01000193);
+        h = imul(h ^ (this.closed ? 0x4F5B : 0x5C4A), 0x01000193);
+        h = imul(h ^ (this.smart_stroke ? 0x6E3A : 0x7D2B), 0x01000193);
+        h = imul(h ^ (this.smart_stroke_clockwise ? 0x1C8E : 0x2F9D), 0x01000193);
         let curr = this.startNode;
-        while(curr) {
-            str += `${curr.x},${curr.y},`;
-            if(curr.control1) str += `${curr.control1.x},${curr.control1.y},`;
-            if(curr.control2) str += `${curr.control2.x},${curr.control2.y},`;
+        while (curr) {
+            h = imul(h ^ ~~(curr.x * 100), 0x01000193);
+            h = imul(h ^ ~~(curr.y * 100), 0x01000193);
+            if (curr.control1) {
+                h = imul(h ^ ~~(curr.control1.x * 100), 0x01000193);
+                h = imul(h ^ ~~(curr.control1.y * 100), 0x01000193);
+            }
+            if (curr.control2) {
+                h = imul(h ^ ~~(curr.control2.x * 100), 0x01000193);
+                h = imul(h ^ ~~(curr.control2.y * 100), 0x01000193);
+            }
             if (curr === this.endNode && !this.closed) break;
             curr = curr.nextOnCurve;
             if (this.closed && curr === this.startNode) break;
         }
-        return str;
+        return h >>> 0;
     }
 
     updateBooleanCache() {

@@ -38,7 +38,7 @@ export function buildInteractionSeedFromCanvas(canvas) {
             ...pickViewFieldsFromCanvas(canvas, {}),
             activeGroupId: snap.activeGroupId,
             selectedTreeIds: snap.selectedTreeIds,
-            selectedNodeIds: snap.selectedNodeMarkerIds,
+            selectedNodeIds: [...snap.selectedNodeMarkerIds],
             selectedCurveIds: snap.selectedCurveIds,
             selectedRefIds: snap.selectedRefIds,
             focusedSeqIdx: snap.focusedSeqIdx,
@@ -66,23 +66,23 @@ export function buildRuntimeSelectionPatchAction(canvas) {
     if (!cm) return null;
     const snap = readInteractionSnapshotFromCurveManager(cm);
 
-    if (snap.selectedNodeMarkerIds.length > 0) {
+    if (snap.selectedNodeMarkerIds.size > 0) {
         return {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: {
                 strategy: "replace",
-                markerIds: snap.selectedNodeMarkerIds,
+                markerIds: [...snap.selectedNodeMarkerIds],
                 refId: resolveNodeSelectionRefId(cm)
             }
         };
     }
 
-    if (snap.selectedCurveIds.length > 0 || snap.selectedRefIds.length > 0) {
+    if ((snap.selectedCurveIds?.size ?? snap.selectedCurveIds?.length ?? 0) > 0 || snap.selectedRefIds.length > 0) {
         return {
             type: EDITOR_ACTIONS.CHANGE_OBJECT_SELECTION,
             payload: {
                 strategy: "replace",
-                curveIds: snap.selectedCurveIds,
+                curveIds: [...snap.selectedCurveIds],
                 refIds: snap.selectedRefIds,
                 activeGroupId: snap.activeGroupId ?? undefined
             }

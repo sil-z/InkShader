@@ -71,6 +71,7 @@ export class CanvasIOService {
                         c.is_dirty = true;
                         c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
                     } catch (err) {
+                        console.error("[CanvasIO] Critical error during file loading:", err);
                         alert("Critical error during file loading: " + err.message);
                     }
                 }
@@ -209,34 +210,45 @@ export class CanvasIOService {
                 return xml;
             }
         }
-        for (const [id, item] of c.curve_manager.treeItems.entries()) {
-            if (item.type === "group" && !item.isRef && item.charCode !== null && item.charCode !== undefined) {
-                const glyphName = item.name;
-                const fileName = `${glyphName}.glif`;
-                const hexCode = item.charCode.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase();
-                const unicodeTag = `<unicode hex="${hexCode}"/>`;
-                const advance = item.advance !== undefined ? item.advance : 1000;
-                contentsDict += `    <key>${glyphName}</key>\n    <string>${fileName}</string>\n`;
-                const recorder = new GlifRecorder(c.canvas_size_height);
-                const curveDataList = c.curve_manager.getCurvesForGroup(item.id);
-                for (const cd of curveDataList) {
-                    if (cd.curve?.startNode && cd.curve.visible !== false && curveGeneratesFillArea(cd.curve)) {
-                        appendCurveOutlinePath(recorder, cd.curve, {
-                            scale: 1,
-                            offsetX: 0,
-                            offsetY: 0,
-                            seqOffsetX: 0,
-                            matrix: cd.matrix
-                        }, { pass: "fill" });
-                    }
+        // Only iterate root-level groups (avoids traversing all curves/sub-groups)
+        const glifCache = c.curve_manager._glifExportCache;
+        for (const rootChildId of (c.curve_manager.rootChildren || [])) {
+            const item = c.curve_manager.treeItems.get(rootChildId);
+            if (!item || item.isRef || item.charCode == null) continue;
+            const glyphName = item.name;
+            const fileName = `${glyphName}.glif`;
+            const advance = item.advance !== undefined ? item.advance : 1000;
+            contentsDict += `    <key>${glyphName}</key>\n    <string>${fileName}</string>\n`;
+
+            // ── Reuse cached GLIF when glyph unchanged (avoids getCurvesForGroup + path generation) ──
+            const cached = glifCache.get(item.id);
+            if (cached && cached[0] === advance) {
+                glyphsFolder.file(fileName, cached[1]);
+                continue;
+            }
+
+            const hexCode = item.charCode.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase();
+            const unicodeTag = `<unicode hex="${hexCode}"/>`;
+            const recorder = new GlifRecorder(c.canvas_size_height);
+            const curveDataList = c.curve_manager.getCurvesForGroup(item.id);
+            for (const cd of curveDataList) {
+                if (cd.curve?.startNode && cd.curve.visible !== false && curveGeneratesFillArea(cd.curve)) {
+                    appendCurveOutlinePath(recorder, cd.curve, {
+                        scale: 1,
+                        offsetX: 0,
+                        offsetY: 0,
+                        seqOffsetX: 0,
+                        matrix: cd.matrix
+                    }, { pass: "fill" });
                 }
-                const glifXML = `<?xml version="1.0" encoding="UTF-8"?>
+            }
+            const glifXML = `<?xml version="1.0" encoding="UTF-8"?>
 <glyph name="${glyphName}" format="2">
   <advance width="${advance}"/>
   ${unicodeTag}
   <outline>\n${recorder.getXML()}  </outline>\n</glyph>`;
-                glyphsFolder.file(fileName, glifXML);
-            }
+            glifCache.set(item.id, [advance, glifXML]);
+            glyphsFolder.file(fileName, glifXML);
         }
         glyphsFolder.file("contents.plist", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -114,6 +114,7 @@ export class CanvasCommands {
         if (success) {
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.curve_manager.rebuildSpatialGrid();
             this._commitHistory("changeControlNodePosition");
         }
         return success;
@@ -139,6 +140,7 @@ export class CanvasCommands {
         }
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("changeSelectedNodesPosition");
         return true;
     }
@@ -186,6 +188,7 @@ export class CanvasCommands {
         this.hovered_node_marker = newMarker;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("insertMainNode");
         return newMarker;
     }
@@ -240,6 +243,7 @@ export class CanvasCommands {
         if (hasPath) {
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.curve_manager.rebuildSpatialGrid();
             this._commitHistory("finishAddingPathCommand");
         }
         return hasPath;
@@ -317,6 +321,7 @@ export class CanvasCommands {
             this.curve_manager.notifyModelUpdate();
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.curve_manager.rebuildSpatialGrid();
             this._commitHistory("deleteSelectedNodes");
         }
         return changed;
@@ -403,7 +408,10 @@ export class CanvasCommands {
         this.curve_manager.syncTreeSelectionFromCanvas();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
-        if (hasChanged) this._commitHistory("changeSelectedObjectsTransform");
+        if (hasChanged) {
+            this.curve_manager.rebuildSpatialGrid();
+            this._commitHistory("changeSelectedObjectsTransform");
+        }
         return hasChanged;
     }
 
@@ -423,6 +431,7 @@ export class CanvasCommands {
 
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         return true;
     }
 
@@ -436,7 +445,7 @@ export class CanvasCommands {
             const item = this.curve_manager.treeItems.get(id);
             if (!item) continue;
             if (item.type === 'curve') {
-                const curve = this.curve_manager.curves.find(c => c.id === item.curveId);
+                const curve = this.curve_manager.curveById.get(item.curveId);
                 if (curve) payload.push({ type: 'curve', data: curve });
             } else if (item.type === 'group') {
                 const actualRefId = item.isRef ? item.refId : id;
@@ -493,7 +502,7 @@ export class CanvasCommands {
             const item = this.curve_manager.treeItems.get(id);
             if (!item) continue;
             if (item.type === 'curve') {
-                const curve = this.curve_manager.curves.find(c => c.id === item.curveId);
+                const curve = this.curve_manager.curveById.get(item.curveId);
                 const duplicated = curve ? this.curve_manager.cloneCurveToGroup(curve, item.parentId) : null;
                 if (duplicated) {
                     duplicatedTreeIds.push(duplicated.id);
@@ -643,6 +652,7 @@ export class CanvasCommands {
         }
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         return true;
     }
 
@@ -762,7 +772,8 @@ export class CanvasCommands {
         const oldChar = item.charCode;
         item.charCode = newVal;
         item.is_modified = true;
-        this.curve_manager.rebuildDefaultGlyphs();
+        if (oldChar !== null) this.curve_manager.defaultGlyphs.delete(oldChar);
+        if (newVal !== null) this.curve_manager.defaultGlyphs.set(newVal, groupId);
 
         const tokens = this.curve_manager.sequenceTokens || [];
         let newText = '';
@@ -920,7 +931,7 @@ export class CanvasCommands {
                 console.warn("Union Failed: Please select ONLY basic paths.");
                 return false;
             }
-            const curve = cm.curves.find(c => c.id === item.curveId);
+            const curve = cm.curveById.get(item.curveId);
             if (!curve) continue;
             if (firstGroupId === null) {
                 firstGroupId = curve.groupId;
@@ -951,6 +962,7 @@ export class CanvasCommands {
         if (!changed) return false;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         return true;
     }
 
@@ -971,19 +983,22 @@ export class CanvasCommands {
         for (let id of selectedIds) {
             const item = cm.treeItems.get(id);
             if (!item || item.type !== 'curve') continue;
-            const curve = cm.curves.find(c => c.id === item.curveId);
+            const curve = cm.curveById.get(item.curveId);
             if (!curve) continue;
             validCurves.push(curve);
         }
         if (validCurves.length === 0) return false;
 
+        const cs = cm.curveStore;
         for (let curve of validCurves) {
             let originalSmart = curve.smart_stroke;
             curve.smart_stroke = true;
+            cs.updateSmartStrokeStatus(curve);
             curve.updateBooleanCache();
 
             if (!Array.isArray(curve.cached_boolean_geometry) || curve.cached_boolean_geometry.length === 0) {
                 curve.smart_stroke = originalSmart;
+                cs.updateSmartStrokeStatus(curve);
                 continue;
             }
 
@@ -1063,8 +1078,7 @@ export class CanvasCommands {
             // confuse resolveMarkerById and corrupt undo/redo state.
             cm.curveStore.unregisterCurveDomMarkers(curve);
             cm.treeStore.deleteTreeItem(curve.id, false);
-            const curveIdx = cm.curves.findIndex(c => c.id === curve.id);
-            if (curveIdx !== -1) cm.curves.splice(curveIdx, 1);
+            cm.curveStore.remove_curve(curve.id);
             cm.notifyTreeUpdate();
             changed = true;
         }
@@ -1106,8 +1120,18 @@ export class CanvasCommands {
             selectedIds.add(m?.id ?? m);
         }
 
+        // Determine which curves contain selected markers (O(k) where k = selected markers)
+        const curveIds = new Set();
+        for (const m of markers) {
+            const node = cm.find_node_by_curve(m);
+            if (node?.curve?.id) curveIds.add(node.curve.id);
+        }
+        if (curveIds.size === 0) return false;
+
         let changed = false;
-        for (const curve of cm.curves) {
+        for (const curveId of curveIds) {
+            const curve = cm.curveById.get(curveId);
+            if (!curve) continue;
             // Walk all segments of this curve
             const segments = []; // list of { from: Node, to: Node }
             let n = curve.startNode;
@@ -1141,6 +1165,7 @@ export class CanvasCommands {
         if (!changed) return false;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("insertNodeSelectedSegments");
         return true;
     }
@@ -1310,6 +1335,7 @@ export class CanvasCommands {
         });
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("joinSelectedNodes");
         return true;
     }
@@ -1433,6 +1459,7 @@ export class CanvasCommands {
         });
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("breakPathAtSelectedNodes");
         return true;
     }
@@ -1553,6 +1580,7 @@ export class CanvasCommands {
         });
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("addSegmentBetweenEndnodes");
         return true;
     }
@@ -1723,6 +1751,7 @@ export class CanvasCommands {
         cm.notifyModelUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("deleteSegmentBetweenNodes");
         return true;
     }
@@ -1749,7 +1778,7 @@ export class CanvasCommands {
                 console.warn("[Boolean] Please select ONLY basic paths.");
                 return null;
             }
-            const curve = cm.curves.find(c => c.id === item.curveId);
+            const curve = cm.curveById.get(item.curveId);
             if (!curve) continue;
             if (firstGroupId === null) {
                 firstGroupId = curve.groupId;

@@ -1,8 +1,6 @@
 import {
     resolveActiveCanvasTool,
-    shouldIncludeCurrentDrawingCurve,
-    snapshotIncludesCurve,
-    snapshotIncludesNodeMarker
+    snapshotIncludesCurve
 } from "../../app/editor_interaction_state.js";
 import { computeSelectionBounds, createSequenceLayoutFromCurveManager, getSeqIdxForGroupId } from "../../app/selection_geometry.js";
 import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/curve_renderer.js";
@@ -118,99 +116,180 @@ export class CanvasUtilsService {
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
         const threshold = 6;
         let hits = [];
-        let seqTokens = c.curve_manager.sequenceTokens || [];
-        let activeIndices = c.curve_manager.activeSequenceIndices;
         const ix = c.getInteractionSnapshot();
         let showHandlesSet = new Set();
-        // Build set of curve IDs that are "effectively selected" — either via object-select
-        // (selectedCurveIds) or via node-select (any curve whose node markers appear in the
-        // node selection). This ensures node-level and object-level selection are equivalent
-        // for hit-test priority, regardless of which tool/entry path made the selection.
         const nodeSelectedCurveIdSet = new Set();
-        for (let i = 0; i < seqTokens.length; i++) {
-            if (!activeIndices.has(i)) continue;
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) {
-                    curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-                }
+        const curveStore = c.curve_manager.curveStore;
+
+        // Add a node + its neighbors to showHandlesSet (for closed curve / control handle visibility)
+        const addToShowHandles = (node, curve) => {
+            if (!node) return;
+            showHandlesSet.add(node);
+            if (node.lastOnCurve) showHandlesSet.add(node.lastOnCurve);
+            if (node.nextOnCurve) showHandlesSet.add(node.nextOnCurve);
+            if (curve?.closed) {
+                if (node === curve.startNode && curve.endNode) showHandlesSet.add(curve.endNode);
+                if (node === curve.endNode && curve.startNode) showHandlesSet.add(curve.startNode);
             }
-            for (let cd of curveDataList) {
-                if (!cd.effectiveVis || cd.effectiveLock) continue;
-                let hasSelectedNode = false;
-                let isCurveSelected = snapshotIncludesCurve(ix, cd.curve) || cd.curve === c.current_curve;
-                let current = cd.curve.startNode;
-                while (current) {
-                    let nodeSelected = snapshotIncludesNodeMarker(ix, current.main_node);
-                    if (nodeSelected) hasSelectedNode = true;
-                    if (nodeSelected || isCurveSelected) {
-                        showHandlesSet.add(current);
-                        if (current.lastOnCurve) showHandlesSet.add(current.lastOnCurve);
-                        if (current.nextOnCurve) showHandlesSet.add(current.nextOnCurve);
-                        if (cd.curve.closed) {
-                            if (current === cd.curve.startNode && cd.curve.endNode) showHandlesSet.add(cd.curve.endNode);
-                            if (current === cd.curve.endNode && cd.curve.startNode) showHandlesSet.add(cd.curve.startNode);
-                        }
-                    }
-                    current = current.nextOnCurve;
-                }
-                if (hasSelectedNode && cd.curve?.id) {
-                    nodeSelectedCurveIdSet.add(cd.curve.id);
-                }
+        };
+        // Add ALL nodes of a curve to showHandlesSet (for object-selected curves)
+        const addAllNodes = (curve) => {
+            if (!curve || !curve.startNode) return;
+            let cur = curve.startNode;
+            while (cur) { addToShowHandles(cur, curve); cur = cur.nextOnCurve; }
+        };
+
+        // 1. Object-selected curves: show handles on ALL their nodes
+        const selCurveIds = ix.selectedCurveIds || [];
+        for (const curveId of selCurveIds) {
+            const curve = curveStore.curveById.get(curveId);
+            if (curve) addAllNodes(curve);
+        }
+        // 2. Current drawing curve: show handles on all its nodes
+        if (c.current_curve) addAllNodes(c.current_curve);
+        // 3. Node-selected markers: show handles on individual nodes + neighbors
+        const selMarkers = ix.selectedNodeMarkerIds;
+        if (selMarkers && selMarkers.size > 0) {
+            for (const marker of selMarkers) {
+                const node = curveStore.domMap.get(marker);
+                if (!node) continue;
+                addToShowHandles(node, node.curve);
+                if (node.curve?.id) nodeSelectedCurveIdSet.add(node.curve.id);
             }
         }
         const curveIsNodeSelected = (curve) => curve?.id && nodeSelectedCurveIdSet.has(curve.id);
 
-        const checkHit = (node, marker, seqIdx, matrix, refId, curve) => {
-            if (!node) return;
-            let seqOffsetX = c.curve_manager.getSeqOffset(seqIdx);
-            let mx = node.x, my = node.y;
-            if (matrix) {
-                mx = node.x * matrix.a + node.y * matrix.c + matrix.e;
-                my = node.x * matrix.b + node.y * matrix.d + matrix.f;
-            }
-            let screenX = (mx + seqOffsetX) * c.scale + offsetX;
-            let screenY = my * c.scale + offsetY;
-            let dist = Math.hypot(mouseX - screenX, mouseY - screenY);
-            if (dist < threshold) {
-                let parentNode = node.type !== null ? node : (node.nextOnCurve || node.lastOnCurve);
-                let z = parentNode.last_touched || 0;
-                // A curve is "effectively selected" if any of its nodes are in the snapshot,
-                // regardless of whether the selection came via object-select or node-select.
-                let isSelected = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
-                hits.push({ marker, dist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSelected ? 1 : 0 });
-            }
-        };
-        for (let i = 0; i < seqTokens.length; i++) {
-            if (!activeIndices.has(i)) continue;
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) {
-                    curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null });
+        // ── Hit test using spatial grid ──
+        const grid = c.curve_manager.spatialGrid;
+        const worldMouseX = (mouseX - offsetX) / c.scale;
+        const worldMouseY = (mouseY - offsetY) / c.scale;
+        const worldThreshold = threshold / c.scale;
+        if (grid && grid.size > 0 && worldThreshold > 0) {
+            const candidates = grid.queryProximity(worldMouseX, worldMouseY, worldThreshold);
+            for (const entry of candidates) {
+                const { node, curve, refId, seqIdx, matrix, seqOffsetX: entrySeqOff, worldX, worldY } = entry;
+                if (!curve || curve.visible === false || curve.locked === true) continue;
+                if (tool === "DRAW" && curve !== c.current_curve) continue;
+
+                // Main node hit
+                let screenX = worldX * c.scale + offsetX;
+                let screenY = worldY * c.scale + offsetY;
+                let dist = Math.hypot(mouseX - screenX, mouseY - screenY);
+                if (dist < threshold) {
+                    let z = node.last_touched || 0;
+                    let isSelected = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
+                    hits.push({ marker: node.main_node, dist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSelected ? 1 : 0 });
                 }
-            }
-            for (let j = curveDataList.length - 1; j >= 0; j--) {
-                let cd = curveDataList[j];
-                if (!cd.effectiveVis || cd.effectiveLock) continue;
-                if (tool === "DRAW" && cd.curve !== c.current_curve) continue;
-                let current = cd.curve.startNode;
-                while (current) {
-                    let showHandles = showHandlesSet.has(current);
-                    if (showHandles && current.control1) {
-                        checkHit(current.control1, current.control1.main_node, i, cd.matrix, cd.refId, cd.curve);
-                    }
-                    if (showHandles && current.control2) {
-                        checkHit(current.control2, current.control2.main_node, i, cd.matrix, cd.refId, cd.curve);
-                    }
-                    checkHit(current, current.main_node, i, cd.matrix, cd.refId, cd.curve);
-                    current = current.nextOnCurve;
+
+                // Control handle hits (only when handles are visible)
+                if (showHandlesSet.has(node)) {
+                    const checkCtrl = (ctrlNode, ctrlMarker) => {
+                        if (!ctrlNode || !ctrlMarker) return;
+                        let cwx = ctrlNode.x, cwy = ctrlNode.y;
+                        if (matrix) {
+                            const x = cwx; const y = cwy;
+                            cwx = x * matrix.a + y * matrix.c + matrix.e;
+                            cwy = x * matrix.b + y * matrix.d + matrix.f;
+                        }
+                        cwx += entrySeqOff;
+                        let csx = cwx * c.scale + offsetX;
+                        let csy = cwy * c.scale + offsetY;
+                        let cdist = Math.hypot(mouseX - csx, mouseY - csy);
+                        if (cdist < threshold) {
+                            let z = node.last_touched || 0;
+                            let isSel = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
+                            hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                        }
+                    };
+                    checkCtrl(node.control1, node.control1?.main_node);
+                    checkCtrl(node.control2, node.control2?.main_node);
                 }
             }
         }
+
+        // ── Control handle hit test: bypass spatial grid ──
+        // The spatial grid only stores ON-curve nodes and queries at threshold/scale (~6 world units).
+        // Control handles can be ~30+ units from their parent node, so the parent node is often
+        // outside the query radius. Directly check every node in showHandlesSet.
+        if (showHandlesSet.size > 0) {
+            /** @type {Map<Curve,{seqOffsetX:number,matrix:DOMMatrix,seqIdx:number,refId:?string}>} */
+            const ctrlCurveInfo = new Map();
+            const sq = c.curve_manager.sequenceTokens || [];
+
+            // Current drawing curve (not yet committed to tree store via commit_curve)
+            if (c.current_curve && c.current_curve.groupId) {
+                let sidx = -1;
+                for (let i = 0; i < sq.length; i++) {
+                    if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
+                    const t = sq[i];
+                    const tg = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                    if (tg === c.current_curve.groupId) { sidx = i; break; }
+                }
+                if (sidx === -1) {
+                    for (let i = 0; i < sq.length; i++) {
+                        const t = sq[i];
+                        const tg = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                        if (tg === c.current_curve.groupId) { sidx = i; break; }
+                    }
+                }
+                if (sidx !== -1) {
+                    ctrlCurveInfo.set(c.current_curve, {
+                        seqOffsetX: c.curve_manager.getSeqOffset(sidx),
+                        matrix: new DOMMatrix(),
+                        seqIdx: sidx,
+                        refId: null
+                    });
+                }
+            }
+
+            // Committed curves in active sequences
+            for (let i = 0; i < sq.length; i++) {
+                if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
+                const seqOff = c.curve_manager.getSeqOffset(i);
+                const t = sq[i];
+                const gid = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
+                const cdl = c.curve_manager.getCurvesForGroup(gid);
+                for (const cd of cdl) {
+                    if (!cd.effectiveVis || cd.effectiveLock) continue;
+                    if (!ctrlCurveInfo.has(cd.curve)) {
+                        ctrlCurveInfo.set(cd.curve, {
+                            seqOffsetX: seqOff,
+                            matrix: cd.matrix,
+                            seqIdx: i,
+                            refId: cd.refId || null
+                        });
+                    }
+                }
+            }
+
+            // Check control handles for every node in showHandlesSet
+            for (const node of showHandlesSet) {
+                if (!node.curve) continue;
+                const info = ctrlCurveInfo.get(node.curve);
+                if (!info) continue;
+                const checkCtrl = (ctrlNode, ctrlMarker) => {
+                    if (!ctrlNode || !ctrlMarker) return;
+                    let cwx = ctrlNode.x, cwy = ctrlNode.y;
+                    if (info.matrix) {
+                        const x = cwx; const y = cwy;
+                        cwx = x * info.matrix.a + y * info.matrix.c + info.matrix.e;
+                        cwy = x * info.matrix.b + y * info.matrix.d + info.matrix.f;
+                    }
+                    cwx += info.seqOffsetX;
+                    const csx = cwx * c.scale + offsetX;
+                    const csy = cwy * c.scale + offsetY;
+                    const cdist = Math.hypot(mouseX - csx, mouseY - csy);
+                    if (cdist < threshold) {
+                        const z = node.last_touched || 0;
+                        const isSel = snapshotIncludesCurve(ix, node.curve) || curveIsNodeSelected(node.curve);
+                        hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                    }
+                };
+                checkCtrl(node.control1, node.control1?.main_node);
+                checkCtrl(node.control2, node.control2?.main_node);
+            }
+        }
+
         if (hits.length > 0) {
             hits.sort((a, b) => {
                 if (b.isFromSelectedCurve !== a.isFromSelectedCurve) return b.isFromSelectedCurve - a.isFromSelectedCurve;
@@ -234,6 +313,33 @@ export class CanvasUtilsService {
         const dMouseY = mouseY * dpr;
         c.ctx.save();
         c.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        // Viewport bounds in world coordinates (for viewport culling)
+        const { width: logicalW, height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
+        const hitWorldPad = 20 / c.scale;
+        const vpBounds = {
+            minX: -offsetX / c.scale - hitWorldPad,
+            minY: -offsetY / c.scale - hitWorldPad,
+            maxX: (logicalW - offsetX) / c.scale + hitWorldPad,
+            maxY: (logicalH - offsetY) / c.scale + hitWorldPad
+        };
+        const worldMouseX = (mouseX - offsetX) / c.scale;
+        const worldMouseY = (mouseY - offsetY) / c.scale;
+
+        // NODE tool: pre-filter candidate curves via spatial grid for O(nearby) bezier hit testing
+        let nodeToolCandidateCurves = null;
+        if (tool === "NODE") {
+            const grid = c.curve_manager.spatialGrid;
+            if (grid && grid.size > 0) {
+                nodeToolCandidateCurves = new Set();
+                const margin = 100; // world units — generous enough to cover bezier midpoint deviation
+                const entries = grid.queryProximity(worldMouseX, worldMouseY, margin);
+                for (const entry of entries) {
+                    if (entry.curve) nodeToolCandidateCurves.add(entry.curve);
+                }
+            }
+        }
+
         let hitResult = null;
         let seqTokens = c.curve_manager.sequenceTokens || [];
         for (let i = seqTokens.length - 1; i >= 0; i--) {
@@ -249,6 +355,17 @@ export class CanvasUtilsService {
                 if (!cd.effectiveVis || cd.effectiveLock) continue;
                 let curve = cd.curve; let matrix = cd.matrix;
                 if (!curve.startNode) continue;
+
+                // Viewport culling: skip curves whose AABB is entirely outside the viewport
+                const curveBounds = curve.getBounds(matrix);
+                if (curveBounds) {
+                    const cMinX = curveBounds.minX + seqOffsetX;
+                    const cMaxX = curveBounds.maxX + seqOffsetX;
+                    const cMinY = curveBounds.minY;
+                    const cMaxY = curveBounds.maxY;
+                    if (cMaxX < vpBounds.minX || cMinX > vpBounds.maxX ||
+                        cMaxY < vpBounds.minY || cMinY > vpBounds.maxY) continue;
+                }
                 const pt = (x, y) => {
                     let mx = x, my = y;
                     if (matrix) { mx = x * matrix.a + y * matrix.c + matrix.e; my = x * matrix.b + y * matrix.d + matrix.f; }
@@ -282,6 +399,7 @@ export class CanvasUtilsService {
                         break;
                     }
                 } else if (tool === "NODE") {
+                    if (nodeToolCandidateCurves && !nodeToolCandidateCurves.has(curve)) continue;
                     let current = curve.startNode;
                     while (current && current.nextOnCurve && (current !== curve.endNode || !curve.closed)) {
                         let next = current.nextOnCurve;

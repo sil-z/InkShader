@@ -5,8 +5,8 @@
 export function createEmptyRuntimeInteractionSnapshot() {
     return {
         selectedTreeIds: [],
-        selectedNodeMarkerIds: [],
-        selectedCurveIds: [],
+        selectedNodeMarkerIds: new Set(),
+        selectedCurveIds: new Set(),
         selectedRefIds: [],
         activeGroupId: null,
         focusedSeqIdx: -1
@@ -15,14 +15,17 @@ export function createEmptyRuntimeInteractionSnapshot() {
 
 export function readInteractionSnapshotFromCurveManager(curveManager) {
     if (!curveManager) return createEmptyRuntimeInteractionSnapshot();
+    const markerIds = Array.from(curveManager.node_selecting || [])
+        .map((marker) => (marker && typeof marker === "object" ? marker.id : marker))
+        .filter(Boolean);
     return {
         selectedTreeIds: Array.from(curveManager.selectedTreeIds || []),
-        selectedNodeMarkerIds: Array.from(curveManager.node_selecting || [])
-            .map((marker) => (marker && typeof marker === "object" ? marker.id : marker))
-            .filter(Boolean),
-        selectedCurveIds: Array.from(curveManager.selected_curves || [])
-            .map((curve) => curve?.id)
-            .filter(Boolean),
+        selectedNodeMarkerIds: new Set(markerIds),
+        selectedCurveIds: new Set(
+            Array.from(curveManager.selected_curves || [])
+                .map((curve) => curve?.id)
+                .filter(Boolean)
+        ),
         selectedRefIds: Array.from(curveManager.selected_refs || [])
             .map((ref) => ref?.id)
             .filter(Boolean),

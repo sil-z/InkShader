@@ -309,7 +309,9 @@ export class PropertyPanel extends HTMLElement {
     _saveSectionOrder() {
         try {
             localStorage.setItem('prop_section_order', JSON.stringify(this._sectionOrder));
-        } catch (e) {}
+        } catch (e) {
+            console.warn("[PropertyPanel] Failed to save section order to localStorage:", e);
+        }
     }
 
     _resolveSelectedCurves() {
@@ -326,7 +328,8 @@ export class PropertyPanel extends HTMLElement {
 
     _resolvePrimaryNodeMarker() {
         const ids = this.interaction.selectedNodeMarkerIds;
-        const markerId = ids.length > 0 ? ids[ids.length - 1] : null;
+        const idsArr = [...ids];
+        const markerId = idsArr.length > 0 ? idsArr[idsArr.length - 1] : null;
         return markerId ? EditorModel.resolveNodeMarker(markerId) : null;
     }
     _resolveNodeMarkerById(anchorId) {

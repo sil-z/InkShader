@@ -15,6 +15,10 @@ export class CurveStore {
 
     /** Curve array (raw reference) */
     curves = [];
+    /** curveId → Curve index for O(1) lookup */
+    curveById = new Map();
+    /** Set of curves with smart_stroke enabled */
+    smartStrokeCurves = new Set();
     /** marker → CurveNode global index */
     domMap = new Map();
 
@@ -44,7 +48,7 @@ export class CurveStore {
     find_curve_by_dom(main_node) {
         const curve = this.domMap.get(main_node)?.curve ?? null;
         if (!curve) return null;
-        return this.curves.includes(curve) ? curve : null;
+        return this.curveById.has(curve.id) ? curve : null;
     }
 
     find_node_by_curve(main_node) {
@@ -112,6 +116,7 @@ export class CurveStore {
             mainNode.set_both_control(marker, mainNode.control_mode);
         }
 
+        if (controlNode.curve) controlNode.curve._invalidateBounds();
         return true;
     }
 
@@ -142,6 +147,7 @@ export class CurveStore {
             mainNode.control_mode = 1;
         }
 
+        if (curve) curve._invalidateBounds();
         return true;
     }
 
@@ -170,6 +176,7 @@ export class CurveStore {
             node.control2.y += dy;
         }
 
+        if (node.curve) node.curve._invalidateBounds();
         return true;
     }
 
@@ -205,7 +212,10 @@ export class CurveStore {
             }
 
             changed = true;
-            if (node.curve && node.curve.groupId) affectedGroups.add(node.curve.groupId);
+            if (node.curve && node.curve.groupId) {
+                affectedGroups.add(node.curve.groupId);
+                node.curve._invalidateBounds();
+            }
         }
 
         return { changed, affectedGroups };
@@ -236,6 +246,7 @@ export class CurveStore {
             }
         }
         node.control_mode = mode;
+        if (node.curve) node.curve._invalidateBounds();
         return true;
     }
 
@@ -256,6 +267,7 @@ export class CurveStore {
         if (node.control1) this.domMap.delete(node.control1.main_node);
         if (node.control2) this.domMap.delete(node.control2.main_node);
 
+        curve._invalidateBounds();
         return { curve, isEmpty: !curve.startNode };
     }
 
@@ -295,6 +307,7 @@ export class CurveStore {
         }
 
         let curve = this.find_curve_by_dom(marker);
+        if (curve) curve._invalidateBounds();
         return { curve };
     }
 
@@ -310,18 +323,26 @@ export class CurveStore {
         let next_node = nextOnCurve !== null ? this_curve.find_node_by_dom(nextOnCurve) : null;
         let last_node = lastOnCurve !== null ? this_curve.find_node_by_dom(lastOnCurve) : null;
         const node = this_curve.add_node(main_node, type, x, y, next_node, last_node, node_id);
-        if (node) this.domMap.set(main_node, node);
+        if (node) {
+            this.domMap.set(main_node, node);
+            this_curve._invalidateBounds();
+        }
         return node;
     }
 
     commit_curve(curve, parentId) {
         this.curves.push(curve);
+        this.curveById.set(curve.id, curve);
+        if (curve.smart_stroke) this.smartStrokeCurves.add(curve);
     }
 
     remove_curve(id) {
-        const index = this.curves.findIndex(m => m.id === id);
-        if (index !== -1) {
-            this.curves.splice(index, 1);
+        const curve = this.curveById.get(id);
+        if (curve) {
+            this.curveById.delete(id);
+            this.smartStrokeCurves.delete(curve);
+            const index = this.curves.indexOf(curve);
+            if (index !== -1) this.curves.splice(index, 1);
             return true;
         }
         return false;
@@ -355,6 +376,7 @@ export class CurveStore {
             curve.endNode = null;
         }
 
+        curve._invalidateBounds();
         return true;
     }
 
@@ -365,6 +387,15 @@ export class CurveStore {
     // =========================================================================
     // Snapshot deserialization helper (rebuild nodes from JSON)
     // =========================================================================
+
+    /** Update smartStrokeCurves set when a curve's smart_stroke property changes */
+    updateSmartStrokeStatus(curve) {
+        if (curve.smart_stroke) {
+            this.smartStrokeCurves.add(curve);
+        } else {
+            this.smartStrokeCurves.delete(curve);
+        }
+    }
 
     reconstructCurveFromSnapshotData(curveId, pData, groupId) {
         const curve = new Curve({ id: curveId });
@@ -413,6 +444,8 @@ export class CurveStore {
         if (lastCreatedNode) curve.endNode = lastCreatedNode;
 
         this.curves.push(curve);
+        this.curveById.set(curve.id, curve);
+        if (curve.smart_stroke) this.smartStrokeCurves.add(curve);
         return curve;
     }
 }

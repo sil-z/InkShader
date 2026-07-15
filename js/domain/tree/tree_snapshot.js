@@ -19,6 +19,13 @@ export function buildTreeSnapshot(curveManager) {
         return { rootChildren: [], items: {}, charToGroupId: {} };
     }
 
+    // Cache: reuse when tree structure hasn't changed since last build.
+    // _treeSnapshotVersion is bumped by CurveManager.notifyTreeUpdate() on every tree mutation.
+    const version = curveManager._treeSnapshotVersion ?? 0;
+    if (curveManager.__treeSnapCache && curveManager.__treeSnapVersion === version) {
+        return curveManager.__treeSnapCache;
+    }
+
     const items = {};
     for (const [id, item] of curveManager.treeItems) {
         const dto = {
@@ -38,7 +45,7 @@ export function buildTreeSnapshot(curveManager) {
             is_modified: !!item.is_modified
         };
         if (item.type === "curve" && item.curveId) {
-            const curve = curveManager.curves.find((c) => c.id === item.curveId);
+            const curve = curveManager.curveById.get(item.curveId);
             if (curve) {
                 dto.curveVisible = curve.visible !== false;
                 dto.curveLocked = curve.locked === true;
@@ -65,11 +72,16 @@ export function buildTreeSnapshot(curveManager) {
         charToGroupId[ch] = gid;
     }
 
-    return {
+    const result = {
         rootChildren: [...(curveManager.rootChildren || [])],
         items,
         charToGroupId
     };
+
+    // Cache for reuse across model-only bumps (geometry changes don't invalidate tree snapshot)
+    curveManager.__treeSnapCache = result;
+    curveManager.__treeSnapVersion = version;
+    return result;
 }
 
 export function getTreeItemFromSnapshot(snapshot, id) {

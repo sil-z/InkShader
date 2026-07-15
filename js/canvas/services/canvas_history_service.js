@@ -333,7 +333,7 @@ export class CanvasHistoryService {
     /**
      * Export current document snapshot when writing history entry (with exportJSON, called only from commit path, not undo/redo).
      */
-    getHistoryState() {
+    getHistoryState(clearDirty = true) {
         const c = this.canvas;
         const cm = c.curve_manager;
         const meta = interactionMetaFromCanvas(c);
@@ -342,7 +342,7 @@ export class CanvasHistoryService {
         const dirtyGlyphs = cm.getDirtyGlyphs();
         const extraState = prevGlyphs ? { prevGlyphs, dirtyGlyphs: dirtyGlyphs.size > 0 ? dirtyGlyphs : null } : {};
         const jsonStr = c.io.save_file(extraState);
-        cm.clearDirtyGlyphs();
+        if (clearDirty) cm.clearDirtyGlyphs();
         let snapshotObj = {};
         try { snapshotObj = JSON.parse(jsonStr); } catch (_) {}
         return {
@@ -364,7 +364,7 @@ export class CanvasHistoryService {
     recordHistory(detail = {}) {
         const c = this.canvas;
         if (c.is_restoring) return false;
-        const newState = this.getHistoryState();
+        const newState = this.getHistoryState(/* clearDirty= */ false);
         const commandName =
             detail?.action?.type || detail?.commandName || "anonymous-command";
         const patchReport = c.currentStateObj?.snapshotObj
@@ -439,6 +439,7 @@ export class CanvasHistoryService {
         };
 
         c.commandStack.push(entry);
+        c.curve_manager.clearDirtyGlyphs();
         if (c.commandStack.length > c.max_command_log) c.commandStack.shift();
         c.currentStateObj = newState;
         c.redoCommandStack = [];

@@ -213,8 +213,8 @@ class MainCanvasBase extends HTMLElement {
         const cm = this.curve_manager;
         if (!cm) return;
         const targets = curveIds
-            ? curveIds.map((id) => cm.curves.find((c) => c.id === id)).filter(Boolean)
-            : cm.curves.filter((c) => c.smart_stroke);
+            ? curveIds.map((id) => cm.curveById.get(id)).filter(Boolean)
+            : [...cm.curveStore.smartStrokeCurves];
         for (const curve of targets) {
             curve.invalidateBooleanCache?.();
         }

@@ -4,6 +4,7 @@ import { resolveMarkerById } from "./marker_resolution.js";
  * @typedef {object} TreeCatalog
  * @property {Map<string, object>} treeItems
  * @property {Array<{ id: string, groupId?: string }>} curves
+ * @property {Map<string, { id: string, groupId?: string }>} curveById
  * @property {(marker: object) => { id: string, groupId?: string }|null} findCurveByMarker
  */
 
@@ -21,6 +22,7 @@ export function createTreeCatalogFromCurveManager(curveManager) {
     return {
         treeItems: curveManager.treeItems,
         curves: curveManager.curves,
+        curveById: curveManager.curveById,
         findCurveByMarker(marker) {
             return curveManager.find_curve_by_dom?.(marker) ?? null;
         },

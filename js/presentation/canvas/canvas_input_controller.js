@@ -340,7 +340,12 @@ export class CanvasInputController {
                 c._draggingUserGuide = null;
                 c.current_state = 'IDLE';
                 if (!dragStarted) {
-                    if (!wasNew && origX != null) { guide.x = origX; guide.y = origY; }
+                    if (wasNew) {
+                        // Remove guide that was pushed on mousedown but never dragged
+                        c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
+                    } else if (origX != null) {
+                        guide.x = origX; guide.y = origY;
+                    }
                     c.is_dirty = true;
                     return;
                 }
@@ -348,8 +353,8 @@ export class CanvasInputController {
                 if (pa) {
                     const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
                     if (toRuler) {
+                        c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                         if (!wasNew) {
-                            c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                             CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                         }
                         c.is_dirty = true;
@@ -357,7 +362,7 @@ export class CanvasInputController {
                     }
                 }
                 if (wasNew) {
-                    c.guidelines.push(guide);
+                    // Already pushed to c.guidelines on mousedown (startUserGuideDrag)
                     CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
                 } else {
                     CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
@@ -888,6 +893,7 @@ export class CanvasInputController {
                 _clientX: clientX,
                 _clientY: clientY
             };
+            c.guidelines.push(c._draggingUserGuide);
             c.is_dirty = true;
         };
         if (c.ruler_horizontal) {

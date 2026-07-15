@@ -92,7 +92,9 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
     }
 
     // Handle object selection: resolve curves and refs from store state
-    const selectedCurveIds = state.selectedCurveIds || [];
+    // Normalize to Arrays (store may hold Sets from interaction snapshot)
+    const selectedCurveIds = Array.isArray(state.selectedCurveIds) ? state.selectedCurveIds
+        : state.selectedCurveIds ? [...state.selectedCurveIds] : [];
     const selectedRefIds = state.selectedRefIds || [];
 
     if (selectedRefIds.length > 0) {
@@ -110,7 +112,7 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
     if (selectedCurveIds.length > 0) {
         const curveItems = [];
         for (let i = 0; i < selectedCurveIds.length; i++) {
-            const curve = cm.curves.find((c) => c.id === selectedCurveIds[i]);
+            const curve = cm.curveById.get(selectedCurveIds[i]);
             if (curve) curveItems.push(curve);
         }
         if (curveItems.length > 0) {

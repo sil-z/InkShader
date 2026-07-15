@@ -114,7 +114,7 @@ export class NodeTool extends BaseTool {
             if (affectedCurveIds.size > 0) {
                 const nodePositions = new Map();
                 for (const curveId of affectedCurveIds) {
-                    const curve = c.curve_manager.curves.find(crv => crv.id === curveId);
+                    const curve = c.curve_manager.curveById.get(curveId);
                     if (!curve?.startNode) continue;
                     let current = curve.startNode;
                     while (current) {
@@ -273,31 +273,19 @@ export class NodeTool extends BaseTool {
 
         if (Math.hypot(dx, dy) > 4) {
             const rect = this.getBoxSelectRectWorld();
-            let seqTokens = c.curve_manager.sequenceTokens || [];
-
-            for (let i = 0; i < seqTokens.length; i++) {
-                if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
-                let seqOffsetX = c.curve_manager.getSeqOffset(i);
-                let token = seqTokens[i];
-                let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-                let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-
-                for (let cd of curveDataList) {
-                    if (!cd.effectiveVis || cd.effectiveLock) continue;
-                    let current = cd.curve.startNode;
-                    while (current) {
-                        let mx = current.x, my = current.y;
-                        if (cd.matrix) {
-                            const x = mx; const y = my;
-                            mx = x * cd.matrix.a + y * cd.matrix.c + cd.matrix.e;
-                            my = x * cd.matrix.b + y * cd.matrix.d + cd.matrix.f;
+            const grid = c.curve_manager.spatialGrid;
+            if (grid && grid.size > 0) {
+                const entries = grid.queryRect(rect.x, rect.y, rect.w, rect.h);
+                const seqTokens = c.curve_manager.sequenceTokens || [];
+                for (const entry of entries) {
+                    markersToSelect.push({ marker: entry.node.main_node, refId: entry.refId || null });
+                    if (entry.seqIdx !== undefined && entry.seqIdx >= 0) {
+                        const token = seqTokens[entry.seqIdx];
+                        if (token) {
+                            activeGroupFromBox = token.isChar
+                                ? c.curve_manager.getDefaultGroupForChar(token.value)
+                                : token.value;
                         }
-                        let wx = mx + seqOffsetX;
-                        if (wx >= rect.x && wx <= rect.x + rect.w && my >= rect.y && my <= rect.y + rect.h) {
-                            markersToSelect.push({ marker: current.main_node, refId: cd.refId || null });
-                            activeGroupFromBox = groupId;
-                        }
-                        current = current.nextOnCurve;
                     }
                 }
             }
@@ -348,36 +336,21 @@ export class NodeTool extends BaseTool {
             let parentWorldX = px + dragged_seq_offset;
             let parentWorldY = py;
             let threshold = 30;
-            let seqTokens = c.curve_manager.sequenceTokens || [];
-            for (let si = 0; si < seqTokens.length; si++) {
-                let seqOffX = c.curve_manager.getSeqOffset(si);
-                let token = seqTokens[si];
-                let gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-                let curveDataList = c.curve_manager.getCurvesForGroup(gid);
-                for (let cd of curveDataList) {
-                    if (!cd.effectiveVis || cd.effectiveLock) continue;
-                    let current = cd.curve.startNode;
-                    while (current) {
-                        if (current.main_node === parentNode.main_node) { current = current.nextOnCurve; continue; }
-                        let wx = current.x, wy = current.y;
-                        if (cd.matrix) {
-                            let tx = wx * cd.matrix.a + wy * cd.matrix.c + cd.matrix.e;
-                            let ty = wx * cd.matrix.b + wy * cd.matrix.d + cd.matrix.f;
-                            wx = tx; wy = ty;
-                        }
-                        wx += seqOffX;
-                        if (Math.hypot(wx - parentWorldX, wy - parentWorldY) <= threshold) {
-                            if (current.control1) {
-                                let ang = Math.atan2(current.control1.y - current.y, current.control1.x - current.x);
-                                candidateAngles.push(ang);
-                            }
-                            if (current.control2) {
-                                let ang = Math.atan2(current.control2.y - current.y, current.control2.x - current.x);
-                                candidateAngles.push(ang);
-                            }
-                        }
-                        current = current.nextOnCurve;
-                    }
+            const parentMarkerId = parentNode.main_node?.id ?? parentNode.main_node;
+            const entries = (c.curve_manager.spatialGrid?.size > 0)
+                ? c.curve_manager.spatialGrid.queryProximity(parentWorldX, parentWorldY, threshold)
+                : [];
+            for (const entry of entries) {
+                const node = entry.node;
+                const markerId = node?.main_node?.id ?? node?.main_node;
+                if (!markerId || markerId === parentMarkerId) continue;
+                if (node.control1) {
+                    let ang = Math.atan2(node.control1.y - node.y, node.control1.x - node.x);
+                    candidateAngles.push(ang);
+                }
+                if (node.control2) {
+                    let ang = Math.atan2(node.control2.y - node.y, node.control2.x - node.x);
+                    candidateAngles.push(ang);
                 }
             }
         }
@@ -408,51 +381,76 @@ export class NodeTool extends BaseTool {
             return { x: raw_x, y: raw_y };
         }
 
-        let snapThresholdLogical = 5 / c.scale;
-        let targets = [];
-        let seqTokens = c.curve_manager.sequenceTokens || [];
+        // Cap snap threshold to prevent spatial grid queries from returning all nodes
+        // at low zoom levels. The 5px visual threshold is preserved for normal zoom;
+        // at very low zoom we limit the search radius to 50 world units.
+        let snapThresholdLogical = Math.min(5 / c.scale, 50);
 
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-
-            for (let cd of curveDataList) {
-                if (!cd.effectiveVis || cd.effectiveLock) continue;
-                let current = cd.curve.startNode;
-                while (current) {
-                    const ixDrag = c.getInteractionSnapshot();
-                    let isThisNodeMoving = isMainNode && snapshotIncludesNodeMarker(ixDrag, current.main_node);
-                    const pt = (x, y) => {
-                        let mx = x, my = y;
-                        if (cd.matrix) {
-                            let new_x = mx * cd.matrix.a + my * cd.matrix.c + cd.matrix.e;
-                            let new_y = mx * cd.matrix.b + my * cd.matrix.d + cd.matrix.f;
-                            mx = new_x; my = new_y;
-                        }
-                        return { x: mx + seqOffsetX, y: my };
-                    };
-                    if ((current.main_node !== c.dragging_node_marker) && !isThisNodeMoving) targets.push(pt(current.x, current.y));
-                    current = current.nextOnCurve;
-                }
-            }
-        }
-
-        let bestDist = Infinity, pointMatch = null, xMatch = null, bestXDist = Infinity, yMatch = null, bestYDist = Infinity;
+        // Compute world position once
         let world_raw_x = raw_x, world_raw_y = raw_y;
-
         if (c.dragging_node_matrix) {
             let p = c.dragging_node_matrix.transformPoint({ x: raw_x, y: raw_y });
             world_raw_x = p.x; world_raw_y = p.y;
         }
         world_raw_x += dragged_seq_offset;
 
-        for (let t of targets) {
-            let dx = Math.abs(world_raw_x - t.x); let dy = Math.abs(world_raw_y - t.y); let d = Math.hypot(dx, dy);
-            if (coincidentEnabled && d < snapThresholdLogical && d < bestDist) { bestDist = d; pointMatch = t; }
-            if (alignEnabled && dx < snapThresholdLogical && dx < bestXDist) { bestXDist = dx; xMatch = t; }
-            if (alignEnabled && dy < snapThresholdLogical && dy < bestYDist) { bestYDist = dy; yMatch = t; }
+        // Build set of markers to exclude (currently dragged nodes)
+        const excludeMarkers = new Set();
+        excludeMarkers.add(c.dragging_node_marker?.id ?? c.dragging_node_marker);
+        for (const marker of c.drag_initial_nodes.keys()) {
+            excludeMarkers.add(marker?.id ?? marker);
+        }
+
+        let bestDist = Infinity, pointMatch = null, xMatch = null, bestXDist = Infinity, yMatch = null, bestYDist = Infinity;
+
+        const grid = c.curve_manager.spatialGrid;
+        if (grid && grid.size > 0) {
+
+            // [Coincident snapping] — use spatial grid proximity query (local)
+            if (coincidentEnabled) {
+                const candidates = grid.queryProximity(world_raw_x, world_raw_y, snapThresholdLogical + 1);
+                for (const entry of candidates) {
+                    const markerId = entry.node?.main_node?.id ?? entry.node?.main_node;
+                    if (!markerId || excludeMarkers.has(markerId)) continue;
+                    const d = Math.hypot(world_raw_x - entry.worldX, world_raw_y - entry.worldY);
+                    if (d < snapThresholdLogical && d < bestDist) {
+                        bestDist = d;
+                        pointMatch = { x: entry.worldX, y: entry.worldY };
+                    }
+                }
+            }
+
+            // [XY alignment snapping] — use spatial grid range query to avoid
+            // iterating off-screen nodes.  Only snap to nodes within the visible
+            // viewport — off-screen alignment is meaningless.  Include a generous
+            // margin so nodes near the viewport edge still participate.
+            if (alignEnabled) {
+                // Compute viewport bounds in world coordinates
+                const offX = c.ruler_size + c.offset.x;
+                const offY = c.ruler_size + c.offset.y;
+                const vpW = c.viewportConfig?.viewportWidth ?? 800;
+                const vpH = c.viewportConfig?.viewportHeight ?? 600;
+                const margin = 200;  // generous world-unit margin
+                const vpLeft = (-offX) / c.scale - margin;
+                const vpTop = (-offY) / c.scale - margin;
+                const vpRight = (vpW - offX) / c.scale + margin;
+                const vpBottom = (vpH - offY) / c.scale + margin;
+                const vpCandidates = grid.queryRect(vpLeft, vpTop, vpRight - vpLeft, vpBottom - vpTop);
+                for (const entry of vpCandidates) {
+                    const markerId = entry.node?.main_node?.id ?? entry.node?.main_node;
+                    if (!markerId || excludeMarkers.has(markerId)) continue;
+                    const dx = Math.abs(world_raw_x - entry.worldX);
+                    const dy = Math.abs(world_raw_y - entry.worldY);
+                    if (dx < snapThresholdLogical && dx < bestXDist) {
+                        bestXDist = dx;
+                        xMatch = { x: entry.worldX, y: entry.worldY };
+                    }
+                    if (dy < snapThresholdLogical && dy < bestYDist) {
+                        bestYDist = dy;
+                        yMatch = { x: entry.worldX, y: entry.worldY };
+                    }
+                }
+            }
         }
 
         if (pointMatch) {

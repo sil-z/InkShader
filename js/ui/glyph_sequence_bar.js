@@ -87,7 +87,7 @@ export class GlyphSequenceBar extends HTMLElement {
             const offKey = `${c.offset?.x ?? 0},${c.scale}`;
             if (offKey !== this._offSig) {
                 this._offSig = offKey;
-                this._render();
+                this._updatePositions();
             }
         };
         document.addEventListener("canvasrendered", onRender);
@@ -255,6 +255,39 @@ export class GlyphSequenceBar extends HTMLElement {
             if (firstSx + 22 > lastEnd) lastEnd = firstSx + 22;
         }
     }
+    // Lightweight position update when only viewport offset/scale changed
+    // (canvas pan/zoom).  Avoids full DOM rebuild in _render() that causes
+    // visible flickering when DevTools triggers software compositing.
+    _updatePositions() {
+        const tr = this._track;
+        const c = this._canvas;
+        if (!tr || !c || !this.text) {
+            // No content or missing context — ensure add button is positioned
+            if (tr) {
+                const addBtn = tr.querySelector('.seq-bar-add-btn');
+                if (addBtn) addBtn.style.left = `${TOOLBAR_W + this._offX()}px`;
+            }
+            return;
+        }
+        const sc = c.scale ?? 1;
+        const ox = this._offX();
+        const tokens = EditorModel.parseSequenceText(this.text);
+
+        const addBtn = tr.querySelector('.seq-bar-add-btn');
+        if (addBtn) addBtn.style.left = `${TOOLBAR_W + ox}px`;
+
+        const posEls = tr.querySelectorAll('.seq-bar-pos');
+        // If DOM structure doesn't match token count, fall back to full render
+        if (posEls.length !== tokens.length) {
+            this._render();
+            return;
+        }
+        for (let i = 0; i < posEls.length; i++) {
+            const off = c.curve_manager?.getSeqOffset(i) ?? 0;
+            posEls[i].style.left = `${TOOLBAR_W + ox + off * sc}px`;
+        }
+    }
+
     _showMergedPopup(e, items) {
         const old = document.querySelector(".seq-bar-popup");
         if (old) old.remove();

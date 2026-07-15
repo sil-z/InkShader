@@ -51,7 +51,7 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
                 const item = treeItems.get(id);
                 if (!item) continue;
                 if (item.type === "curve") {
-                    const curve = catalog.curves.find((c) => c.id === item.curveId);
+                    const curve = catalog.curveById.get(item.curveId);
                     if (curve) {
                         selectedCurveIds.push(curve.id);
                         if (curve.groupId) lastGroupId = curve.groupId;
@@ -83,7 +83,7 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
 
     if (catalog) {
         for (const curveId of state.selectedCurveIds || []) {
-            const curve = catalog.curves.find((c) => c.id === curveId);
+            const curve = catalog.curveById.get(curveId);
             const treeId = resolveTreeIdForCurve(treeItems, curve);
             if (treeId) {
                 selectedTreeIds.add(treeId);

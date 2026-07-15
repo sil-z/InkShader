@@ -3,6 +3,7 @@ import { CurveStore } from './curve_store.js';
 import { TreeStore } from './tree_store.js';
 import { SequenceService } from './sequence_service.js';
 import { SnapshotSerializer } from './snapshot_serializer.js';
+import { SpatialGrid } from './spatial_grid.js';
 import { BooleanEngine } from '../boolean.js';
 import { DOMAIN_EVENTS } from '../../domain/events/domain_events.js';
 import { EMPTY_CURVE_MANAGER_HOST_PORT } from '../../domain/ports/curve_manager_host_port.js';
@@ -29,6 +30,8 @@ export class CurveManager {
     seqService;
     /** @type {SnapshotSerializer} */
     serializer;
+    /** @type {SpatialGrid} */
+    spatialGrid;
 
     // =========================================================================
     // Selection state (kept independent)
@@ -52,6 +55,9 @@ export class CurveManager {
     // =========================================================================
     _dirtyGlyphs = new Set();
     _dirtyTrackingEnabled = true;
+    _treeSnapshotVersion = 0;
+    /** Cache GLIF export XML per glyph, cleared via _markDirty */
+    _glifExportCache = new Map();
 
     getDirtyGlyphs() { return this._dirtyGlyphs; }
     clearDirtyGlyphs() { this._dirtyGlyphs.clear(); }
@@ -65,7 +71,8 @@ export class CurveManager {
         if (!rootId) return;
         const rootItem = this.treeStore.treeItems.get(rootId);
         if (rootItem && rootItem.type === 'group' && !rootItem.isRef && rootItem.parentId === null) {
-            this._dirtyGlyphs.add(rootItem.name);
+            this._dirtyGlyphs.add(rootId);
+            this._glifExportCache.delete(rootId);
         }
     }
 
@@ -87,6 +94,7 @@ export class CurveManager {
         this.seqService = new SequenceService(this.treeStore);
         this.serializer = new SnapshotSerializer(this.curveStore, this.treeStore, this.seqService);
         this.selection = new SelectionState(this);
+        this.spatialGrid = new SpatialGrid(10);
     }
 
     // =========================================================================
@@ -279,6 +287,7 @@ export class CurveManager {
     // =========================================================================
 
     get curves() { return this.curveStore.curves; }
+    get curveById() { return this.curveStore.curveById; }
     get domMap() { return this.curveStore.domMap; }
 
     get_curves() { return this.curveStore.get_curves(); }
@@ -309,7 +318,7 @@ export class CurveManager {
     }
 
     remove_curve(id) {
-        const curve = this.curveStore.curves.find(c => c.id === id);
+        const curve = this.curveStore.curveById.get(id);
         if (this.curveStore.remove_curve(id)) {
             this.treeStore.deleteTreeItem(id, false);
             if (curve) this._markDirty(curve.groupId);
@@ -395,7 +404,6 @@ export class CurveManager {
         if (this.activeGroupId === oldId) this.activeGroupId = newName;
 
         this.updateSequenceParsing();
-        this.seqService.rebuildDefaultGlyphs();
         this.notifyTreeUpdate();
         return true;
     }
@@ -503,22 +511,35 @@ export class CurveManager {
                 let seqTokens = this.seqService.sequenceTokens || [];
                 let activeIndices = this.seqService.activeSequenceIndices || new Set();
                 let focused = this.focused_seq_idx;
+                if (!this._seqIdxCache) this._seqIdxCache = new Map();
+                const cached = this._seqIdxCache.get(groupId);
+                if (cached !== undefined) return cached;
 
                 if (focused !== undefined && focused !== -1 && focused < seqTokens.length) {
                     let t = seqTokens[focused];
                     let gid = t.isChar ? this.seqService.getDefaultGroupForChar(t.value) : t.value;
-                    if (groupId === gid && activeIndices.has(focused)) return focused;
+                    if (groupId === gid && activeIndices.has(focused)) {
+                        this._seqIdxCache.set(groupId, focused);
+                        return focused;
+                    }
                 }
                 for (let i = 0; i < seqTokens.length; i++) {
                     let t = seqTokens[i];
                     let gid = t.isChar ? this.seqService.getDefaultGroupForChar(t.value) : t.value;
-                    if (groupId === gid && activeIndices.has(i)) return i;
+                    if (groupId === gid && activeIndices.has(i)) {
+                        this._seqIdxCache.set(groupId, i);
+                        return i;
+                    }
                 }
                 for (let i = 0; i < seqTokens.length; i++) {
                     let t = seqTokens[i];
                     let gid = t.isChar ? this.seqService.getDefaultGroupForChar(t.value) : t.value;
-                    if (groupId === gid) return i;
+                    if (groupId === gid) {
+                        this._seqIdxCache.set(groupId, i);
+                        return i;
+                    }
                 }
+                this._seqIdxCache.set(groupId, -1);
                 return -1;
             },
             getSeqOffset: (i) => this.seqService.getSeqOffset(i),
@@ -651,10 +672,19 @@ export class CurveManager {
 
             // Clean up old curves: remove DOM markers, delete tree items,
             // and clear selection (curves already removed from store by proxy)
+            const deletedIds = new Set();
             for (let c of targetCurves) {
                 this.curveStore.unregisterCurveDomMarkers(c);
                 this.treeStore.deleteTreeItem(c.id, false);
                 this.selected_curves.delete(c);
+                deletedIds.add(c.id);
+            }
+            // Also clean selectedTreeIds and selected_refs for the deleted items
+            for (const id of deletedIds) this.selectedTreeIds.delete(id);
+            for (const ref of Array.from(this.selected_refs)) {
+                if (ref && (deletedIds.has(ref.id) || deletedIds.has(ref.refId))) {
+                    this.selected_refs.delete(ref);
+                }
             }
 
             // Register new curves in the tree and set groupId
@@ -758,6 +788,7 @@ export class CurveManager {
     }
 
     updateSequenceParsing() {
+        this._seqIdxCache = new Map();  // Invalidated by sequence edit
         this.seqService.updateSequenceParsing();
         this.seqService.syncTreeWithSequence(
             () => this.validateSelection(),
@@ -774,12 +805,92 @@ export class CurveManager {
     }
 
     // =========================================================================
+    // Spatial grid
+    // =========================================================================
+
+    /**
+     * Rebuild the spatial grid. When dirtyGroupIds is provided, only those groups
+     * are refreshed (remove stale + re-add current).  Full rebuild when omitted.
+     *
+     * Call this after any command that changes node geometry (position, add,
+     * delete, transform).  Do NOT call during per-frame interaction (drag,
+     * transform preview) — the grid is only valid at committed positions.
+     */
+    rebuildSpatialGrid(dirtyGroupIds = null) {
+        const grid = this.spatialGrid;
+        const tokens = this.seqService.sequenceTokens || [];
+
+        // Determine which groups need updating
+        const updateSet = dirtyGroupIds && dirtyGroupIds.size > 0 ? dirtyGroupIds : null;
+
+        if (updateSet) {
+            // Incremental: evict stale nodes for dirty groups
+            for (const gid of updateSet) {
+                grid.removeGroup(gid);
+            }
+        } else {
+            // Full rebuild
+            grid.clear();
+        }
+
+        for (let i = 0; i < tokens.length; i++) {
+            if (!this.seqService.activeSequenceIndices.has(i)) continue;
+            const seqOffsetX = this.seqService.getSeqOffset(i);
+            const token = tokens[i];
+            const groupId = token.isChar ? this.seqService.getDefaultGroupForChar(token.value) : token.value;
+
+            // Skip non-dirty groups in incremental mode
+            if (updateSet && !updateSet.has(groupId)) continue;
+
+            const curveDataList = this.treeStore.getCurvesForGroup(groupId);
+            for (const cd of curveDataList) {
+                if (!cd.effectiveVis || cd.effectiveLock) continue;
+                let current = cd.curve.startNode;
+                while (current) {
+                    let wx = current.x, wy = current.y;
+                    if (cd.matrix) {
+                        const x = wx; const y = wy;
+                        wx = x * cd.matrix.a + y * cd.matrix.c + cd.matrix.e;
+                        wy = x * cd.matrix.b + y * cd.matrix.d + cd.matrix.f;
+                    }
+                    wx += seqOffsetX;
+                    this.spatialGrid.add(current.main_node, wx, wy, {
+                        node: current,
+                        curve: cd.curve,
+                        refId: cd.refId || null,
+                        seqIdx: i,
+                        matrix: cd.matrix,
+                        seqOffsetX,
+                        groupId,
+                    });
+                    current = current.nextOnCurve;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
     // Notifications
     // =========================================================================
 
     notifyTreeUpdate() {
-        this.treeStore.groupFlatCache.clear();
+        this._treeSnapshotVersion++;
+        this._seqIdxCache = new Map();  // invalidate stale group→seq-index mappings
+
+        // Collect affected group IDs for incremental cache/grid updates.
+        // When dirty tracking is disabled (e.g. during file load), fall back to full clear.
+        const dirtyIds = this._dirtyTrackingEnabled && this._dirtyGlyphs.size > 0
+            ? new Set(this._dirtyGlyphs) : null;
+
+        if (dirtyIds) {
+            for (const rootId of dirtyIds) {
+                this.treeStore.invalidateGroupCache(rootId);
+            }
+        } else {
+            this.treeStore.groupFlatCache.clear();
+        }
         this.seqService.calculateSequenceOffsets();
+        this.rebuildSpatialGrid(dirtyIds);
         this._emitEvent(DOMAIN_EVENTS.TREE_UPDATED);
     }
 
@@ -787,18 +898,16 @@ export class CurveManager {
         this._emitEvent(DOMAIN_EVENTS.MODEL_UPDATED);
     }
 
-    // =========================================================================
-    // SnapshotSerializer delegation
-    // =========================================================================
-
     async loadFromJSON(jsonStr) {
         this._dirtyGlyphs.clear();
         await this.serializer.loadFromJSON(jsonStr, (l, m) => this._reportMessage(l, m));
+        this.rebuildSpatialGrid();
     }
 
     async loadFromSnapshotObject(data) {
         this._dirtyGlyphs.clear();
         await this.serializer.loadFromSnapshotObject(data, (l, m) => this._reportMessage(l, m));
+        this.rebuildSpatialGrid();
     }
 
     replacePathFromSnapshotData(g, p, d) {

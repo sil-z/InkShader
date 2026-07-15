@@ -16,6 +16,10 @@ export class SequenceService {
     defaultGlyphs = new Map();
     sequenceOffsets = [];
 
+    /** @private Cache for incremental syncTreeWithSequence */
+    _prevInTextIds = null;   // Set of group IDs that were in sequence text at last sync (null = first call, do full sweep)
+    _prevRootIds = null;     // Set of rootChildren IDs at last sync
+
     constructor(treeStore) {
         this._treeStore = treeStore;
     }
@@ -87,6 +91,12 @@ export class SequenceService {
         return newId;
     }
 
+    /** Remove a tree item's charCode mapping from defaultGlyphs, if any */
+    _removeDefaultGlyphById(id) {
+        const item = this._treeStore.treeItems.get(id);
+        if (item && item.charCode) this.defaultGlyphs.delete(item.charCode);
+    }
+
     // =========================================================================
     // Sequence update + offsets
     // =========================================================================
@@ -114,21 +124,18 @@ export class SequenceService {
             }
         }
 
-        let deletedAny = false;
         for (let i = this._treeStore.rootChildren.length - 1; i >= 0; i--) {
             let id = this._treeStore.rootChildren[i];
             let item = this._treeStore.treeItems.get(id);
 
             if (item && item.type === 'group' && !item.isRef && item.children.length === 0) {
                 if (!referencedIds.has(id) && !item.is_modified) {
+                    if (item.charCode) this.defaultGlyphs.delete(item.charCode);
                     this._treeStore.treeItems.delete(id);
                     this._treeStore.rootChildren.splice(i, 1);
-                    deletedAny = true;
                 }
             }
         }
-
-        if (deletedAny) this.rebuildDefaultGlyphs();
     }
 
     setSequence(text) {
@@ -175,7 +182,7 @@ export class SequenceService {
     }
 
     getSeqOffset(seqIndex) {
-        if (seqIndex <= 0 || seqIndex >= this.sequenceOffsets.length) return 0;
+        if (seqIndex < 0 || seqIndex >= this.sequenceOffsets.length) return 0;
         return this.sequenceOffsets[seqIndex];
     }
 
@@ -220,18 +227,65 @@ export class SequenceService {
             }
         }
 
+        // --- Incremental sync: diff against previous sync state ---
+        // First call (_prevInTextIds === null): full sweep over all root groups.
+        // Subsequent calls: only process entered/left groups + newly created groups.
         let toDelete = [];
-        for (let [id, item] of this._treeStore.treeItems.entries()) {
-            if (item.type === 'group' && item.parentId === null) {
-                if (allInTextIds.has(item.id)) {
-                    item.hidden_by_sequence = false;
-                } else {
-                    item.hidden_by_sequence = true;
-                    if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
+        if (this._prevInTextIds === null) {
+            // First sync — full sweep (happens once, typically on file load)
+            for (let [id, item] of this._treeStore.treeItems.entries()) {
+                if (item.type === 'group' && item.parentId === null) {
+                    if (allInTextIds.has(item.id)) {
+                        item.hidden_by_sequence = false;
+                    } else {
+                        item.hidden_by_sequence = true;
+                        if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
+                    }
+                }
+            }
+        } else {
+            // Incremental: process only groups that changed
+            const prevInText = this._prevInTextIds;
+
+            // Groups that entered the text → unhide
+            for (const id of allInTextIds) {
+                if (!prevInText.has(id)) {
+                    const item = this._treeStore.treeItems.get(id);
+                    if (item) item.hidden_by_sequence = false;
+                }
+            }
+
+            // Groups that left the text → hide, maybe delete
+            for (const id of prevInText) {
+                if (!allInTextIds.has(id)) {
+                    const item = this._treeStore.treeItems.get(id);
+                    if (item && item.type === 'group' && item.parentId === null) {
+                        item.hidden_by_sequence = true;
+                        if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
+                    }
+                }
+            }
+
+            // Handle newly created root groups (none in prev nor current text)
+            const rootLen = this._treeStore.rootChildren.length;
+            if (this._prevRootIds === null || this._prevRootIds.size !== rootLen) {
+                const prevRoot = this._prevRootIds ?? new Set();
+                for (const id of this._treeStore.rootChildren) {
+                    if (!prevRoot.has(id) && !allInTextIds.has(id)) {
+                        const item = this._treeStore.treeItems.get(id);
+                        if (item && item.type === 'group' && !item.isRef) {
+                            item.hidden_by_sequence = true;
+                            if (item.children.length === 0 && !item.is_modified) toDelete.push(id);
+                        }
+                    }
                 }
             }
         }
-        toDelete.forEach(id => this._treeStore.deleteTreeItem(id));
+        toDelete.forEach(id => { this._removeDefaultGlyphById(id); this._treeStore.deleteTreeItem(id); });
+
+        // Update caches for next incremental call (after toDelete so _prevRootIds reflects current rootChildren)
+        this._prevInTextIds = new Set(allInTextIds);
+        this._prevRootIds = new Set(this._treeStore.rootChildren);
 
         const newActiveIndices = new Set();
         for (let i of this.activeSequenceIndices) {

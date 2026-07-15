@@ -126,7 +126,9 @@
                     });
                 }
             }
-        } catch(e) {}
+        } catch(e) {
+            console.error("[InkShader] Failed to parse preferences from localStorage:", e);
+        }
     </script>
     <script type="module" src="./js/app/bootstrap.js"></script>
 </body>

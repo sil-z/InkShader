@@ -82,6 +82,7 @@ export class SnapshotSerializer {
         this._sequenceService.rebuildDefaultGlyphs();
         this._sequenceService.updateSequenceParsing();
         this._sequenceService.syncTreeWithSequence(null, null, null, () => this._treeStore.notifyTreeUpdate());
+        this._treeStore.rebuildRefReverseIndex();
     }
     _reconstructGroup(gid, gData, parentId, charCode = null) {
         this._treeStore.treeItems.set(gid, {
@@ -220,7 +221,7 @@ export class SnapshotSerializer {
                 let child = this._treeStore.treeItems.get(childId);
                 if (!child) continue;
                 if (child.type === 'curve') {
-                    let curve = this._curveStore.curves.find(c => c.id === child.curveId);
+                    let curve = this._curveStore.curveById.get(child.curveId);
                     if (curve) {
                         children.push({
                             "type": "path",
@@ -272,7 +273,7 @@ export class SnapshotSerializer {
                 if (useIncremental && !hasDirtyGlyphs && prevGlyphs[item.name] !== undefined) {
                     // No dirty glyphs at all — reuse every glyph from previous snapshot
                     file.glyphs[item.name] = prevGlyphs[item.name];
-                } else if (useIncremental && hasDirtyGlyphs && !dirtyGlyphs.has(item.name) && prevGlyphs[item.name] !== undefined) {
+                } else if (useIncremental && hasDirtyGlyphs && !dirtyGlyphs.has(id) && prevGlyphs[item.name] !== undefined) {
                     // This specific glyph is clean — reuse its previous snapshot data
                     file.glyphs[item.name] = prevGlyphs[item.name];
                 } else {
