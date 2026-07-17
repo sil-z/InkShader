@@ -413,8 +413,8 @@ export class CurveStore {
 
         for (let idx = 0; idx < vertices.length; idx++) {
             const vData = vertices[idx];
-            const nId = `n_${Date.now().toString(36)}_${idx}_${Math.floor(Math.random() * 10000)}`;
-            const marker = { id: `m_${nId}` };
+            const marker = generateMarker("vertex");
+            const nId = `n_${marker.id}`;
             const node = new CurveNode(marker, "vertex", vData.x, vData.y, null, lastCreatedNode, nId);
             node.curve = curve;
             const rawMode = vData.control_mode;
@@ -423,12 +423,12 @@ export class CurveStore {
                 : rawMode !== undefined ? rawMode : 0;
 
             if (vData.control_1) {
-                const m1 = { id: `c1_${nId}` };
+                const m1 = generateMarker("circle");
                 node.control1 = new CurveNode(m1, null, vData.control_1.x, vData.control_1.y, node, null, m1.id);
                 node.control1.curve = curve;
             }
             if (vData.control_2) {
-                const m2 = { id: `c2_${nId}` };
+                const m2 = generateMarker("circle");
                 node.control2 = new CurveNode(m2, null, vData.control_2.x, vData.control_2.y, node, null, m2.id);
                 node.control2.curve = curve;
             }

@@ -429,6 +429,8 @@ export class TreeStore {
             if (changed) {
                 curve.cached_boolean_geometry = null;
                 curve._lastHash = null;
+                curve._booleanContentHash = null;
+                curve._booleanPath2D = null;
             }
             return changed;
         }

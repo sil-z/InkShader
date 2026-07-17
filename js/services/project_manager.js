@@ -61,96 +61,100 @@ export class ProjectManager {
     }
 
     async createNewProject() {
-        // Guard: prevent double-creation if called while already active
-        if (this.activeProjectName) return this.activeProjectName;
+        // Only guard against concurrent in-flight creation (not "already have a project").
         if (this._creatingProject) return this._creatingProject;
         this._creatingProject = (async () => {
-            const hasContent = !this._isEmptyProject();
+            try {
+                const hasContent = !this._isEmptyProject();
 
-        // Save current work before creating new project
-        if (hasContent) {
-            if (this.activeProjectName) {
-                await this.saveToCache(this.activeProjectName);
-            } else {
-                // Unnamed canvas content — save with a generated name first
-                const tempName = await this.ensureUniqueName("New Font");
-                await this.saveToCache(tempName);
+                // Save current work before creating new project
+                if (hasContent) {
+                    if (this.activeProjectName) {
+                        await this.saveToCache(this.activeProjectName);
+                    } else {
+                        // Unnamed canvas content — save with a generated name first
+                        const tempName = await this.ensureUniqueName("New Font");
+                        await this.saveToCache(tempName);
+                    }
+                }
+
+                // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
+                const name = await this.ensureUniqueName("New Font");
+
+                // Show brand title IMMEDIATELY with the new project name,
+                // before loadSnapshotCommand and IndexedDB save which can take ~1s.
+                // loadSnapshotCommand below sets fontSettings from the snapshot
+                // (which includes the same project_name), so this early write
+                // is overwritten with the same value — no flash or inconsistency.
+                this.canvas.fontSettings.project_name = name;
+                this._updateBrandTitle();
+
+                const c = this.canvas;
+
+                const emptySnapshot = JSON.stringify({
+                    version: "1.0",
+                    editor_guidelines: [], editor_guideline_lock: false,
+                    editor_sequence: "", editor_active_indices: [],
+                    family_name: "InkShader_Default_Font",
+                    project_name: name,
+                    basic_spacing: 1000,
+                    font_style: "Regular",
+                    postscript_name: "",
+                    preferred_family: "",
+                    preferred_subfamily: "",
+                    copyright: "",
+                    designer: "",
+                    designer_url: "",
+                    manufacturer: "",
+                    manufacturer_url: "",
+                    license: "",
+                    license_url: "",
+                    trademark: "",
+                    description: "",
+                    sample_text: "",
+                    upm: 1000,
+                    weight_class: 400,
+                    width_class: 5,
+                    ascender: 800,
+                    descender: -200,
+                    x_height: 500,
+                    cap_height: 700,
+                    font_version: "1.0",
+                    editor_root_order: [],
+                    glyphs: {}
+                });
+
+                await c.commands.loadSnapshotCommand(emptySnapshot);
+                c.commandStack = [];
+                c.redoCommandStack = [];
+                c.currentStateObj = c.history.getHistoryState();
+
+                // Clear stale selection state (activeGroupId, node/curve selections) that
+                // carried over from the previous project — loadSnapshotCommand does NOT
+                // reset the SelectionState's activeGroupId.
+                c.curve_manager.clearAllSelection();
+                c.curve_manager.activeGroupId = null;
+
+                const data = {
+                    // Deep-clone snapshot to avoid shared-ref corruption via history service's _saveRuntimeState
+                    latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
+                    commandStack: [],
+                    redoCommandStack: []
+                };
+                await StorageUtils.saveProject(name, data);
+                this.setActiveProjectName(name);
+
+                // Sync editor store to the new (empty) canvas state so stale activeGroupId
+                // from the previous project doesn't leak into handleMouseDown.
+                c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+                c.bumpEditorStoreTreeRevision?.();
+
+                c.is_dirty = true;
+                c.notifyPropertiesUpdate();
+                return name;
+            } finally {
+                this._creatingProject = null;
             }
-        }
-
-        // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
-        const name = await this.ensureUniqueName("New Font");
-
-        // Show brand title IMMEDIATELY with the new project name,
-        // before loadSnapshotCommand and IndexedDB save which can take ~1s.
-        // loadSnapshotCommand below sets fontSettings from the snapshot
-        // (which includes the same project_name), so this early write
-        // is overwritten with the same value — no flash or inconsistency.
-        this.canvas.fontSettings.project_name = name;
-        this._updateBrandTitle();
-
-        const c = this.canvas;
-
-        const emptySnapshot = JSON.stringify({
-            version: "1.0",
-            editor_guidelines: [], editor_guideline_lock: false,
-            editor_sequence: "", editor_active_indices: [],
-            family_name: "InkShader_Default_Font",
-            project_name: name,
-            basic_spacing: 1000,
-            font_style: "Regular",
-            postscript_name: "",
-            preferred_family: "",
-            preferred_subfamily: "",
-            copyright: "",
-            designer: "",
-            designer_url: "",
-            manufacturer: "",
-            manufacturer_url: "",
-            license: "",
-            license_url: "",
-            trademark: "",
-            description: "",
-            sample_text: "",
-            upm: 1000,
-            weight_class: 400,
-            width_class: 5,
-            ascender: 800,
-            descender: -200,
-            x_height: 500,
-            cap_height: 700,
-            font_version: "1.0",
-            editor_root_order: [],
-            glyphs: {}
-        });
-
-        await c.commands.loadSnapshotCommand(emptySnapshot);
-        c.commandStack = [];
-        c.redoCommandStack = [];
-        c.currentStateObj = c.history.getHistoryState();
-
-        // Clear stale selection state (activeGroupId, node/curve selections) that
-        // carried over from the previous project — loadSnapshotCommand does NOT
-        // reset the SelectionState's activeGroupId.
-        c.curve_manager.clearAllSelection();
-        c.curve_manager.activeGroupId = null;
-
-        const data = {
-            // Deep-clone snapshot to avoid shared-ref corruption via history service's _saveRuntimeState
-            latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
-            commandStack: [],
-            redoCommandStack: []
-        };
-        await StorageUtils.saveProject(name, data);
-        this.setActiveProjectName(name);
-
-        // Sync editor store to the new (empty) canvas state so stale activeGroupId
-        // from the previous project doesn't leak into handleMouseDown.
-        c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
-
-        c.is_dirty = true;
-        c.notifyPropertiesUpdate();
-            return name;
         })();
         return this._creatingProject;
     }
@@ -199,6 +203,7 @@ export class ProjectManager {
         c.is_dirty = true;
         c.notifyPropertiesUpdate();
         c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+        c.bumpEditorStoreTreeRevision?.();
         return projectName;
     }
 
@@ -254,6 +259,7 @@ export class ProjectManager {
             c.notifyPropertiesUpdate();
             c.is_dirty = true;
             c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+            c.bumpEditorStoreTreeRevision?.();
         } catch (err) {
             if (err) {
                 alert("Critical error during file loading: " + err.message);

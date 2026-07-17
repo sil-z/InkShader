@@ -18,24 +18,33 @@ export function deriveTreeFieldsFromState(state, catalog = null) {
         let lastGroupId = state.activeGroupId ?? null;
         const refId = state._nodeSelectionRefId ?? null;
 
+        if (refId && treeItems?.has(refId)) {
+            selectedTreeIds.add(refId);
+            const refItem = treeItems.get(refId);
+            if (refItem?.parentId) lastGroupId = refItem.parentId;
+            return { selectedTreeIds: [...selectedTreeIds], selectedCurveIds, activeGroupId: lastGroupId };
+        }
+
+        // One O(|domMap|) index — never resolveMarkerById per selected id (that is O(n²)).
+        const markerIndex =
+            typeof catalog.buildMarkerIdIndex === "function"
+                ? catalog.buildMarkerIdIndex()
+                : null;
+
         for (const markerId of nodeIds) {
-            if (refId && treeItems?.has(refId)) {
-                selectedTreeIds.add(refId);
-                const refItem = treeItems.get(refId);
-                if (refItem?.parentId) lastGroupId = refItem.parentId;
-                continue;
-            }
-            const marker = catalog.resolveMarkerById(markerId);
+            const marker = markerIndex
+                ? markerIndex.get(markerId)?.marker
+                : catalog.resolveMarkerById(markerId);
             if (!marker) continue;
             const curve = catalog.findCurveByMarker(marker);
             if (curve && !seenCurveIds.has(curve.id)) {
                 seenCurveIds.add(curve.id);
                 selectedCurveIds.push(curve.id);
-            }
-            const treeId = resolveTreeIdForCurve(treeItems, curve);
-            if (treeId) {
-                selectedTreeIds.add(treeId);
-                if (curve?.groupId) lastGroupId = curve.groupId;
+                const treeId = resolveTreeIdForCurve(treeItems, curve);
+                if (treeId) {
+                    selectedTreeIds.add(treeId);
+                    if (curve?.groupId) lastGroupId = curve.groupId;
+                }
             }
         }
         return { selectedTreeIds: [...selectedTreeIds], selectedCurveIds, activeGroupId: lastGroupId };

@@ -301,9 +301,15 @@ export class SelectionState {
     syncTreeSelectionFromCanvas() {
         this.selectedTreeIds.clear();
         let lastGroupId = null;
+        const resolvedCurveTreeIds = new Map();
 
         const addCurveTreeId = (curve) => {
-            const treeId = this._resolveTreeIdForCurve(curve);
+            if (!curve) return;
+            let treeId = resolvedCurveTreeIds.get(curve.id);
+            if (treeId === undefined) {
+                treeId = this._resolveTreeIdForCurve(curve);
+                resolvedCurveTreeIds.set(curve.id, treeId ?? null);
+            }
             if (treeId) {
                 this.selectedTreeIds.add(treeId);
                 lastGroupId = curve.groupId;
@@ -327,8 +333,7 @@ export class SelectionState {
                 }
                 continue;
             }
-            const curve = this.host.find_curve_by_dom(marker);
-            if (curve) addCurveTreeId(curve);
+            addCurveTreeId(this.host.find_curve_by_dom(marker));
         }
         if (lastGroupId) this.activeGroupId = lastGroupId;
         this._emitGlobalSelectionUpdated();

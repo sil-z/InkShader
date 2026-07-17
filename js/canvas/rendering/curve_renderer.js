@@ -5,7 +5,9 @@ import { getCanvasTheme } from "./canvas_theme.js";
 import {
     emitBooleanSubpaths,
     emitCubicBezierSegments,
-    emitExpandedStrokeOutline
+    emitExpandedStrokeOutline,
+    booleanViewportDOMMatrix,
+    buildBooleanPath2D
 } from "../../core/bezier/path_emitter.js";
 import { createViewportTransform } from "./viewport_transform.js";
 
@@ -32,12 +34,11 @@ export function isCurveClosedRing(curve) {
 
 /**
  * Whether to enter the "batch-fill by group" pass.
- * Interactive preview: smart stroke (including open paths) still batch-fills expanded outline; only non-smart closed rings use skeleton preview.
+ * Interactive preview uses skeleton only — fill closed rings; open paths are stroked later.
  */
 export function shouldBatchFillCurve(curve, { strokePreview = false } = {}) {
     if (!curveGeneratesFillArea(curve)) return false;
     if (strokePreview) {
-        if (curve.smart_stroke && curve.stroke_width > 0) return true;
         return isCurveClosedRing(curve);
     }
     return true;
@@ -49,6 +50,30 @@ export function usePreviewSkeletonForBatchFill(curve, { strokePreview = false } 
     return isCurveClosedRing(curve);
 }
 
+/** True when smart fill can use cached Path2D + CTM (skips per-frame bezier emit). */
+export function canFillSmartStrokeWithPath2D(curve, { strokePreview = false } = {}) {
+    if (strokePreview) return false;
+    if (!curve?.smart_stroke || curve.stroke_width <= 0) return false;
+    ensureBooleanCache(curve);
+    if (!hasUsableBooleanCache(curve)) return false;
+    if (!curve._booleanPath2D) {
+        curve._booleanPath2D = buildBooleanPath2D(curve.cached_boolean_geometry);
+    }
+    return !!curve._booleanPath2D;
+}
+
+/** Fill smart-stroke using model-space Path2D (same geometry as emitBooleanSubpaths). */
+export function fillSmartStrokePath2D(ctx, curve, viewport, fillStyle) {
+    if (!ctx || !curve?._booleanPath2D) return false;
+    const m = booleanViewportDOMMatrix(viewport);
+    ctx.save();
+    ctx.fillStyle = fillStyle;
+    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.fill(curve._booleanPath2D, "nonzero");
+    ctx.restore();
+    return true;
+}
+
 function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = true } = {}) {
     if (!curve?.smart_stroke || curve.stroke_width <= 0) return false;
     const halfWidth = curve.stroke_width / 2;
@@ -56,6 +81,9 @@ function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = tr
     if (allowBooleanCache) {
         ensureBooleanCache(curve);
         if (hasUsableBooleanCache(curve)) {
+            if (!curve._booleanPath2D) {
+                curve._booleanPath2D = buildBooleanPath2D(curve.cached_boolean_geometry);
+            }
             emitBooleanSubpaths(ctx, curve.cached_boolean_geometry, mapPoint);
             return true;
         }
@@ -69,11 +97,21 @@ function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = tr
 
 function ensureBooleanCache(curve) {
     if (!curve?.startNode) return;
+    // Fast path: already validated for current geometry (set after build / revalidation).
+    if (curve._lastHash != null && hasUsableBooleanCache(curve)) return;
+
     const currentHash = curve.getGeometryHash();
-    if (curve._lastHash !== currentHash || !hasUsableBooleanCache(curve)) {
-        curve.updateBooleanCache();
+    // invalidateBooleanCache only clears _lastHash; if geometry is unchanged, reuse Paper result.
+    if (hasUsableBooleanCache(curve) && curve._booleanContentHash === currentHash) {
         curve._lastHash = currentHash;
+        if (!curve._booleanPath2D) {
+            curve._booleanPath2D = buildBooleanPath2D(curve.cached_boolean_geometry);
+        }
+        return;
     }
+    curve.updateBooleanCache();
+    curve._lastHash = currentHash;
+    curve._booleanContentHash = currentHash;
 }
 
 /**
@@ -105,10 +143,8 @@ export function appendCurveFillPath(ctx, curve, viewport, { refId = null, stroke
     const smartBand = curve.smart_stroke && curve.stroke_width > 0;
 
     if (strokePreview) {
-        if (smartBand) {
-            appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache: false });
-            return;
-        }
+        // Interactive preview: always skeleton. Expanded smart outline is too heavy on
+        // dense paths and can fail mid-drag, leaving the mover curve blank.
         emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: isClosedRing });
         return;
     }
@@ -147,6 +183,22 @@ export function drawCurveStroke(
 ) {
     if (!ctx || !curve?.startNode) return;
 
+    // Prefer Path2D fill for cached smart-stroke (avoids re-emitting huge boolean paths).
+    if (
+        (renderMode === "fill" || renderMode === "all") &&
+        canFillSmartStrokeWithPath2D(curve, { strokePreview })
+    ) {
+        fillSmartStrokePath2D(ctx, curve, viewport, theme.path_fill_color);
+        if (curve.show_skeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
+            ctx.beginPath();
+            emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = theme.path_stroke_color;
+            ctx.stroke();
+        }
+        return;
+    }
+
     ctx.beginPath();
     appendCurveFillPath(ctx, curve, viewport, { refId, strokePreview });
 
@@ -166,10 +218,10 @@ export function drawCurveStroke(
     const scale = viewport.scale ?? 1;
 
     if (strokePreview) {
-        // Smart-stroke outline already drawn in batch-fill pass; do not fake stroke with center-line + lineWidth
-        if (!(curve.smart_stroke && curve.stroke_width > 0) && (renderMode === "stroke" || renderMode === "all")) {
-            ctx.lineWidth = curve.stroke_width > 0 ? curve.stroke_width * scale : 1;
-            ctx.strokeStyle = curve.stroke_width > 0 ? theme.path_fill_color : theme.path_stroke_color;
+        // Skeleton centerline (see appendCurveFillPath); always stroke so dense movers stay visible.
+        if (renderMode === "stroke" || renderMode === "all") {
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = theme.path_stroke_color;
             ctx.stroke();
         }
     } else if (!curve.smart_stroke && curve.stroke_width > 0) {

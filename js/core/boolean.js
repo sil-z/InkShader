@@ -1,5 +1,6 @@
 // js/core/boolean.js
 import { CurveNode } from "./bezier/node.js";
+import { generateMarker } from "./bezier/utils.js";
 import { getPaperScope } from "./paper_scope.js";
 import { param_set } from "../services/theme.js";
 
@@ -234,10 +235,9 @@ export class BooleanEngine {
                     }
                 }
 
-                let uniqueHex = Date.now().toString(36) + "_" + Math.floor(Math.random() * 100000);
-                let marker = { id: `m_v_${uniqueHex}`, type: "vertex" };
+                const marker = generateMarker("vertex");
                 
-                let node = new CurveNode(marker, "vertex", pt.x, pt.y, null, lastCreatedNode, `n_${uniqueHex}`);
+                let node = new CurveNode(marker, "vertex", pt.x, pt.y, null, lastCreatedNode, `n_${marker.id}`);
                 node.curve = InkShaderCurve;
                 node.control_mode = controlMode;
 
@@ -246,7 +246,7 @@ export class BooleanEngine {
                 if (!seg.handleOut.isZero()) {
                     let c1x = pt.x + seg.handleOut.x;
                     let c1y = pt.y + seg.handleOut.y;
-                    let c1M = { id: `m_c1_${uniqueHex}`, type: "circle" };
+                    const c1M = generateMarker("circle");
                     node.control1 = new CurveNode(c1M, null, c1x, c1y, node, null, c1M.id);
                     node.control1.curve = InkShaderCurve;
                     this.cm.domMap.set(c1M, node.control1);
@@ -255,7 +255,7 @@ export class BooleanEngine {
                 if (!seg.handleIn.isZero()) {
                     let c2x = pt.x + seg.handleIn.x;
                     let c2y = pt.y + seg.handleIn.y;
-                    let c2M = { id: `m_c2_${uniqueHex}`, type: "circle" };
+                    const c2M = generateMarker("circle");
                     node.control2 = new CurveNode(c2M, null, c2x, c2y, node, null, c2M.id);
                     node.control2.curve = InkShaderCurve;
                     this.cm.domMap.set(c2M, node.control2);

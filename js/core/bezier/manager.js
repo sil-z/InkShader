@@ -8,6 +8,7 @@ import { BooleanEngine } from '../boolean.js';
 import { DOMAIN_EVENTS } from '../../domain/events/domain_events.js';
 import { EMPTY_CURVE_MANAGER_HOST_PORT } from '../../domain/ports/curve_manager_host_port.js';
 import { SelectionState } from '../../domain/selection/selection_state.js';
+import { generateMarker } from './utils.js';
 
 /**
  * CurveManager: lightweight coordinator, compositing four dedicated sub-modules, preserving existing public API.
@@ -203,11 +204,8 @@ export class CurveManager {
     adjustControlNode(marker, x, y) {
         const ok = this.curveStore.adjustControlNode(marker, x, y);
         if (ok) {
-            const node = this.curveStore.find_node_by_curve(marker);
-            const curve = node?.curve;
-            if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
-            else this.notifyModelUpdate();
             this._markDirtyByMarker(marker);
+            this.notifyModelUpdate();
         }
         return ok;
     }
@@ -239,10 +237,10 @@ export class CurveManager {
     moveSelectedNodes(updates) {
         const { changed, affectedGroups } = this.curveStore.moveSelectedNodes(updates);
         for (let gid of affectedGroups) {
-            this.invalidateGroupCache(gid);
+            // Keep boolean/group flat caches during interactive drag; mouseup flushes.
             this._markDirty(gid);
         }
-        if (changed && affectedGroups.size === 0) this.notifyModelUpdate();
+        if (changed) this.notifyModelUpdate();
         return changed;
     }
 
@@ -569,7 +567,7 @@ export class CurveManager {
         let lastNodeMarker = null;
 
         while (current) {
-            const mainMarker = { id: `m_${Date.now().toString(36)}_${Math.floor(Math.random() * 100000)}` };
+            const mainMarker = generateMarker("vertex");
             this.add_node_by_curve(
                 mainMarker, "vertex", current.x, current.y,
                 null, lastNodeMarker, newCurve, String(mainMarker.id)
@@ -578,18 +576,20 @@ export class CurveManager {
             const newNode = this.find_node_by_curve(mainMarker);
             if (!newNode) return null;
             newNode.smooth = current.smooth;
+            // CurveNode defaults to control_mode=2 (symmetric). Always copy the source
+            // mode explicitly; only force-create handles when the source actually has them.
+            newNode.control_mode = current.control_mode ?? 0;
 
-            if (current.control_mode !== 0 || current.control1 || current.control2) {
+            if (current.control1 || current.control2) {
                 this.changeSmoothModeOnSingleNode(mainMarker, current.control_mode, true);
-            }
-
-            if (current.control1 && newNode.control1) {
-                newNode.control1.x = current.control1.x;
-                newNode.control1.y = current.control1.y;
-            }
-            if (current.control2 && newNode.control2) {
-                newNode.control2.x = current.control2.x;
-                newNode.control2.y = current.control2.y;
+                if (current.control1 && newNode.control1) {
+                    newNode.control1.x = current.control1.x;
+                    newNode.control1.y = current.control1.y;
+                }
+                if (current.control2 && newNode.control2) {
+                    newNode.control2.x = current.control2.x;
+                    newNode.control2.y = current.control2.y;
+                }
             }
 
             lastNodeMarker = mainMarker;
@@ -865,6 +865,29 @@ export class CurveManager {
                     });
                     current = current.nextOnCurve;
                 }
+                // Curve AABB for object hit-test (SELECT), independent of node density.
+                const bounds = cd.curve.getBounds?.(cd.matrix) || null;
+                if (bounds && cd.curve?.id) {
+                    // Smart-expand visual can extend ~stroke_width beyond skeleton AABB.
+                    const sw = cd.curve.stroke_width || 0;
+                    const strokePad = cd.curve.smart_stroke ? Math.max(2, sw) : Math.max(0, sw / 2);
+                    this.spatialGrid.addCurve(
+                        cd.curve.id,
+                        bounds.minX + seqOffsetX,
+                        bounds.minY,
+                        bounds.maxX + seqOffsetX,
+                        bounds.maxY,
+                        {
+                            curve: cd.curve,
+                            refId: cd.refId || null,
+                            seqIdx: i,
+                            matrix: cd.matrix,
+                            seqOffsetX,
+                            groupId,
+                            pad: strokePad + 2
+                        }
+                    );
+                }
             }
         }
     }
@@ -875,6 +898,7 @@ export class CurveManager {
 
     notifyTreeUpdate() {
         this._treeSnapshotVersion++;
+        this._geometryEpoch = (this._geometryEpoch || 0) + 1;
         this._seqIdxCache = new Map();  // invalidate stale group→seq-index mappings
 
         // Collect affected group IDs for incremental cache/grid updates.
@@ -900,14 +924,19 @@ export class CurveManager {
 
     async loadFromJSON(jsonStr) {
         this._dirtyGlyphs.clear();
+        this.__treeSnapCache = null;
+        this._treeSnapshotVersion = (this._treeSnapshotVersion || 0) + 1;
         await this.serializer.loadFromJSON(jsonStr, (l, m) => this._reportMessage(l, m));
-        this.rebuildSpatialGrid();
+        // Invalidate tree-snapshot cache + notify Store/UI (serializer only hits treeStore.notify).
+        this.notifyTreeUpdate();
     }
 
     async loadFromSnapshotObject(data) {
         this._dirtyGlyphs.clear();
+        this.__treeSnapCache = null;
+        this._treeSnapshotVersion = (this._treeSnapshotVersion || 0) + 1;
         await this.serializer.loadFromSnapshotObject(data, (l, m) => this._reportMessage(l, m));
-        this.rebuildSpatialGrid();
+        this.notifyTreeUpdate();
     }
 
     replacePathFromSnapshotData(g, p, d) {

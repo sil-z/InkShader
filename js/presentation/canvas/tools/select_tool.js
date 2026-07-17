@@ -64,12 +64,15 @@ export class SelectTool extends BaseTool {
         c.is_box_selecting = true;
         c.box_select_start = { x: mouseX, y: mouseY };
         c.box_select_end = { x: mouseX, y: mouseY };
+        c.renderer.renderCanvas();
+        c.renderer.beginBoxSelectPreview?.();
         c.is_dirty = true;
     }
 
     handleBoxMouseUp(mouseX, mouseY, isShiftKey) {
         const c = this.canvas;
         c.is_box_selecting = false;
+        c.renderer.endBoxSelectPreview?.();
         let dx = mouseX - c.box_select_start.x, dy = mouseY - c.box_select_start.y;
 
         if (Math.hypot(dx, dy) < 4) {

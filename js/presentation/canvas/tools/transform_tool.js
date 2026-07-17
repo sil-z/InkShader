@@ -143,17 +143,7 @@ export class TransformTool {
             }
         }
 
-        const previewKeys = new Set([
-            ...this.ic.collectInteractiveStrokePreviewCurveIds(),
-            ...this.previewKeysFromTransformContexts(curveContexts)
-        ]);
-        for (const snapRef of c.transform_snapshot_refs) {
-            const ref = snapRef?.ref;
-            if (ref?.isRef && ref.refId) {
-                this.ic._pushCurvesFromGroup(previewKeys, cm, ref.refId, ref.id);
-            }
-        }
-        c.setInteractiveStrokePreviewCurveIds?.([...previewKeys]);
+        c._pendingTransformCurveContexts = null;
         c.is_dirty = true;
     }
 
@@ -362,7 +352,11 @@ export class TransformTool {
         c.transform_snapshot = null; c.transform_snapshot_refs = null;
         c.transform_start_bounds = null; c.transform_anchor_client = null;
         c.clearInteractiveStrokePreview?.();
-        c.flushSmartStrokeBooleanCache?.(affectedCurveIds);
+        // Click-to-select (no drag) must not invalidate smart-expand boolean cache —
+        // that forced a multi-second Paper rebuild on the next paint.
+        if (hasChanged) {
+            c.flushSmartStrokeBooleanCache?.(affectedCurveIds);
+        }
         c.commands.changeSelectedObjectsTransform(hasChanged);
     }
 }

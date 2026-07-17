@@ -4,7 +4,8 @@
 import { getPaperScope } from "./paper_scope.js";
 import {
     emitCubicBezierSegments,
-    emitExpandedStrokeOutline
+    emitExpandedStrokeOutline,
+    buildBooleanPath2D
 } from "./bezier/path_emitter.js";
 
 class LocalRecorder {
@@ -90,6 +91,7 @@ export function refreshCurveBooleanCache(curve) {
     const pScope = getPaperScope();
     if (!pScope || !curve?.startNode) {
         curve.cached_boolean_geometry = null;
+        curve._booleanPath2D = null;
         return;
     }
 
@@ -116,6 +118,7 @@ export function refreshCurveBooleanCache(curve) {
 
     if (allSolidPieces.length === 0) {
         curve.cached_boolean_geometry = null;
+        curve._booleanPath2D = null;
         return;
     }
 
@@ -177,6 +180,9 @@ export function refreshCurveBooleanCache(curve) {
 
     if (curve.cached_boolean_geometry.length === 0) {
         curve.cached_boolean_geometry = null;
+        curve._booleanPath2D = null;
+    } else {
+        curve._booleanPath2D = buildBooleanPath2D(curve.cached_boolean_geometry);
     }
 
     if (resultPath) resultPath.remove();

@@ -1341,114 +1341,131 @@ export class CanvasCommands {
     }
 
     /**
-     * Command: break path at selected nodes.
-     * For each selected node: if the curve is closed, open it at that node.
-     * If the curve is open (and node is not an endpoint), split the break-node
-     * into two—one on each side—each inheriting the control handle pointing
-     * in its direction (left side keeps control2/incoming, right side keeps
-     * control1/outgoing). The other handle on each side is made degenerate.
+     * Disconnect every segment whose two endpoint nodes are selected.
+     *
+     * Segment membership is snapshotted before mutation. Repeatedly splitting the live
+     * chain makes every other selected node become an endpoint and skips it, which was
+     * the source of the "alternating segments" bug for contiguous selections.
      */
     breakPathAtSelectedNodes() {
         const markers = resolveMarkersFromCanvas(commandCanvas(this));
-        if (markers.length === 0) return false;
+        if (markers.length < 2) return false;
 
         const cm = this.curve_manager;
+        const selectedIds = new Set(markers.map((m) => m?.id ?? m));
+        const curves = new Set();
+        for (const marker of markers) {
+            const curve = cm.find_node_by_curve(marker)?.curve;
+            if (curve) curves.add(curve);
+        }
         let changed = false;
 
-        for (const marker of markers) {
-            const node = cm.find_node_by_curve(marker);
-            if (!node || !node.curve) continue;
-            const curve = node.curve;
-
-            if (curve.closed) {
-                // Open at this node: reorder so the node becomes both start and end
-                const oldStart = curve.startNode;
-                if (node !== oldStart) {
-                    let walk = node;
-                    while (walk.nextOnCurve && walk.nextOnCurve !== oldStart) {
-                        walk = walk.nextOnCurve;
-                    }
-                    if (walk.nextOnCurve === oldStart) {
-                        walk.nextOnCurve = null;
-                        oldStart.lastOnCurve = null;
-                    }
-                    curve.startNode = node;
-                    curve.endNode = walk;
-                }
-                curve.closed = false;
-                changed = true;
-            } else if (node !== curve.startNode && node !== curve.endNode) {
-                // Split open curve at this internal node.
-                // Keep the ORIGINAL node on the LEFT curve (becomes endNode).
-                // Create a COPY for the RIGHT curve (becomes startNode).
-                const nextNode = node.nextOnCurve;
-                const prevNode = node.lastOnCurve;
-                if (!nextNode || !prevNode) continue;
-
-                // LEFT curve: node stays, becomes endNode. Disconnect forward.
-                node.nextOnCurve = null;
-                curve.endNode = node;
-
-                // Save control1 BEFORE nulling it — we need it for the copy on the right.
-                const savedControl1 = node.control1
-                    ? { x: node.control1.x, y: node.control1.y }
-                    : null;
-
-                // Remove control1 from the left node (outgoing toward right, now meaningless for an endNode)
-                if (node.control1) {
-                    cm.domMap.delete(node.control1.main_node);
-                    curve.domMap.delete(node.control1.main_node);
-                    node.control1 = null;
-                }
-
-                // Build the right curve
-                const newCurve = cm.create_temp_curve();
-                newCurve.closed = false;
-                newCurve.stroke_width = curve.stroke_width;
-                newCurve.smart_stroke = curve.smart_stroke;
-                newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise;
-                newCurve.show_skeleton = curve.show_skeleton;
-
-                // RIGHT curve: create a copy of the node as new startNode
-                const copyMarker = generateMarker("vertex");
-                const copyNode = new CurveNode(copyMarker, "vertex",
-                    node.x, node.y, nextNode, null, String(copyMarker.id));
-                copyNode.curve = newCurve;
-                copyNode.control_mode = node.control_mode;
-                // Inherit saved control1 (outgoing toward nextNode) — meaningful for a startNode
-                if (savedControl1) {
-                    const c1Marker = generateMarker("circle");
-                    copyNode.control1 = new CurveNode(c1Marker, null,
-                        savedControl1.x, savedControl1.y, copyNode, null, String(c1Marker.id));
-                    copyNode.control1.curve = newCurve;
-                }
-                // control2 is meaningless for a startNode — leave null
-
-                newCurve.startNode = copyNode;
-                nextNode.lastOnCurve = copyNode;
-
-                // Walk the tail chain (from nextNode to original endNode)
-                // and reassign all nodes to newCurve.
-                let tail = nextNode;
-                let prev = copyNode;
-                while (tail) {
-                    tail.curve = newCurve;
-                    prev = tail;
-                    tail = tail.nextOnCurve;
-                }
-                newCurve.endNode = prev;
-
-                // Register all domMap entries for the copied node
-                cm.domMap.set(copyMarker, copyNode);
-                newCurve.domMap.set(copyMarker, copyNode);
-                if (copyNode.control1) {
-                    cm.domMap.set(copyNode.control1.main_node, copyNode.control1);
-                    newCurve.domMap.set(copyNode.control1.main_node, copyNode.control1);
-                }
-
-                cm.addPath(newCurve, curve.groupId);
-                changed = true;
+        for (const curve of curves) {
+            const nodes = [];
+            let node = curve.startNode;
+            while (node) {
+                nodes.push(node);
+                if (node === curve.endNode) break;
+                node = node.nextOnCurve;
             }
+            if (nodes.length < 2) continue;
+
+            // Edge i connects nodes[i] to nodes[(i + 1) % count].
+            const edgeCount = curve.closed ? nodes.length : nodes.length - 1;
+            const cuts = new Set();
+            for (let i = 0; i < edgeCount; i++) {
+                const from = nodes[i];
+                const to = nodes[(i + 1) % nodes.length];
+                if (
+                    selectedIds.has(from.main_node?.id ?? from.main_node) &&
+                    selectedIds.has(to.main_node?.id ?? to.main_node)
+                ) {
+                    cuts.add(i);
+                }
+            }
+            if (cuts.size === 0) continue;
+
+            // Handles pointing into a removed segment no longer have geometry to control.
+            for (const edgeIndex of cuts) {
+                const from = nodes[edgeIndex];
+                const to = nodes[(edgeIndex + 1) % nodes.length];
+                if (from.control1) {
+                    cm.domMap.delete(from.control1.main_node);
+                    curve.domMap.delete(from.control1.main_node);
+                    from.control1 = null;
+                }
+                if (to.control2) {
+                    cm.domMap.delete(to.control2.main_node);
+                    curve.domMap.delete(to.control2.main_node);
+                    to.control2 = null;
+                }
+            }
+
+            // Build connected components from the immutable edge snapshot.
+            const components = [];
+            if (curve.closed) {
+                const firstCut = cuts.values().next().value;
+                let component = [];
+                for (let step = 0; step < nodes.length; step++) {
+                    const index = (firstCut + 1 + step) % nodes.length;
+                    component.push(nodes[index]);
+                    if (cuts.has(index)) {
+                        components.push(component);
+                        component = [];
+                    }
+                }
+            } else {
+                let component = [nodes[0]];
+                for (let i = 0; i < nodes.length - 1; i++) {
+                    if (cuts.has(i)) {
+                        components.push(component);
+                        component = [];
+                    }
+                    component.push(nodes[i + 1]);
+                }
+                components.push(component);
+            }
+
+            const groupId = curve.groupId;
+            const copyCurveProperties = (target) => {
+                target.closed = false;
+                target.stroke_width = curve.stroke_width;
+                target.smart_stroke = curve.smart_stroke;
+                target.smart_stroke_clockwise = curve.smart_stroke_clockwise;
+                target.show_skeleton = curve.show_skeleton;
+                target.visible = curve.visible !== false;
+                target.locked = curve.locked === true;
+            };
+            curve.domMap.clear();
+
+            for (let componentIndex = 0; componentIndex < components.length; componentIndex++) {
+                const component = components[componentIndex];
+                if (component.length === 0) continue;
+                const target = componentIndex === 0 ? curve : cm.create_temp_curve();
+                copyCurveProperties(target);
+                target.startNode = component[0];
+                target.endNode = component[component.length - 1];
+                target.domMap.clear();
+
+                for (let i = 0; i < component.length; i++) {
+                    const current = component[i];
+                    current.lastOnCurve = i > 0 ? component[i - 1] : null;
+                    current.nextOnCurve = i + 1 < component.length ? component[i + 1] : null;
+                    current.curve = target;
+                    target.domMap.set(current.main_node, current);
+                    if (current.control1) {
+                        current.control1.curve = target;
+                        target.domMap.set(current.control1.main_node, current.control1);
+                    }
+                    if (current.control2) {
+                        current.control2.curve = target;
+                        target.domMap.set(current.control2.main_node, current.control2);
+                    }
+                }
+                target._invalidateBounds?.();
+                if (componentIndex > 0) cm.addPath(target, groupId);
+            }
+            changed = true;
         }
 
         if (!changed) return false;

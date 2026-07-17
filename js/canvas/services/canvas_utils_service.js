@@ -3,9 +3,16 @@ import {
     snapshotIncludesCurve
 } from "../../app/editor_interaction_state.js";
 import { computeSelectionBounds, createSequenceLayoutFromCurveManager, getSeqIdxForGroupId } from "../../app/selection_geometry.js";
-import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/curve_renderer.js";
-import { createDeviceViewportTransform } from "../rendering/viewport_transform.js";
-import { emitCubicBezierSegments } from "../../core/bezier/path_emitter.js";
+import {
+    curveGeneratesFillArea,
+    canFillSmartStrokeWithPath2D
+} from "../rendering/curve_renderer.js";
+import { createViewportTransform } from "../rendering/viewport_transform.js";
+import {
+    emitCubicBezierSegments,
+    emitBooleanSubpaths,
+    booleanViewportDOMMatrix
+} from "../../core/bezier/path_emitter.js";
 export class CanvasUtilsService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -114,7 +121,7 @@ export class CanvasUtilsService {
         const tool = resolveActiveCanvasTool(c);
         if (tool === "SELECT" || tool === "MEASURE" || tool === "ELLIPSE") return null;
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
-        const threshold = 6;
+        const threshold = 8;
         let hits = [];
         const ix = c.getInteractionSnapshot();
         let showHandlesSet = new Set();
@@ -163,7 +170,8 @@ export class CanvasUtilsService {
         const grid = c.curve_manager.spatialGrid;
         const worldMouseX = (mouseX - offsetX) / c.scale;
         const worldMouseY = (mouseY - offsetY) / c.scale;
-        const worldThreshold = threshold / c.scale;
+        // Screen-equivalent world radius (hybrid grid query stays cheap when this grows).
+        const worldThreshold = threshold / Math.max(c.scale, 1e-6);
         if (grid && grid.size > 0 && worldThreshold > 0) {
             const candidates = grid.queryProximity(worldMouseX, worldMouseY, worldThreshold);
             for (const entry of candidates) {
@@ -175,7 +183,7 @@ export class CanvasUtilsService {
                 let screenX = worldX * c.scale + offsetX;
                 let screenY = worldY * c.scale + offsetY;
                 let dist = Math.hypot(mouseX - screenX, mouseY - screenY);
-                if (dist < threshold) {
+                if (dist <= threshold) {
                     let z = node.last_touched || 0;
                     let isSelected = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
                     hits.push({ marker: node.main_node, dist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSelected ? 1 : 0 });
@@ -195,7 +203,7 @@ export class CanvasUtilsService {
                         let csx = cwx * c.scale + offsetX;
                         let csy = cwy * c.scale + offsetY;
                         let cdist = Math.hypot(mouseX - csx, mouseY - csy);
-                        if (cdist < threshold) {
+                        if (cdist <= threshold) {
                             let z = node.last_touched || 0;
                             let isSel = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
                             hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
@@ -212,8 +220,17 @@ export class CanvasUtilsService {
         // Control handles can be ~30+ units from their parent node, so the parent node is often
         // outside the query radius. Directly check every node in showHandlesSet.
         if (showHandlesSet.size > 0) {
-            /** @type {Map<Curve,{seqOffsetX:number,matrix:DOMMatrix,seqIdx:number,refId:?string}>} */
+            /** @type {Map<object, Array<{seqOffsetX:number,matrix:DOMMatrix,seqIdx:number,refId:?string}>>} */
             const ctrlCurveInfo = new Map();
+            const pushCtrlInfo = (curve, info) => {
+                if (!curve) return;
+                let list = ctrlCurveInfo.get(curve);
+                if (!list) {
+                    list = [];
+                    ctrlCurveInfo.set(curve, list);
+                }
+                list.push(info);
+            };
             const sq = c.curve_manager.sequenceTokens || [];
 
             // Current drawing curve (not yet committed to tree store via commit_curve)
@@ -233,7 +250,7 @@ export class CanvasUtilsService {
                     }
                 }
                 if (sidx !== -1) {
-                    ctrlCurveInfo.set(c.current_curve, {
+                    pushCtrlInfo(c.current_curve, {
                         seqOffsetX: c.curve_manager.getSeqOffset(sidx),
                         matrix: new DOMMatrix(),
                         seqIdx: sidx,
@@ -242,7 +259,11 @@ export class CanvasUtilsService {
                 }
             }
 
-            // Committed curves in active sequences
+            // Committed curves: only instances of curves that actually show handles (not all C).
+            const neededCurves = new Set();
+            for (const node of showHandlesSet) {
+                if (node?.curve) neededCurves.add(node.curve);
+            }
             for (let i = 0; i < sq.length; i++) {
                 if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
                 const seqOff = c.curve_manager.getSeqOffset(i);
@@ -251,42 +272,43 @@ export class CanvasUtilsService {
                 const cdl = c.curve_manager.getCurvesForGroup(gid);
                 for (const cd of cdl) {
                     if (!cd.effectiveVis || cd.effectiveLock) continue;
-                    if (!ctrlCurveInfo.has(cd.curve)) {
-                        ctrlCurveInfo.set(cd.curve, {
-                            seqOffsetX: seqOff,
-                            matrix: cd.matrix,
-                            seqIdx: i,
-                            refId: cd.refId || null
-                        });
-                    }
+                    if (!neededCurves.has(cd.curve)) continue;
+                    pushCtrlInfo(cd.curve, {
+                        seqOffsetX: seqOff,
+                        matrix: cd.matrix,
+                        seqIdx: i,
+                        refId: cd.refId || null
+                    });
                 }
             }
 
-            // Check control handles for every node in showHandlesSet
+            // Check control handles for every node in showHandlesSet, at every instance.
             for (const node of showHandlesSet) {
                 if (!node.curve) continue;
-                const info = ctrlCurveInfo.get(node.curve);
-                if (!info) continue;
-                const checkCtrl = (ctrlNode, ctrlMarker) => {
-                    if (!ctrlNode || !ctrlMarker) return;
-                    let cwx = ctrlNode.x, cwy = ctrlNode.y;
-                    if (info.matrix) {
-                        const x = cwx; const y = cwy;
-                        cwx = x * info.matrix.a + y * info.matrix.c + info.matrix.e;
-                        cwy = x * info.matrix.b + y * info.matrix.d + info.matrix.f;
-                    }
-                    cwx += info.seqOffsetX;
-                    const csx = cwx * c.scale + offsetX;
-                    const csy = cwy * c.scale + offsetY;
-                    const cdist = Math.hypot(mouseX - csx, mouseY - csy);
-                    if (cdist < threshold) {
-                        const z = node.last_touched || 0;
-                        const isSel = snapshotIncludesCurve(ix, node.curve) || curveIsNodeSelected(node.curve);
-                        hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
-                    }
-                };
-                checkCtrl(node.control1, node.control1?.main_node);
-                checkCtrl(node.control2, node.control2?.main_node);
+                const infos = ctrlCurveInfo.get(node.curve);
+                if (!infos?.length) continue;
+                for (const info of infos) {
+                    const checkCtrl = (ctrlNode, ctrlMarker) => {
+                        if (!ctrlNode || !ctrlMarker) return;
+                        let cwx = ctrlNode.x, cwy = ctrlNode.y;
+                        if (info.matrix) {
+                            const x = cwx; const y = cwy;
+                            cwx = x * info.matrix.a + y * info.matrix.c + info.matrix.e;
+                            cwy = x * info.matrix.b + y * info.matrix.d + info.matrix.f;
+                        }
+                        cwx += info.seqOffsetX;
+                        const csx = cwx * c.scale + offsetX;
+                        const csy = cwy * c.scale + offsetY;
+                        const cdist = Math.hypot(mouseX - csx, mouseY - csy);
+                        if (cdist <= threshold) {
+                            const z = node.last_touched || 0;
+                            const isSel = snapshotIncludesCurve(ix, node.curve) || curveIsNodeSelected(node.curve);
+                            hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                        }
+                    };
+                    checkCtrl(node.control1, node.control1?.main_node);
+                    checkCtrl(node.control2, node.control2?.main_node);
+                }
             }
         }
 
@@ -307,8 +329,6 @@ export class CanvasUtilsService {
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
         const dpr = this.getCanvasDrawDpr();
         const dScale = c.scale * dpr;
-        const dOffsetX = offsetX * dpr;
-        const dOffsetY = offsetY * dpr;
         const dMouseX = mouseX * dpr;
         const dMouseY = mouseY * dpr;
         c.ctx.save();
@@ -326,38 +346,89 @@ export class CanvasUtilsService {
         const worldMouseX = (mouseX - offsetX) / c.scale;
         const worldMouseY = (mouseY - offsetY) / c.scale;
 
-        // NODE tool: pre-filter candidate curves via spatial grid for O(nearby) bezier hit testing
-        let nodeToolCandidateCurves = null;
+        // NODE tool: spatial grid is node-based. Long Bezier spans can sit far from any
+        // indexed vertex, so grid proximity must not be the sole admission test — use it
+        // only as a fast path when the cursor is near a node; otherwise fall back to AABB.
+        let nodeToolNearNodeCurves = null;
         if (tool === "NODE") {
             const grid = c.curve_manager.spatialGrid;
             if (grid && grid.size > 0) {
-                nodeToolCandidateCurves = new Set();
-                const margin = 100; // world units — generous enough to cover bezier midpoint deviation
+                nodeToolNearNodeCurves = new Set();
+                const margin = 100;
                 const entries = grid.queryProximity(worldMouseX, worldMouseY, margin);
                 for (const entry of entries) {
-                    if (entry.curve) nodeToolCandidateCurves.add(entry.curve);
+                    if (entry.curve) nodeToolNearNodeCurves.add(entry.curve);
                 }
             }
         }
 
         let hitResult = null;
         let seqTokens = c.curve_manager.sequenceTokens || [];
-        for (let i = seqTokens.length - 1; i >= 0; i--) {
-            if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let group = c.curve_manager.treeItems.get(groupId);
-            if (!group) continue;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            for (let j = curveDataList.length - 1; j >= 0; j--) {
-                let cd = curveDataList[j];
+
+        // Prefer curve-AABB grid candidates (O(cells near cursor)) over full C scan.
+        const grid = c.curve_manager.spatialGrid;
+        const hitPadWorld = 20 / Math.max(c.scale, 1e-6);
+        let curveCandidates = null;
+        if (grid && typeof grid.queryCurvesRect === "function" && grid._curveToCells?.size > 0) {
+            const q = Math.max(hitPadWorld, 14 / Math.max(c.scale, 1e-6));
+            curveCandidates = grid.queryCurvesRect(
+                worldMouseX - q,
+                worldMouseY - q,
+                q * 2,
+                q * 2
+            );
+        }
+
+        const testCurveList = [];
+        if (curveCandidates && curveCandidates.length > 0) {
+            // Highest seq / paint order still matters — sort like the reverse full scan.
+            curveCandidates.sort((a, b) => {
+                if (a.seqIdx !== b.seqIdx) return b.seqIdx - a.seqIdx;
+                return 0;
+            });
+            for (const entry of curveCandidates) {
+                if (!c.curve_manager.activeSequenceIndices.has(entry.seqIdx)) continue;
+                testCurveList.push({
+                    i: entry.seqIdx,
+                    seqOffsetX: entry.seqOffsetX ?? c.curve_manager.getSeqOffset(entry.seqIdx),
+                    cd: {
+                        curve: entry.curve,
+                        matrix: entry.matrix,
+                        refId: entry.refId ?? null,
+                        effectiveVis: true,
+                        effectiveLock: false
+                    }
+                });
+            }
+        } else {
+            for (let i = seqTokens.length - 1; i >= 0; i--) {
+                if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
+                let seqOffsetX = c.curve_manager.getSeqOffset(i);
+                let token = seqTokens[i];
+                let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                let group = c.curve_manager.treeItems.get(groupId);
+                if (!group) continue;
+                let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+                for (let j = curveDataList.length - 1; j >= 0; j--) {
+                    testCurveList.push({ i, seqOffsetX, cd: curveDataList[j] });
+                }
+            }
+        }
+
+        for (const item of testCurveList) {
+            const i = item.i;
+            const seqOffsetX = item.seqOffsetX;
+            const cd = item.cd;
+            {
                 if (!cd.effectiveVis || cd.effectiveLock) continue;
                 let curve = cd.curve; let matrix = cd.matrix;
-                if (!curve.startNode) continue;
+                if (!curve?.startNode) continue;
 
                 // Viewport culling: skip curves whose AABB is entirely outside the viewport
                 const curveBounds = curve.getBounds(matrix);
+                let hitLineWidth = Math.max(14, (curve.stroke_width || 0) * dScale + 14);
+                // Screen hit slop → world units (isPointInStroke uses device px lineWidth).
+                const hitPadWorldCurve = (hitLineWidth / dpr) / c.scale;
                 if (curveBounds) {
                     const cMinX = curveBounds.minX + seqOffsetX;
                     const cMaxX = curveBounds.maxX + seqOffsetX;
@@ -365,6 +436,16 @@ export class CanvasUtilsService {
                     const cMaxY = curveBounds.maxY;
                     if (cMaxX < vpBounds.minX || cMinX > vpBounds.maxX ||
                         cMaxY < vpBounds.minY || cMinY > vpBounds.maxY) continue;
+                    // NODE: old grid-only filter missed long Bezier spans far from vertices.
+                    // Keep grid as fast-path; otherwise still test when cursor is in padded AABB.
+                    if (tool === "NODE" && nodeToolNearNodeCurves && !nodeToolNearNodeCurves.has(curve)) {
+                        if (
+                            worldMouseX < cMinX - hitPadWorldCurve || worldMouseX > cMaxX + hitPadWorldCurve ||
+                            worldMouseY < cMinY - hitPadWorldCurve || worldMouseY > cMaxY + hitPadWorldCurve
+                        ) {
+                            continue;
+                        }
+                    }
                 }
                 const pt = (x, y) => {
                     let mx = x, my = y;
@@ -374,62 +455,130 @@ export class CanvasUtilsService {
                         y: (my * c.scale + offsetY) * dpr
                     };
                 };
-                let hitLineWidth = Math.max(14, (curve.stroke_width || 0) * dScale + 14);
                 if (tool === "SELECT") {
+                    // Object hit must match rendered geometry (S011a): smart-expand → boolean
+                    // outline / fill; otherwise skeleton fill + stroke width.
                     let isHit = false;
-                    const viewport = { scale: dScale, offsetX: dOffsetX, offsetY: dOffsetY, seqOffsetX, matrix };
-                    const mapDevice = createDeviceViewportTransform(viewport, dpr);
-                    if (curveGeneratesFillArea(curve)) {
-                        c.ctx.beginPath();
-                        appendCurveOutlinePath(c.ctx, curve, viewport, { pass: "all" });
-                        if (c.ctx.isPointInPath(dMouseX, dMouseY, "nonzero")) isHit = true;
-                    }
-                    if (!isHit) {
-                        c.ctx.beginPath();
-                        if (curveGeneratesFillArea(curve)) {
-                            appendCurveOutlinePath(c.ctx, curve, viewport, { pass: "all" });
+                    const worldViewport = {
+                        scale: 1,
+                        offsetX: 0,
+                        offsetY: 0,
+                        seqOffsetX,
+                        matrix
+                    };
+                    const mapWorld = createViewportTransform(worldViewport);
+                    const smartBand = curve.smart_stroke && curve.stroke_width > 0;
+                    if (smartBand) {
+                        if (canFillSmartStrokeWithPath2D(curve, { strokePreview: false }) && curve._booleanPath2D) {
+                            const m = booleanViewportDOMMatrix(worldViewport);
+                            c.ctx.save();
+                            c.ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+                            isHit = c.ctx.isPointInPath(
+                                curve._booleanPath2D,
+                                worldMouseX,
+                                worldMouseY,
+                                "nonzero"
+                            );
+                            c.ctx.restore();
+                        } else if (Array.isArray(curve.cached_boolean_geometry) && curve.cached_boolean_geometry.length) {
+                            c.ctx.beginPath();
+                            emitBooleanSubpaths(c.ctx, curve.cached_boolean_geometry, mapWorld);
+                            if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
                         } else {
-                            emitCubicBezierSegments(c.ctx, curve.getSkeletonBezierSegments(), mapDevice);
+                            // Cache miss: force expand once for this candidate (not every curve —
+                            // viewport AABB already skipped most). Still can be heavy on dense paths.
+                            curve.updateBooleanCache?.();
+                            if (Array.isArray(curve.cached_boolean_geometry) && curve.cached_boolean_geometry.length) {
+                                c.ctx.beginPath();
+                                emitBooleanSubpaths(c.ctx, curve.cached_boolean_geometry, mapWorld);
+                                if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
+                            }
                         }
-                        c.ctx.lineWidth = hitLineWidth;
-                        if (c.ctx.isPointInStroke(dMouseX, dMouseY)) isHit = true;
+                    } else {
+                        const segs = curve.getSkeletonBezierSegments();
+                        const strokeWorld = Math.max(
+                            14 / c.scale,
+                            (curve.stroke_width || 0) + 14 / c.scale
+                        );
+                        if (curveGeneratesFillArea(curve) && curve.closed && curve.startNode !== curve.endNode) {
+                            c.ctx.beginPath();
+                            emitCubicBezierSegments(c.ctx, segs, mapWorld, { close: true });
+                            if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
+                        }
+                        if (!isHit && segs?.length) {
+                            c.ctx.beginPath();
+                            emitCubicBezierSegments(c.ctx, segs, mapWorld, {
+                                close: !!(curve.closed && curve.startNode !== curve.endNode)
+                            });
+                            c.ctx.lineWidth = strokeWorld;
+                            if (c.ctx.isPointInStroke(worldMouseX, worldMouseY)) isHit = true;
+                        }
                     }
                     if (isHit) {
                         hitResult = { curve: curve, startNode: curve.startNode, nextNode: curve.startNode.nextOnCurve, seqIndex: i, refId: cd.refId, matrix: cd.matrix };
                         break;
                     }
                 } else if (tool === "NODE") {
-                    if (nodeToolCandidateCurves && !nodeToolCandidateCurves.has(curve)) continue;
+                    const segHitPad = hitLineWidth + 2;
+                    const segmentMayHit = (p0, p1, p2, p3) => {
+                        const minX = Math.min(p0.x, p1.x, p2.x, p3.x) - segHitPad;
+                        const maxX = Math.max(p0.x, p1.x, p2.x, p3.x) + segHitPad;
+                        const minY = Math.min(p0.y, p1.y, p2.y, p3.y) - segHitPad;
+                        const maxY = Math.max(p0.y, p1.y, p2.y, p3.y) + segHitPad;
+                        return dMouseX >= minX && dMouseX <= maxX && dMouseY >= minY && dMouseY <= maxY;
+                    };
                     let current = curve.startNode;
                     while (current && current.nextOnCurve && (current !== curve.endNode || !curve.closed)) {
                         let next = current.nextOnCurve;
-                        c.ctx.beginPath(); let startP = pt(current.x, current.y); c.ctx.moveTo(startP.x, startP.y);
+                        let startP = pt(current.x, current.y);
                         let cp1 = pt(current.control1?.x ?? current.x, current.control1?.y ?? current.y);
                         let cp2 = pt(next.control2?.x ?? next.x, next.control2?.y ?? next.y);
                         let endP = pt(next.x, next.y);
-                        c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endP.x, endP.y);
-                        c.ctx.lineWidth = hitLineWidth;
-                        if (c.ctx.isPointInStroke(dMouseX, dMouseY)) {
-                            hitResult = { curve: curve, startNode: current, nextNode: next, seqIndex: i, refId: cd.refId, matrix: cd.matrix };
-                            break;
+                        if (segmentMayHit(startP, cp1, cp2, endP)) {
+                            // Nodes sit above strokes: do not claim a segment hit on a vertex.
+                            const nodeHitPx = 8 * dpr;
+                            if (
+                                Math.hypot(dMouseX - startP.x, dMouseY - startP.y) <= nodeHitPx
+                                || Math.hypot(dMouseX - endP.x, dMouseY - endP.y) <= nodeHitPx
+                            ) {
+                                current = next;
+                                continue;
+                            }
+                            c.ctx.beginPath();
+                            c.ctx.moveTo(startP.x, startP.y);
+                            c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endP.x, endP.y);
+                            c.ctx.lineWidth = hitLineWidth;
+                            if (c.ctx.isPointInStroke(dMouseX, dMouseY)) {
+                                hitResult = { curve: curve, startNode: current, nextNode: next, seqIndex: i, refId: cd.refId, matrix: cd.matrix };
+                                break;
+                            }
                         }
                         current = next;
                     }
                     if (!hitResult && curve.closed && curve.startNode !== curve.endNode && curve.endNode && curve.startNode) {
-                        c.ctx.beginPath(); let startP = pt(curve.endNode.x, curve.endNode.y); c.ctx.moveTo(startP.x, startP.y);
+                        let startP = pt(curve.endNode.x, curve.endNode.y);
                         let cp1 = pt(curve.endNode.control1?.x ?? curve.endNode.x, curve.endNode.control1?.y ?? curve.endNode.y);
                         let cp2 = pt(curve.startNode.control2?.x ?? curve.startNode.x, curve.startNode.control2?.y ?? curve.startNode.y);
                         let endP = pt(curve.startNode.x, curve.startNode.y);
-                        c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endP.x, endP.y);
-                        c.ctx.lineWidth = hitLineWidth;
-                        if (c.ctx.isPointInStroke(dMouseX, dMouseY)) {
-                            hitResult = { curve: curve, startNode: curve.endNode, nextNode: curve.startNode, seqIndex: i, refId: cd.refId, matrix: cd.matrix };
+                        if (segmentMayHit(startP, cp1, cp2, endP)) {
+                            const nodeHitPx = 8 * dpr;
+                            if (
+                                Math.hypot(dMouseX - startP.x, dMouseY - startP.y) > nodeHitPx
+                                && Math.hypot(dMouseX - endP.x, dMouseY - endP.y) > nodeHitPx
+                            ) {
+                                c.ctx.beginPath();
+                                c.ctx.moveTo(startP.x, startP.y);
+                                c.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endP.x, endP.y);
+                                c.ctx.lineWidth = hitLineWidth;
+                                if (c.ctx.isPointInStroke(dMouseX, dMouseY)) {
+                                    hitResult = { curve: curve, startNode: curve.endNode, nextNode: curve.startNode, seqIndex: i, refId: cd.refId, matrix: cd.matrix };
+                                }
+                            }
                         }
                     }
                 }
                 if (hitResult) break;
             }
-            if (hitResult) break;
         }
         if (!hitResult) {
             for (let i = seqTokens.length - 1; i >= 0; i--) {

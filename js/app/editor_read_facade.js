@@ -17,7 +17,7 @@ import {
     isDescendantInTreeSnapshot,
     treeItemsMapFromSnapshot
 } from "../domain/tree/tree_snapshot.js";
-import { pickCurvesReadSnapshot } from "../domain/curves/curve_read_snapshot.js";
+import { pickCurveReadFields } from "../domain/curves/curve_read_snapshot.js";
 import { resolveMarkerById } from "../domain/selection/marker_resolution.js";
 import {
     computeSelectionBounds,
@@ -146,20 +146,7 @@ export function getCurveById(curveId) {
     const cm = curveManager();
     const live = cm?.curveById?.get(curveId);
     if (!live) return null;
-    // Build a minimal snapshot for this single curve
-    const c = live;
-    let skeletonWinding = "open";
-    let skeletonVertexCount = 0;
-    if (typeof c.getSkeletonWinding === "function") skeletonWinding = c.getSkeletonWinding();
-    if (typeof c.getSkeletonVertices === "function") skeletonVertexCount = c.getSkeletonVertices().length;
-    return {
-        id: c.id, groupId: c.groupId ?? null,
-        visible: c.visible !== false, locked: c.locked === true,
-        stroke_width: c.stroke_width, closed: !!c.closed,
-        smart_stroke: !!c.smart_stroke, show_skeleton: !!c.show_skeleton,
-        smart_stroke_clockwise: c.smart_stroke_clockwise !== false,
-        skeletonWinding, skeletonVertexCount
-    };
+    return pickCurveReadFields(live, { computeWinding: true });
 }
 
 /** @deprecated use getCurveById */

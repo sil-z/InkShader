@@ -24,6 +24,189 @@ export class CanvasInputController {
     constructor(canvas) {
         this.canvas = canvas;
     }
+
+    /** True when the event target is the canvas surface (not menus / panels). */
+    _isPointerOverCanvasSurface(e) {
+        const c = this.canvas;
+        const t = e?.target;
+        if (!t || !c) return false;
+        if (t === c.canvasObj || c.canvasObj?.contains?.(t)) return true;
+        if (t === c.painting_area || c.painting_area?.contains?.(t)) return true;
+        return false;
+    }
+
+    /**
+     * Shared window mousemove: hover hit-tests, pan/drag, box-select.
+     * Skips expensive curve/node hit-testing when the pointer is over UI chrome
+     * (menus etc.) so File/Edit interactions stay responsive with dense scenes.
+     */
+    handleWindowMouseMove(e) {
+        const c = this.canvas;
+        const ic = c.interactionController;
+        const tool = resolveActiveCanvasTool(c);
+        if (c.current_state !== 'IDLE' && e.buttons === 0) {
+            if (typeof c.handleMouseUp === 'function') {
+                c.handleMouseUp({
+                    button: 0,
+                    clientX: e.clientX,
+                    clientY: e.clientY,
+                    shiftKey: e.shiftKey,
+                    ctrlKey: e.ctrlKey,
+                    altKey: e.altKey
+                });
+            }
+            return;
+        }
+        c.refreshViewportConfig();
+        const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+        const mouseX = pointer.x, mouseY = pointer.y;
+        c.last_mouse_pos_x = e.clientX; c.last_mouse_pos_y = e.clientY;
+        const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
+        if (!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
+        if (c.mouse_pos_output && c.current_state !== 'PANNING') {
+            const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
+            const baselineWorldY = 0.8 * c.canvas_size_height;
+            c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
+        }
+        if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
+            const pa = c.painting_area.getBoundingClientRect();
+            const px = e.clientX - pa.left;
+            const py = e.clientY - pa.top;
+            const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
+            c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
+            c._rulerIndicatorH.style.left = `${px - 5}px`;
+            c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
+            c._rulerIndicatorV.style.top = `${py - 5}px`;
+        }
+        if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
+        if ((tool === 'SELECT' || tool === 'NODE') && c.is_box_selecting) {
+            c.box_select_end = { x: mouseX, y: mouseY };
+            c.is_dirty = true;
+            return;
+        }
+        if (c.current_state === 'TRANSFORMING_OBJECTS') {
+            ic.handleMouseMoveTransforming(mouseX, mouseY, e.clientX, e.clientY, e.ctrlKey, e.shiftKey);
+            return;
+        }
+        let hoverStateChanged = false;
+        if (c.current_state === 'PANNING' && (e.buttons & 1 || e.buttons & 4)) {
+            const dx = e.clientX - c.drag_start.x, dy = e.clientY - c.drag_start.y;
+            c.offset = { x: c.offset_start.x + dx, y: c.offset_start.y + dy };
+            c.is_dirty = true;
+        } else if ((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_ELLIPSE') {
+            const ewX = (mouseX - offsetX) / c.scale, ewY = (mouseY - offsetY) / c.scale;
+            ic.handleEllipseMouseMove(mouseX, mouseY, ewX, ewY, e.ctrlKey);
+        } else if ((e.buttons & 1) !== 0 && c.current_state === 'PAINTING_HANDLE') {
+            ic.handleMouseMovePaintingHandle(mouseX, mouseY);
+        } else if ((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_NODE_READY') {
+            if (Math.abs(mouseX - c.drag_initial_mouse.x) > 4 || Math.abs(mouseY - c.drag_initial_mouse.y) > 4) {
+                c.current_state = 'DRAGGING_NODE';
+                const previewCurveIds = ic.collectInteractiveStrokePreviewCurveIds();
+                c.setInteractiveStrokePreviewCurveIds?.(previewCurveIds);
+                c.renderer.beginNodeDragPreview?.(previewCurveIds);
+            }
+        }
+        if (c.current_state === 'DRAGGING_NODE') {
+            ic.handleMouseMoveDraggingNode(mouseX, mouseY, e.ctrlKey);
+        }
+
+        const overCanvas = this._isPointerOverCanvasSurface(e);
+        if (c.current_state === 'IDLE' && !overCanvas) {
+            if (c.hovered_node_marker || c.hovered_curve_segment) {
+                c.hovered_node_marker = null;
+                c.hovered_curve_segment = null;
+                c.is_dirty = true;
+            }
+            return;
+        }
+
+        if (c.current_state === 'IDLE') {
+            let hitResult = c.utils.hitTestNode(mouseX, mouseY);
+            let hitMarker = hitResult ? hitResult.marker : null;
+            // Nodes sit above strokes: only test curve when no node is under the cursor.
+            // SELECT uses hitTestCurve only for cursor below — don't pay for it twice.
+            let hitCurveSegment = null;
+            if (!hitMarker && tool !== 'SELECT') {
+                hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
+            }
+            if (c.hovered_node_marker !== hitMarker) {
+                c.hovered_node_marker = hitMarker;
+                hoverStateChanged = true;
+            }
+            {
+                const prev = c.hovered_curve_segment;
+                const hoverSegChanged = (prev?.curve !== hitCurveSegment?.curve)
+                    || (prev?.startNode !== hitCurveSegment?.startNode)
+                    || (prev?.nextNode !== hitCurveSegment?.nextNode)
+                    || (prev?.seqIndex !== hitCurveSegment?.seqIndex)
+                    || (prev?.refId !== hitCurveSegment?.refId);
+                if (hoverSegChanged) {
+                    c.hovered_curve_segment = hitCurveSegment;
+                    hoverStateChanged = true;
+                }
+            }
+            // Nodes also sit above guides / dividers / metrics — clear chrome hover.
+            if (hitMarker) {
+                if (c._hoveredUserGuideId !== null) {
+                    c._hoveredUserGuideId = null;
+                    hoverStateChanged = true;
+                }
+                if (c._hoveredDividerId !== null) {
+                    c._hoveredDividerId = null;
+                    hoverStateChanged = true;
+                }
+                if (c._hoveredMetricGuideKey !== null) {
+                    c._hoveredMetricGuideKey = null;
+                    hoverStateChanged = true;
+                }
+            }
+            if (hoverStateChanged) c.is_dirty = true;
+        }
+        if (c.current_state === 'IDLE' && tool === 'SELECT') {
+            let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
+            if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
+            else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
+            else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.dataset.cursor = 'ns-resize';
+            else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.dataset.cursor = 'ew-resize';
+            else if (handleHit === 'rot_tl' || handleHit === 'rot_br') c.canvasObj.dataset.cursor = 'crosshair';
+            else if (handleHit === 'rot_tr' || handleHit === 'rot_bl') c.canvasObj.dataset.cursor = 'crosshair';
+            else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
+            else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
+            else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
+            else if (c._hoveredUserGuideId !== null) {
+                // Guide hover overrides curve/object hit but not handles
+            } else if (c._hoveredMetricGuideKey !== null) {
+                // Metric guide hover overrides curve/object hit
+            } else {
+                let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
+                const ix = c.getInteractionSnapshot();
+                const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
+                c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
+            }
+        } else if (c.hovered_node_marker) {
+            // Node under cursor: do not keep guide/divider resize cursors.
+            if (tool !== 'DRAW' && tool !== 'ELLIPSE') c.canvasObj.dataset.cursor = 'default';
+        } else if (c._hoveredUserGuideId !== null) {
+            // Guide hover for non-SELECT tools
+        } else if (c._hoveredMetricGuideKey !== null) {
+            // Metric guide hover overrides cursor
+        } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER' && c.current_state !== 'DRAGGING_METRIC_GUIDE') {
+            if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
+                const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
+                c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
+            } else {
+                c.canvasObj.dataset.cursor = "crosshair";
+            }
+        }
+        if (c.current_state === 'IDLE') {
+            c.renderer.update_previewData(mouseX, mouseY);
+            if (c.last_on_curve_node_marker !== null) c.is_dirty = true;
+        } else if (c.previewData !== null) {
+            c.previewData = null;
+            c.is_dirty = true;
+        }
+    }
+
     bind() {
         const c = this.canvas;
         const ic = c.interactionController;
@@ -50,108 +233,7 @@ export class CanvasInputController {
                     if (isCanvas) c.env.setActiveContext('canvas');
                 }
             }, true);
-            c.addGlobalListener('window', "mousemove", (e) => {
-                const tool = resolveActiveCanvasTool(c);
-                if (c.current_state !== 'IDLE' && e.buttons === 0) {
-                    if (typeof c.handleMouseUp === 'function') c.handleMouseUp({ button: 0, clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey });
-                    return;
-                }
-                c.refreshViewportConfig();
-                const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-                const mouseX = pointer.x, mouseY = pointer.y;
-                c.last_mouse_pos_x = e.clientX; c.last_mouse_pos_y = e.clientY;
-                const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
-                if(!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
-                if(c.mouse_pos_output && c.current_state !== 'PANNING') {
-                    const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                    const baselineWorldY = 0.8 * c.canvas_size_height;
-                    c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
-                }
-                if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
-                    const pa = c.painting_area.getBoundingClientRect();
-                    const px = e.clientX - pa.left;
-                    const py = e.clientY - pa.top;
-                    const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
-                    c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
-                    c._rulerIndicatorH.style.left = `${px - 5}px`;
-                    c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
-                    c._rulerIndicatorV.style.top = `${py - 5}px`;
-                }
-                if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
-                if ((tool === 'SELECT' || tool === 'NODE') && c.is_box_selecting) {
-                    c.box_select_end = {x: mouseX, y: mouseY}; c.is_dirty = true;
-                }
-                if (c.current_state === 'TRANSFORMING_OBJECTS') {
-                    ic.handleMouseMoveTransforming(mouseX, mouseY, e.clientX, e.clientY, e.ctrlKey, e.shiftKey);
-                    return;
-                }
-                let hoverStateChanged = false;
-                if(c.current_state === 'PANNING' && (e.buttons & 1 || e.buttons & 4)) {
-                    const dx = e.clientX - c.drag_start.x, dy = e.clientY - c.drag_start.y;
-                    c.offset = { x: c.offset_start.x + dx, y: c.offset_start.y + dy };
-                    c.is_dirty = true;
-                }
-                else if((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_ELLIPSE') {
-                    const ewX = (mouseX - offsetX) / c.scale, ewY = (mouseY - offsetY) / c.scale;
-                    ic.handleEllipseMouseMove(mouseX, mouseY, ewX, ewY, e.ctrlKey);
-                }
-                else if((e.buttons & 1) !== 0 && c.current_state === 'PAINTING_HANDLE') {
-                    ic.handleMouseMovePaintingHandle(mouseX, mouseY);
-                }
-                else if((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_NODE_READY') {
-                    if(Math.abs(mouseX - c.drag_initial_mouse.x) > 4 || Math.abs(mouseY - c.drag_initial_mouse.y) > 4) {
-                        c.current_state = 'DRAGGING_NODE';
-                        c.setInteractiveStrokePreviewCurveIds?.(ic.collectInteractiveStrokePreviewCurveIds());
-                    }
-                }
-                if(c.current_state === 'DRAGGING_NODE') {
-                    ic.handleMouseMoveDraggingNode(mouseX, mouseY, e.ctrlKey);
-                }
-                if (c.current_state === 'IDLE') {
-                    let hitResult = c.utils.hitTestNode(mouseX, mouseY);
-                    let hitMarker = hitResult ? hitResult.marker : null; let hitCurveSegment = hitMarker ? null : c.utils.hitTestCurve(mouseX, mouseY);
-                    if (tool === 'SELECT') hitCurveSegment = null;
-                    if (c.hovered_node_marker !== hitMarker) { c.hovered_node_marker = hitMarker; hoverStateChanged = true; }
-                    if (c.hovered_curve_segment !== (hitCurveSegment ? hitCurveSegment.curve : null)) { c.hovered_curve_segment = hitCurveSegment; hoverStateChanged = true; }
-                    if (hoverStateChanged) c.is_dirty = true;
-                }
-                if (c.current_state === 'IDLE' && tool === 'SELECT') {
-                    let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
-                    if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
-                    else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
-                    else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.dataset.cursor = 'ns-resize';
-                    else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.dataset.cursor = 'ew-resize';
-                    else if (handleHit === 'rot_tl' || handleHit === 'rot_br') c.canvasObj.dataset.cursor = 'crosshair';
-                    else if (handleHit === 'rot_tr' || handleHit === 'rot_bl') c.canvasObj.dataset.cursor = 'crosshair';
-                    else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
-                    else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
-                    else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
-                    else if (c._hoveredUserGuideId !== null) {
-                        // Guide hover overrides curve/object hit but not handles
-                    } else if (c._hoveredMetricGuideKey !== null) {
-                        // Metric guide hover overrides curve/object hit
-                    } else {
-                        let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
-                        const ix = c.getInteractionSnapshot();
-                        const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
-                        c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
-                    }
-                } else if (c._hoveredUserGuideId !== null) {
-                    // Guide hover for non-SELECT tools
-                } else if (c._hoveredMetricGuideKey !== null) {
-                    // Metric guide hover overrides cursor
-                } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER' && c.current_state !== 'DRAGGING_METRIC_GUIDE') {
-                    if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
-                        const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                        c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
-                    } else {
-                        c.canvasObj.dataset.cursor = "crosshair";
-                    }
-                }
-                if (c.current_state === 'IDLE') {
-                    c.renderer.update_previewData(mouseX, mouseY); if (c.last_on_curve_node_marker !== null) c.is_dirty = true;
-                } else { if (c.previewData !== null) { c.previewData = null; c.is_dirty = true; } }
-            });
+            c.addGlobalListener('window', "mousemove", (e) => this.handleWindowMouseMove(e));
             c.addGlobalListener(c.canvasObj, "mouseleave", () => {
                 if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
                 if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
@@ -376,11 +458,22 @@ export class CanvasInputController {
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
                 const isDrawingTool = c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE';
+                const tool = c.getActiveTool();
+                const nodeUnderCursor = (tool === 'NODE' || tool === 'DRAW')
+                    ? c.utils.hitTestNode(pointer.x, pointer.y)
+                    : null;
                 if (c.guideline_lock) {
                     if (c._hoveredUserGuideId !== null) {
                         c._hoveredUserGuideId = null;
                         c.is_dirty = true;
                     }
+                } else if (nodeUnderCursor) {
+                    // Nodes sit above guides — do not steal hover / cursor.
+                    if (c._hoveredUserGuideId !== null) {
+                        c._hoveredUserGuideId = null;
+                        c.is_dirty = true;
+                    }
+                    if (!isDrawingTool) c.canvasObj.dataset.cursor = 'default';
                 } else {
                     const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                     const newId = hit ? hit.guide.id : null;
@@ -390,13 +483,13 @@ export class CanvasInputController {
                         c.is_dirty = true;
                     }
                 }
-                const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+                const divHit = nodeUnderCursor ? null : c.utils.hitTestDividerLines(pointer.x, pointer.y);
                 const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
                 if (c._hoveredDividerId !== divId) {
                     c._hoveredDividerId = divId;
                     c.is_dirty = true;
                 }
-                const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+                const metricKey = nodeUnderCursor ? null : c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
                 if (c._hoveredMetricGuideKey !== metricKey) {
                     c._hoveredMetricGuideKey = metricKey;
                     if (metricKey && !isDrawingTool) c.canvasObj.dataset.cursor = 'ns-resize';
@@ -425,6 +518,11 @@ export class CanvasInputController {
             c.addGlobalListener(c.canvasObj, "dblclick", (e) => {
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+                // Nodes sit above guides / dividers / metrics — do not open chrome dialogs.
+                const tool = c.getActiveTool();
+                if ((tool === 'NODE' || tool === 'DRAW') && c.utils.hitTestNode(pointer.x, pointer.y)) {
+                    return;
+                }
                 if (c.getActiveTool() === "MEASURE") {
                     const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
                     if (rulerHit) {
@@ -471,8 +569,14 @@ export class CanvasInputController {
                 // Node/curve hits take priority over guideline/divider drag
                 const tool = c.getActiveTool();
                 const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
-                const hitCurveSegment = tool === 'SELECT' ? c.utils.hitTestCurve(pointer.x, pointer.y) : null;
-                const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && hitCurveSegment);
+                const hitCurveSegment = (tool === 'SELECT' || tool === 'NODE')
+                    ? c.utils.hitTestCurve(pointer.x, pointer.y)
+                    : null;
+                const handleHit = tool === 'SELECT' ? c.utils.hitTestTransformHandles(pointer.x, pointer.y) : null;
+                // Priority: nodes > strokes/handles > guides/dividers/metrics.
+                const hasInteractiveHit = !!hitMarker
+                    || (tool === 'NODE' && !!hitCurveSegment)
+                    || (tool === 'SELECT' && !!(handleHit || hitCurveSegment));
                 const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                 if (hit) {
                     if (c.guideline_lock) return;
@@ -698,6 +802,7 @@ export class CanvasInputController {
             let isCtrlLeftPan = (e.button === 0 && e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
             let isMiddlePan = (e.button === 1);
             if (isMiddlePan || isCtrlLeftPan) {
+                c.renderer.beginViewportPreview?.();
                 e.preventDefault(); c.current_state = 'PANNING';
                 c.canvasObj.dataset.cursor = 'move';
                 c.drag_start = { x: e.clientX, y: e.clientY }; c.offset_start = { x: c.offset.x, y: c.offset.y };
@@ -713,8 +818,10 @@ export class CanvasInputController {
                 }
                 const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
                 const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                // Node/curve/handle hits take priority over guideline/divider drag
-                const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && (handleHit || hitCurveSegment));
+                // Priority: nodes > strokes/handles > guides/dividers/metrics.
+                const hasInteractiveHit = !!hitMarker
+                    || (tool === 'NODE' && !!hitCurveSegment)
+                    || (tool === 'SELECT' && !!(handleHit || hitCurveSegment));
                 const guideHit = c.utils.hitTestUserGuides(mouseX, mouseY);
                 if (guideHit && !c.guideline_lock && tool !== 'DRAW' && tool !== 'ELLIPSE' && !hasInteractiveHit) { e.preventDefault(); return; }
                 const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
@@ -755,108 +862,7 @@ export class CanvasInputController {
                 c.is_dirty = true;
             }
         });
-        c.addGlobalListener('window', "mousemove", (e) => {
-            const tool = resolveActiveCanvasTool(c);
-            if (c.current_state !== 'IDLE' && e.buttons === 0) {
-                if (typeof c.handleMouseUp === 'function') c.handleMouseUp({ button: 0, clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey });
-                return;
-            }
-            c.refreshViewportConfig();
-            const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-            const mouseX = pointer.x, mouseY = pointer.y;
-            c.last_mouse_pos_x = e.clientX; c.last_mouse_pos_y = e.clientY;
-            const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
-            if(!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
-            if(c.mouse_pos_output && c.current_state !== 'PANNING') {
-                const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-                const baselineWorldY = 0.8 * c.canvas_size_height;
-                c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
-            }
-            if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
-                const pa = c.painting_area.getBoundingClientRect();
-                const px = e.clientX - pa.left;
-                const py = e.clientY - pa.top;
-                const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
-                c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
-                c._rulerIndicatorH.style.left = `${px - 5}px`;
-                c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
-                c._rulerIndicatorV.style.top = `${py - 5}px`;
-            }
-            if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
-            if ((tool === 'SELECT' || tool === 'NODE') && c.is_box_selecting) {
-                c.box_select_end = {x: mouseX, y: mouseY}; c.is_dirty = true;
-            }
-            if (c.current_state === 'TRANSFORMING_OBJECTS') {
-                ic.handleMouseMoveTransforming(mouseX, mouseY, e.clientX, e.clientY, e.ctrlKey, e.shiftKey);
-                return;
-            }
-            let hoverStateChanged = false;
-            if(c.current_state === 'PANNING' && (e.buttons & 1 || e.buttons & 4)) {
-                const dx = e.clientX - c.drag_start.x, dy = e.clientY - c.drag_start.y;
-                c.offset = { x: c.offset_start.x + dx, y: c.offset_start.y + dy };
-                c.is_dirty = true;
-            }
-            else if((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_ELLIPSE') {
-                const ewX = (mouseX - offsetX) / c.scale, ewY = (mouseY - offsetY) / c.scale;
-                ic.handleEllipseMouseMove(mouseX, mouseY, ewX, ewY, e.ctrlKey);
-            }
-            else if((e.buttons & 1) !== 0 && c.current_state === 'PAINTING_HANDLE') {
-                ic.handleMouseMovePaintingHandle(mouseX, mouseY);
-            }
-            else if((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_NODE_READY') {
-                if(Math.abs(mouseX - c.drag_initial_mouse.x) > 4 || Math.abs(mouseY - c.drag_initial_mouse.y) > 4) {
-                    c.current_state = 'DRAGGING_NODE';
-                    c.setInteractiveStrokePreviewCurveIds?.(ic.collectInteractiveStrokePreviewCurveIds());
-                }
-            }
-            if(c.current_state === 'DRAGGING_NODE') {
-                ic.handleMouseMoveDraggingNode(mouseX, mouseY, e.ctrlKey);
-            }
-            if (c.current_state === 'IDLE') {
-                let hitResult = c.utils.hitTestNode(mouseX, mouseY);
-                let hitMarker = hitResult ? hitResult.marker : null; let hitCurveSegment = hitMarker ? null : c.utils.hitTestCurve(mouseX, mouseY);
-                if (tool === 'SELECT') hitCurveSegment = null;
-                if (c.hovered_node_marker !== hitMarker) { c.hovered_node_marker = hitMarker; hoverStateChanged = true; }
-                if (c.hovered_curve_segment !== (hitCurveSegment ? hitCurveSegment.curve : null)) { c.hovered_curve_segment = hitCurveSegment; hoverStateChanged = true; }
-                if (hoverStateChanged) c.is_dirty = true;
-            }
-            if (c.current_state === 'IDLE' && tool === 'SELECT') {
-                let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
-                if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
-                else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
-                else if (handleHit === 'tc' || handleHit === 'bc') c.canvasObj.dataset.cursor = 'ns-resize';
-                else if (handleHit === 'ml' || handleHit === 'mr') c.canvasObj.dataset.cursor = 'ew-resize';
-                else if (handleHit === 'rot_tl' || handleHit === 'rot_br') c.canvasObj.dataset.cursor = 'crosshair';
-                else if (handleHit === 'rot_tr' || handleHit === 'rot_bl') c.canvasObj.dataset.cursor = 'crosshair';
-                else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
-                else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
-                else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
-                else if (c._hoveredUserGuideId !== null) {
-                    // Guide hover overrides curve/object hit but not handles
-                } else if (c._hoveredMetricGuideKey !== null) {
-                    // Metric guide hover overrides curve/object hit
-                } else {
-                    let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
-                    const ix = c.getInteractionSnapshot();
-                    const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
-                    c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
-                }
-            } else if (c._hoveredUserGuideId !== null) {
-                // Guide hover for non-SELECT tools
-            } else if (c._hoveredMetricGuideKey !== null) {
-                // Metric guide hover overrides cursor
-            } else if (c.current_state !== 'TRANSFORMING_OBJECTS' && c.current_state !== 'PANNING' && c.current_state !== 'DRAGGING_NODE' && c.current_state !== 'DRAGGING_USER_GUIDE' && c.current_state !== 'DRAGGING_DIVIDER' && c.current_state !== 'DRAGGING_METRIC_GUIDE') {
-                    if (c.getActiveTool() !== 'DRAW' && c.getActiveTool() !== 'ELLIPSE') {
-                        const divHit = c.utils.hitTestDividerLines(mouseX, mouseY);
-                        c.canvasObj.dataset.cursor = divHit ? "ew-resize" : "default";
-                    } else {
-                        c.canvasObj.dataset.cursor = "crosshair";
-                    }
-            }
-            if (c.current_state === 'IDLE') {
-                c.renderer.update_previewData(mouseX, mouseY); if (c.last_on_curve_node_marker !== null) c.is_dirty = true;
-            } else { if (c.previewData !== null) { c.previewData = null; c.is_dirty = true; } }
-        });
+        c.addGlobalListener('window', "mousemove", (e) => this.handleWindowMouseMove(e));
         c.addGlobalListener(c.canvasObj, "mouseleave", () => {
             if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
             if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
@@ -1125,11 +1131,21 @@ export class CanvasInputController {
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
             const isDrawingTool = c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE';
+            const tool = c.getActiveTool();
+            const nodeUnderCursor = (tool === 'NODE' || tool === 'DRAW')
+                ? c.utils.hitTestNode(pointer.x, pointer.y)
+                : null;
             if (c.guideline_lock) {
                 if (c._hoveredUserGuideId !== null) {
                     c._hoveredUserGuideId = null;
                     c.is_dirty = true;
                 }
+            } else if (nodeUnderCursor) {
+                if (c._hoveredUserGuideId !== null) {
+                    c._hoveredUserGuideId = null;
+                    c.is_dirty = true;
+                }
+                if (!isDrawingTool) c.canvasObj.dataset.cursor = 'default';
             } else {
                 const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                 const newId = hit ? hit.guide.id : null;
@@ -1140,13 +1156,13 @@ export class CanvasInputController {
                     c.is_dirty = true;
                 }
             }
-            const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
+            const divHit = nodeUnderCursor ? null : c.utils.hitTestDividerLines(pointer.x, pointer.y);
             const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
             if (c._hoveredDividerId !== divId) {
                 c._hoveredDividerId = divId;
                 c.is_dirty = true;
             }
-            const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+            const metricKey = nodeUnderCursor ? null : c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
             if (c._hoveredMetricGuideKey !== metricKey) {
                 c._hoveredMetricGuideKey = metricKey;
                 c.is_dirty = true;
@@ -1177,6 +1193,11 @@ export class CanvasInputController {
         c.addGlobalListener(c.canvasObj, "dblclick", (e) => {
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
+            // Nodes sit above guides / dividers / metrics — do not open chrome dialogs.
+            const tool = c.getActiveTool();
+            if ((tool === 'NODE' || tool === 'DRAW') && c.utils.hitTestNode(pointer.x, pointer.y)) {
+                return;
+            }
             if (c.getActiveTool() === "MEASURE") {
                 const rulerHit = c._hitTestRulerLine(pointer.x, pointer.y);
                 if (rulerHit) {
@@ -1225,9 +1246,14 @@ export class CanvasInputController {
             // Node/curve hits take priority over guideline/divider drag
             const tool = c.getActiveTool();
             const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
-            const hitCurveSegment = tool === 'SELECT' ? c.utils.hitTestCurve(pointer.x, pointer.y) : null;
+            const hitCurveSegment = (tool === 'SELECT' || tool === 'NODE')
+                ? c.utils.hitTestCurve(pointer.x, pointer.y)
+                : null;
             const handleHit = tool === 'SELECT' ? c.utils.hitTestTransformHandles(pointer.x, pointer.y) : null;
-            const hasInteractiveHit = (tool === 'NODE' && hitMarker) || (tool === 'SELECT' && (handleHit || hitCurveSegment));
+            // Priority: nodes > strokes/handles > guides/dividers/metrics.
+            const hasInteractiveHit = !!hitMarker
+                || (tool === 'NODE' && !!hitCurveSegment)
+                || (tool === 'SELECT' && !!(handleHit || hitCurveSegment));
             const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
             if (hit) {
                 if (c.guideline_lock) return;
@@ -1619,6 +1645,7 @@ export class CanvasInputController {
             }
             if (c.current_state === 'PANNING') {
                 c.current_state = 'IDLE';
+                c.renderer.endViewportPreview?.();
                 c.editorStore?.syncViewFromCanvas?.();
                 c.history.saveCurrentViewState();
                 return;
@@ -1699,6 +1726,7 @@ export class CanvasInputController {
             }
             if(e.ctrlKey || e.altKey) {
                 if (c.current_state !== 'PANNING') {
+                    const useZoomPreview = c.renderer.beginZoomPreview?.() === true;
                     const viewport = c.viewportConfig || {};
                     const ruler_w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
                     const ruler_h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
@@ -1707,6 +1735,17 @@ export class CanvasInputController {
                     let isFixedCenter = e.altKey;
                     c.renderer.change_canvas_size(e.deltaY, logical_x, logical_y, isFixedCenter);
                     c.renderer.update_previewData(mouseX, mouseY); c.is_dirty = true;
+                    if (c._zoomPreviewTimer !== null && c._zoomPreviewTimer !== undefined) {
+                        globalThis.clearTimeout(c._zoomPreviewTimer);
+                        c._zoomPreviewTimer = null;
+                    }
+                    // Retained (blurry) zoom only settles after idle; exact zoom paints each tick.
+                    if (useZoomPreview) {
+                        c._zoomPreviewTimer = globalThis.setTimeout(() => {
+                            c._zoomPreviewTimer = null;
+                            c.renderer.endZoomPreview?.();
+                        }, 120);
+                    }
                 }
             }
         }, { passive: false });

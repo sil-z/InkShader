@@ -14,7 +14,10 @@ export const META_ONLY_HISTORY_COMMANDS = new Set([
     CANVAS_ACTIONS.TOGGLE_GROUP_COLLAPSED,
     "SYNC_HISTORY_STACKS",
     "PATCH_SELECTION",
-    "HISTORY_REVISION"
+    "HISTORY_REVISION",
+    // Selection-only commits: must not trigger full document serialize (save_file).
+    "node-box-selection",
+    "object-box-selection"
 ]);
 
 /** Commands that should generate document geometry patches (used to validate missed records) */

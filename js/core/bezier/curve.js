@@ -29,6 +29,8 @@ export class Curve {
     }
 
     invalidateBooleanCache() {
+        // Clear validation marker only. Keep cached_boolean_geometry so ensureBooleanCache
+        // can reuse it when getGeometryHash still matches (_booleanContentHash).
         this._lastHash = null;
         this._boundsCache = null;
         this._matrixBoundsCache = null;
@@ -321,9 +323,8 @@ export class Curve {
 
             if (handleLen1 > 1e-3) {
                 if (!logicalPrev.control1) {
-                    let mId = `c1_${Date.now().toString(36)}_${Math.floor(Math.random()*1000)}`;
-                    let marker = { id: mId, type: "circle" };
-                    logicalPrev.control1 = new CurveNode(marker, null, logicalPrev.x, logicalPrev.y, logicalPrev, null, mId);
+                    const marker = generateMarker("circle");
+                    logicalPrev.control1 = new CurveNode(marker, null, logicalPrev.x, logicalPrev.y, logicalPrev, null, marker.id);
                     logicalPrev.control1.curve = this;
                     this.domMap.set(marker, logicalPrev.control1); manager.domMap.set(marker, logicalPrev.control1);
                 }
@@ -336,9 +337,8 @@ export class Curve {
 
             if (handleLen2 > 1e-3) {
                 if (!logicalNext.control2) {
-                    let mId = `c2_${Date.now().toString(36)}_${Math.floor(Math.random()*1000)}`;
-                    let marker = { id: mId, type: "circle" };
-                    logicalNext.control2 = new CurveNode(marker, null, logicalNext.x, logicalNext.y, logicalNext, null, mId);
+                    const marker = generateMarker("circle");
+                    logicalNext.control2 = new CurveNode(marker, null, logicalNext.x, logicalNext.y, logicalNext, null, marker.id);
                     logicalNext.control2.curve = this;
                     this.domMap.set(marker, logicalNext.control2); manager.domMap.set(marker, logicalNext.control2);
                 }
@@ -861,6 +861,7 @@ export class Curve {
         this.endNode = nodes[nodes.length - 1];
         this.cached_boolean_geometry = null;
         this._lastHash = null;
+        this._booleanContentHash = null;
         return true;
     }
 

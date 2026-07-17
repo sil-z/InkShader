@@ -21,6 +21,7 @@ export class CanvasRenderRuntimeService {
             }
         }
 
+        c.renderer.invalidateRetainedCaches?.();
         c.renderer.update_canvas();
         c.renderer.renderCanvas();
     }

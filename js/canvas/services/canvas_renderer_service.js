@@ -7,7 +7,9 @@ import {
     appendCurveFillPath,
     shouldBatchFillCurve,
     drawCurveStroke,
-    isCurveStrokePreview
+    isCurveStrokePreview,
+    canFillSmartStrokeWithPath2D,
+    fillSmartStrokePath2D
 } from "../rendering/curve_renderer.js";
 import { drawCurveNode } from "../rendering/node_renderer.js";
 import { createViewportTransform } from "../rendering/viewport_transform.js";
@@ -18,31 +20,720 @@ export class CanvasRendererService {
         this._rulerHState = null;
         this._rulerVState = null;
         this._canvasState = null;
+        this._viewportPreviewCache = null;
+        this._nodeDragPreviewCache = null;
+        this._zoomPreviewCache = null;
+        this._boxSelectPreviewCache = null;
+        /** Path fills/strokes at a viewport; reused when only selection/hover overlays change. */
+        this._stableSceneCache = null;
+        /** Last full-scene paint cost (ms); drives adaptive zoom/pan retained mode. */
+        this._lastExactRenderMs = 0;
     }
+
+    /** Stable blit must be path-only (no nodes/chrome). Bump when capture point changes. */
+    static STABLE_SCENE_FORMAT = 2;
+
+    /**
+     * Whether wheel-zoom should use bitmap scale preview instead of exact redraw.
+     * Light documents stay on exact zoom; heavy scenes blit until settle (snappy;
+     * path soft-blur + temporary node scale clear on settle — mid-gesture node
+     * redraw proved too expensive).
+     */
+    shouldUseRetainedZoomPreview() {
+        const measured = this._lastExactRenderMs || 0;
+        // Missed ~45fps budget on last exact paint → prefer blit zoom.
+        if (measured >= 22) return true;
+
+        const cm = this.canvas?.curve_manager;
+        if (!cm) return false;
+        // domMap includes on-curve + control markers (~2–3× vertices).
+        const markers = cm.domMap?.size || 0;
+        if (markers >= 1200) return true;
+
+        let booleanSegs = 0;
+        const smart = cm.curveStore?.smartStrokeCurves;
+        if (smart?.size) {
+            for (const curve of smart) {
+                const geom = curve?.cached_boolean_geometry;
+                if (!Array.isArray(geom)) continue;
+                for (const sub of geom) {
+                    booleanSegs += sub?.segments?.length || 0;
+                    if (booleanSegs >= 2500) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Capture the current viewport for transient wheel-zoom compositing. */
+    beginZoomPreview() {
+        if (!this.shouldUseRetainedZoomPreview()) {
+            // Drop any stale preview so render stays on exact path.
+            if (this._zoomPreviewCache) {
+                this._zoomPreviewCache = null;
+            }
+            return false;
+        }
+        if (this._zoomPreviewCache) return true;
+        const cache = this._captureViewportSnapshot();
+        if (!cache) return false;
+        cache.baseScale = cache.scale;
+        this._zoomPreviewCache = cache;
+        return true;
+    }
+
+    /** End transient wheel-zoom compositing and request an exact frame. */
+    endZoomPreview() {
+        this._zoomPreviewCache = null;
+        this.canvas.is_dirty = true;
+    }
+
+    /**
+     * Instant framebuffer snapshot (drawImage of the current canvas).
+     * Avoids re-rasterizing thousands of node markers on the main thread.
+     */
+    _captureViewportSnapshot() {
+        const c = this.canvas;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        if (width <= 0 || height <= 0 || !c.canvasObj) return null;
+        const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
+        const cache = this._createCacheCanvas(width, height, dpr);
+        if (!cache) return null;
+        const src = c.canvasObj;
+        cache.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        cache.ctx.imageSmoothingEnabled = false;
+        // Explicit 1:1 copy — never resample into the pan/zoom retained buffer.
+        cache.ctx.drawImage(
+            src,
+            0,
+            0,
+            src.width,
+            src.height,
+            0,
+            0,
+            cache.canvas.width,
+            cache.canvas.height
+        );
+        cache.baseOffset = { ...c.offset };
+        cache.scale = c.scale;
+        cache.viewportWidth = width;
+        cache.viewportHeight = height;
+        return cache;
+    }
+
+    /**
+     * Start transform-only panning from an instant snapshot of the current frame.
+     * Each pan tick: integer nearest-neighbor blit only (uncovered margins blank until
+     * pan end). Mid-gesture exact/strip fills were either chaotic or too expensive.
+     */
+    beginViewportPreview() {
+        const c = this.canvas;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        if (width <= 0 || height <= 0) return false;
+        const existing = this._viewportPreviewCache;
+        if (
+            existing &&
+            existing.baseOffset?.x === c.offset.x &&
+            existing.baseOffset?.y === c.offset.y &&
+            existing.scale === c.scale &&
+            existing.viewportWidth === width &&
+            existing.viewportHeight === height
+        ) {
+            return true;
+        }
+        const cache = this._captureViewportSnapshot();
+        if (!cache) return false;
+        this._viewportPreviewCache = cache;
+        return true;
+    }
+
+    /** End transform-only panning and request an exact frame. */
+    endViewportPreview() {
+        this._viewportPreviewCache = null;
+        this.canvas.is_dirty = true;
+    }
+
+    /**
+     * Bake static layers for node-drag compositing:
+     * - Main: non-mover paths/nodes + frozen (non-moving) nodes on mover curves
+     * - Node top: same frozen mover nodes alone (blitted above the live stroke so the
+     *   path cannot cover them — single-canvas draw order would otherwise put stroke on top)
+     * Live each frame: mover stroke → node-top blit → sparse moving markers
+     * @param {string[]} curveIds - Curves that remain dynamic during the drag
+     */
+    beginNodeDragPreview(curveIds = []) {
+        const ids = new Set();
+        for (const key of curveIds || []) {
+            if (!key) continue;
+            ids.add(String(key).split("::")[0]);
+        }
+        if (ids.size === 0) return false;
+        const c = this.canvas;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        if (width <= 0 || height <= 0) return false;
+
+        const excludeNodeMarkers = new Set();
+        const addMarker = (marker) => {
+            if (marker == null) return;
+            excludeNodeMarkers.add(marker);
+            if (marker?.id != null) excludeNodeMarkers.add(marker.id);
+        };
+        for (const marker of c.drag_initial_nodes?.keys?.() || []) {
+            addMarker(marker);
+            // Main-node drag also moves its controls — keep them out of the static bake.
+            const n = c.curve_manager?.find_node_by_curve?.(marker);
+            if (n) {
+                addMarker(n.control1?.main_node);
+                addMarker(n.control2?.main_node);
+            }
+        }
+        addMarker(c.dragging_node_marker);
+        // Control-handle drag: dragging_node_marker is the handle, not the on-curve node.
+        // Exclude the parent main node so bake does not stamp handle stubs at the start pose.
+        {
+            const dragged = c.curve_manager?.find_node_by_curve?.(c.dragging_node_marker);
+            if (dragged && dragged.type == null) {
+                const parent = dragged.nextOnCurve || dragged.lastOnCurve;
+                addMarker(parent?.main_node);
+                addMarker(parent?.control1?.main_node);
+                addMarker(parent?.control2?.main_node);
+            }
+        }
+
+        const cache = this._renderIntoCache({
+            width,
+            height,
+            // Paths: everything except movers (live stroke is overlaid each frame).
+            curveFilter: (curve) => !ids.has(curve?.id),
+            // Still paint non-moving markers on mover curves into the static layer.
+            extraNodeCurveIds: ids,
+            excludeNodeMarkers
+        });
+        if (!cache) return false;
+        // Transparent layer of frozen mover-curve nodes — composited above live stroke.
+        const nodeTop = this._renderIntoCache({
+            width,
+            height,
+            curveFilter: () => false,
+            extraNodeCurveIds: ids,
+            excludeNodeMarkers,
+            nodesOnly: true
+        });
+        cache.nodeTop = nodeTop;
+        cache.curveIds = ids;
+        cache.baseOffset = { ...c.offset };
+        cache.scale = c.scale;
+        this._nodeDragPreviewCache = cache;
+        return true;
+    }
+
+    /** End the node-drag cache and request an exact frame. */
+    endNodeDragPreview() {
+        this._nodeDragPreviewCache = null;
+        this.canvas.is_dirty = true;
+    }
+
+    /**
+     * Snapshot the current frame for marquee box-select.
+     * Drag frames only blit + draw the selection rectangle (no full node redraw).
+     */
+    beginBoxSelectPreview() {
+        const cache = this._captureViewportSnapshot();
+        if (!cache) return false;
+        this._boxSelectPreviewCache = cache;
+        return true;
+    }
+
+    endBoxSelectPreview() {
+        this._boxSelectPreviewCache = null;
+        this.canvas.is_dirty = true;
+    }
+
+    /** Drop retained bitmaps (resize / theme / settled geometry). */
+    invalidateRetainedCaches() {
+        this._viewportPreviewCache = null;
+        this._nodeDragPreviewCache = null;
+        this._zoomPreviewCache = null;
+        this._boxSelectPreviewCache = null;
+        this._rulerHState = null;
+        this._rulerVState = null;
+    }
+
+    _createCacheCanvas(width, height, dpr) {
+        const cacheCanvas = this.canvas.env.createDOMElement("canvas");
+        cacheCanvas.width = Math.max(1, Math.round(width * dpr));
+        cacheCanvas.height = Math.max(1, Math.round(height * dpr));
+        const ctx = this.canvas.env.getCanvasContext(cacheCanvas, "2d");
+        return ctx ? { canvas: cacheCanvas, ctx, width, height, dpr } : null;
+    }
+
+    /** Render the current scene into an offscreen cache (optionally filtering curves). */
+    _renderIntoCache({
+        width,
+        height,
+        curveFilter = null,
+        skipNodes = false,
+        extraNodeCurveIds = null,
+        excludeNodeMarkers = null,
+        nodesOnly = false,
+        pathsOnly = false
+    } = {}) {
+        const c = this.canvas;
+        const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
+        const cache = this._createCacheCanvas(width, height, dpr);
+        if (!cache) return null;
+        const originalCtx = c.ctx;
+        const originalViewport = c.viewportConfig;
+        const originalOffset = c.offset;
+        try {
+            c.ctx = cache.ctx;
+            c.viewportConfig = {
+                ...(originalViewport || {}),
+                userSpaceWidth: width,
+                userSpaceHeight: height,
+                viewportWidth: width,
+                viewportHeight: height,
+                devicePixelRatio: dpr
+            };
+            this._renderScene({
+                curveFilter,
+                skipNodes,
+                extraNodeCurveIds,
+                excludeNodeMarkers,
+                nodesOnly,
+                pathsOnly
+            });
+        } finally {
+            c.ctx = originalCtx;
+            c.viewportConfig = originalViewport;
+            c.offset = originalOffset;
+        }
+        return cache;
+    }
+
+    _blitSnapshot(cache, destX = 0, destY = 0, destW = null, destH = null) {
+        const c = this.canvas;
+        if (!cache || !c.ctx) return false;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        const dpr = cache.dpr;
+        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.ctx.clearRect(0, 0, width, height);
+        // Integer pan blits must stay nearest-neighbor — Chrome compounds blur if smoothing
+        // stays on after a zoom preview frame.
+        c.ctx.imageSmoothingEnabled = false;
+        c.ctx.drawImage(
+            cache.canvas,
+            0,
+            0,
+            cache.canvas.width,
+            cache.canvas.height,
+            destX,
+            destY,
+            destW == null ? cache.width : destW,
+            destH == null ? cache.height : destH
+        );
+        return true;
+    }
+
+    /** Composite a cache on top of the current frame without clearing. */
+    _blitSnapshotOnTop(cache) {
+        const c = this.canvas;
+        if (!cache || !c.ctx) return false;
+        const dpr = cache.dpr;
+        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.ctx.imageSmoothingEnabled = false;
+        c.ctx.drawImage(
+            cache.canvas,
+            0,
+            0,
+            cache.canvas.width,
+            cache.canvas.height,
+            0,
+            0,
+            cache.width,
+            cache.height
+        );
+        return true;
+    }
+
+    /**
+     * Retained pan: integer nearest-neighbor blit from the gesture-start capture.
+     * Uncovered margins stay blank until endViewportPreview (exact paint).
+     * No mid-gesture exact refresh — that reintroduced severe pan jank.
+     */
+    _renderViewportPreview() {
+        const c = this.canvas;
+        const cache = this._viewportPreviewCache;
+        if (!cache || cache.scale !== c.scale) return false;
+        const dx = Math.round(c.offset.x - cache.baseOffset.x);
+        const dy = Math.round(c.offset.y - cache.baseOffset.y);
+        return this._blitSnapshot(cache, dx, dy);
+    }
+
+    _renderNodeDragPreview() {
+        const c = this.canvas;
+        const cache = this._nodeDragPreviewCache;
+        if (
+            !cache ||
+            cache.scale !== c.scale ||
+            cache.baseOffset.x !== c.offset.x ||
+            cache.baseOffset.y !== c.offset.y
+        ) {
+            return false;
+        }
+        if (!this._blitSnapshot(cache)) return false;
+        // Live mover stroke (under nodes).
+        this._renderScene({
+            clear: false,
+            curveFilter: (curve) => cache.curveIds.has(curve?.id),
+            skipNodes: true,
+            overlayOnly: true
+        });
+        // Frozen mover-curve nodes above the stroke (O(1) blit — not per-node redraw).
+        if (cache.nodeTop) this._blitSnapshotOnTop(cache.nodeTop);
+        // Moving markers on top.
+        this._renderScene({
+            clear: false,
+            curveFilter: (curve) => cache.curveIds.has(curve?.id),
+            sparseNodes: true,
+            skipPathLayer: true,
+            overlayOnly: true
+        });
+        return true;
+    }
+
+    _renderZoomPreview() {
+        const c = this.canvas;
+        const cache = this._zoomPreviewCache;
+        if (!cache || !cache.baseScale || !c.ctx) return false;
+        const factor = c.scale / cache.baseScale;
+        if (!Number.isFinite(factor) || factor <= 0) return false;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        if (width <= 0 || height <= 0) return false;
+        const ruler = c.ruler_size;
+        const baseLogicalX = ruler + cache.baseOffset.x;
+        const baseLogicalY = ruler + cache.baseOffset.y;
+        const currentLogicalX = ruler + c.offset.x;
+        const currentLogicalY = ruler + c.offset.y;
+        const tx = currentLogicalX - baseLogicalX * factor;
+        const ty = currentLogicalY - baseLogicalY * factor;
+        const dpr = cache.dpr;
+        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.ctx.clearRect(0, 0, width, height);
+        // Delayed mode: soft blit only; settle does the exact crisp frame.
+        c.ctx.imageSmoothingEnabled = true;
+        c.ctx.drawImage(
+            cache.canvas,
+            0,
+            0,
+            cache.canvas.width,
+            cache.canvas.height,
+            tx,
+            ty,
+            cache.width * factor,
+            cache.height * factor
+        );
+        return true;
+    }
+
+    _renderBoxSelectPreview() {
+        const c = this.canvas;
+        const cache = this._boxSelectPreviewCache;
+        if (!cache || !c.is_box_selecting) return false;
+        if (
+            cache.scale !== c.scale ||
+            cache.baseOffset.x !== c.offset.x ||
+            cache.baseOffset.y !== c.offset.y
+        ) {
+            return false;
+        }
+        if (!this._blitSnapshot(cache)) return false;
+        this._drawBoxSelectMarquee();
+        return true;
+    }
+
+    _drawBoxSelectMarquee() {
+        const c = this.canvas;
+        if (!c.is_box_selecting || !c.box_select_start || !c.box_select_end || !c.ctx) return;
+        const p = getCanvasTheme();
+        c.ctx.save();
+        c.ctx.strokeStyle = p.marquee_stroke;
+        c.ctx.fillStyle = p.marquee_fill;
+        c.ctx.lineWidth = 1;
+        c.ctx.setLineDash([4, 4]);
+        const x = Math.min(c.box_select_start.x, c.box_select_end.x);
+        const y = Math.min(c.box_select_start.y, c.box_select_end.y);
+        const w = Math.abs(c.box_select_start.x - c.box_select_end.x);
+        const h = Math.abs(c.box_select_start.y - c.box_select_end.y);
+        c.ctx.fillRect(x, y, w, h);
+        c.ctx.strokeRect(x, y, w, h);
+        c.ctx.restore();
+    }
+
+    invalidateStableSceneCache() {
+        this._stableSceneCache = null;
+    }
+
+    _refreshStableSceneCache() {
+        const c = this.canvas;
+        const cache = this._captureViewportSnapshot();
+        if (!cache) return;
+        cache.format = CanvasRendererService.STABLE_SCENE_FORMAT;
+        cache.geometryEpoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
+        this._stableSceneCache = cache;
+    }
+
+    _tryRenderFromStableScene() {
+        const c = this.canvas;
+        const cache = this._stableSceneCache;
+        if (!cache) return false;
+        // Live object transform updates curve geometry without bumping epoch —
+        // must re-emit paths or the selection box would move alone.
+        if (c.current_state === "TRANSFORMING_OBJECTS" && c.transform_started_moving) {
+            return false;
+        }
+        // Guide/metric/divider drags move chrome; force a clear+full paint so a prior
+        // stable blit (which may still contain the old guide) cannot leave a ghost.
+        if (
+            c.current_state === "DRAGGING_USER_GUIDE" ||
+            c.current_state === "DRAGGING_METRIC_GUIDE" ||
+            c.current_state === "DRAGGING_DIVIDER"
+        ) {
+            return false;
+        }
+        // Node drag has its own retained path; never composite from a stale stable blit.
+        if (c.current_state === "DRAGGING_NODE" || c.current_state === "DRAGGING_NODE_READY") {
+            return false;
+        }
+        if (cache.format !== CanvasRendererService.STABLE_SCENE_FORMAT) return false;
+        const epoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
+        if (cache.geometryEpoch !== epoch) return false;
+        if (cache.scale !== c.scale) return false;
+        if (cache.baseOffset.x !== c.offset.x || cache.baseOffset.y !== c.offset.y) return false;
+        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
+        if (cache.viewportWidth !== width || cache.viewportHeight !== height) return false;
+        if (!this._blitSnapshot(cache)) return false;
+        // Path fills stay on the blit; redraw nodes + chrome (selection / guides / metrics).
+        // Do not use overlayOnly here: that path re-emits strokes (covering guides) and
+        // early-returns before selection/metrics/dividers.
+        this._renderScene({ clear: false, skipPathLayer: true });
+        return true;
+    }
+
     renderCanvas() {
+        const state = this.canvas.current_state;
+        // Retained paths: pan / zoom / node-drag / box-select compose from cached bitmaps.
+        // Exact scene redraw only when geometry or settled view must be accurate.
+        if (state === "PANNING" && this._renderViewportPreview()) return;
+        if (this._zoomPreviewCache && this._renderZoomPreview()) return;
+        if (state === "DRAGGING_NODE" && this._renderNodeDragPreview()) return;
+        // Retained preview missing: still skip thousands of static markers while dragging.
+        if (state === "DRAGGING_NODE") {
+            this._renderScene({ sparseNodes: true });
+            return;
+        }
+        if (this.canvas.is_box_selecting && this._renderBoxSelectPreview()) return;
+        // Selection / hover / tool chrome: do not re-emit smart-expand paths.
+        if (this._tryRenderFromStableScene()) return;
+        this._renderScene({ captureStableBeforeSelection: true });
+    }
+
+    _renderScene({
+        clear = true,
+        curveFilter = null,
+        skipNodes = false,
+        sparseNodes = false,
+        overlayOnly = false,
+        /** Paths already blitted (stable scene); skip fill/stroke emit, still draw chrome. */
+        skipPathLayer = false,
+        /** Curve ids that still get node markers even when omitted from pathFilter. */
+        extraNodeCurveIds = null,
+        /** Markers omitted from node pass (moving nodes during drag bake). */
+        excludeNodeMarkers = null,
+        viewCullRect = null,
+        captureStableBeforeSelection = false,
+        /** Only path fill/stroke — no nodes, guides, selection chrome (pan edge strips). */
+        pathsOnly = false,
+        /** Only node markers — no paths/chrome (node-drag top layer bake). */
+        nodesOnly = false
+    } = {}) {
         const c = this.canvas;
         if (!c.ctx) return;
+        const trackExactCost = clear && !overlayOnly && !skipPathLayer && !viewCullRect && !curveFilter && !pathsOnly && !nodesOnly;
+        const renderStartedAt = trackExactCost ? performance.now() : 0;
         const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
         const { width: logicalW, height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
 
         // ── Clear canvas ──
         c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (logicalW > 0 && logicalH > 0) c.ctx.clearRect(0, 0, logicalW, logicalH);
+        if (clear && logicalW > 0 && logicalH > 0) c.ctx.clearRect(0, 0, logicalW, logicalH);
 
         // Viewport bounds in world coordinates (for viewport culling)
+        const cull = viewCullRect || { x: 0, y: 0, w: logicalW, h: logicalH };
         const vpBounds = {
-            minX: -offsetX / c.scale,
-            minY: -offsetY / c.scale,
-            maxX: (logicalW - offsetX) / c.scale,
-            maxY: (logicalH - offsetY) / c.scale
+            minX: (cull.x - offsetX) / c.scale,
+            minY: (cull.y - offsetY) / c.scale,
+            maxX: (cull.x + cull.w - offsetX) / c.scale,
+            maxY: (cull.y + cull.h - offsetY) / c.scale
         };
         const ix = c.getInteractionSnapshot();
         let seqTokens = c.curve_manager.sequenceTokens || [];
         let activeIndices = c.curve_manager.activeSequenceIndices;
         const p = getCanvasTheme();
+        const getCurveDataList = (groupId) => {
+            const list = c.curve_manager.getCurvesForGroup(groupId);
+            return curveFilter ? list.filter((cd) => curveFilter(cd.curve, cd)) : list;
+        };
+        const getNodeCurveDataList = (groupId) => {
+            const list = c.curve_manager.getCurvesForGroup(groupId);
+            if (!curveFilter && !extraNodeCurveIds?.size) return list;
+            return list.filter((cd) => {
+                const id = cd.curve?.id;
+                if (id && extraNodeCurveIds?.has(id)) return true;
+                if (curveFilter) return curveFilter(cd.curve, cd);
+                return true;
+            });
+        };
 
-        for (let i = 0; i < seqTokens.length; i++) {
+        // When many curves exist, restrict path/node passes to viewport AABB candidates.
+        // viewCullRect: ALWAYS iterate query hits (or node-grid fallback) — never fall back
+        // to a full O(C) walk (approxCells gate previously disabled this when zoomed out).
+        let viewportCurveKeys = null;
+        /** @type {Array<{seqIdx:number, seqOffsetX:number, curves:Array}>|null} */
+        let cullPasses = null;
+        const grid = c.curve_manager?.spatialGrid;
+        const curveInstanceCount = grid?._curveToCells?.size || 0;
+        const pad = 2;
+        const vpW = (vpBounds.maxX - vpBounds.minX) + pad * 2;
+        const vpH = (vpBounds.maxY - vpBounds.minY) + pad * 2;
+
+        const buildPassesFromCurveEntries = (entries) => {
+            const keys = new Set();
+            const bySeq = new Map();
+            for (const e of entries) {
+                const id = e.curveId || e.curve?.id;
+                if (!id || !e.curve?.startNode) continue;
+                if (!activeIndices.has(e.seqIdx)) continue;
+                keys.add(`${id}|${e.seqIdx ?? ""}|${e.refId ?? ""}`);
+                let pass = bySeq.get(e.seqIdx);
+                if (!pass) {
+                    pass = {
+                        seqIdx: e.seqIdx,
+                        seqOffsetX: e.seqOffsetX ?? c.curve_manager.getSeqOffset(e.seqIdx),
+                        curves: []
+                    };
+                    bySeq.set(e.seqIdx, pass);
+                }
+                pass.curves.push({
+                    curve: e.curve,
+                    matrix: e.matrix || new DOMMatrix(),
+                    refId: e.refId ?? null,
+                    effectiveVis: true,
+                    effectiveLock: false
+                });
+            }
+            return {
+                keys,
+                passes: [...bySeq.values()].sort((a, b) => a.seqIdx - b.seqIdx)
+            };
+        };
+
+        if (!curveFilter && !skipPathLayer && !nodesOnly && grid) {
+            if (viewCullRect && typeof grid.queryCurvesRect === "function") {
+                let entries = curveInstanceCount > 0
+                    ? grid.queryCurvesRect(vpBounds.minX - pad, vpBounds.minY - pad, vpW, vpH)
+                    : [];
+                // Single-node paths: if curve AABB index is cold/empty, derive from node grid.
+                if (entries.length === 0 && typeof grid.queryRect === "function" && grid.size > 0) {
+                    const seen = new Set();
+                    entries = [];
+                    for (const e of grid.queryRect(vpBounds.minX - pad, vpBounds.minY - pad, vpW, vpH)) {
+                        const id = e.curve?.id;
+                        if (!id) continue;
+                        const k = `${id}|${e.seqIdx ?? ""}|${e.refId ?? ""}`;
+                        if (seen.has(k)) continue;
+                        seen.add(k);
+                        entries.push({
+                            curve: e.curve,
+                            curveId: id,
+                            seqIdx: e.seqIdx,
+                            seqOffsetX: e.seqOffsetX,
+                            matrix: e.matrix,
+                            refId: e.refId ?? null
+                        });
+                    }
+                }
+                const built = buildPassesFromCurveEntries(entries);
+                viewportCurveKeys = built.keys;
+                // Density escape: skip strip geometry that frame rather than O(C) walk.
+                let candCount = 0;
+                for (const pass of built.passes) candCount += pass.curves.length;
+                cullPasses = candCount > 400 ? [] : built.passes;
+            } else if (
+                typeof grid.queryCurvesRect === "function" &&
+                curveInstanceCount > 32
+            ) {
+                const cell = grid.cellSize || 10;
+                const approxCells =
+                    Math.ceil(Math.max(1, vpW) / cell) * Math.ceil(Math.max(1, vpH) / cell);
+                if (approxCells <= 4096) {
+                    const entries = grid.queryCurvesRect(
+                        vpBounds.minX - pad,
+                        vpBounds.minY - pad,
+                        vpW,
+                        vpH
+                    );
+                    if (entries.length < curveInstanceCount * 0.85) {
+                        const built = buildPassesFromCurveEntries(entries);
+                        viewportCurveKeys = built.keys;
+                    }
+                }
+            }
+        }
+        const isCurveInstanceVisible = (curve, seqIndex, refId) => {
+            if (!viewportCurveKeys) return true;
+            if (!curve?.id) return true;
+            return viewportCurveKeys.has(`${curve.id}|${seqIndex}|${refId ?? ""}`);
+        };
+        // Candidates from the spatial query are already in-strip — skip getBounds.
+        const skipViewportBoundsCheck = !!cullPasses;
+
+        /** Path/node instance lists: cullPasses when set, else full sequence walk. */
+        const forEachPathPass = (fn) => {
+            if (cullPasses) {
+                for (const pass of cullPasses) {
+                    fn(pass.seqIdx, pass.seqOffsetX, pass.curves, pass.curves);
+                }
+                return;
+            }
+            for (let i = 0; i < seqTokens.length; i++) {
+                const seqOffsetX = c.curve_manager.getSeqOffset(i);
+                const token = seqTokens[i];
+                const groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                let curveDataList = getCurveDataList(groupId);
+                if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                    if (!curveDataList.find((cd) => cd.curve === c.current_curve)) {
+                        curveDataList = curveDataList.concat([{
+                            curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false
+                        }]);
+                    }
+                }
+                let nodeCurveDataList = getNodeCurveDataList(groupId);
+                if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
+                    if (!nodeCurveDataList.find((cd) => cd.curve === c.current_curve)) {
+                        nodeCurveDataList = nodeCurveDataList.concat([{
+                            curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false
+                        }]);
+                    }
+                }
+                fn(i, seqOffsetX, curveDataList, nodeCurveDataList);
+            }
+        };
+
+        // overlayOnly / skipPathLayer / nodesOnly / pan strips: blit already has static content.
+        // pathsOnly still draws char preview + images (scene under nodes); viewCullRect strips skip them.
+        if (!overlayOnly && !skipPathLayer && !nodesOnly && !viewCullRect) for (let i = 0; i < seqTokens.length; i++) {
             let seqOffsetX = c.curve_manager.getSeqOffset(i);
             let token = seqTokens[i];
             let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
@@ -72,17 +763,33 @@ export class CanvasRendererService {
                 }
             }
         }
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            const imgGroup = c.curve_manager.treeItems.get(groupId);
-            const childrenIds = imgGroup?.children || [];
-            childrenIds.forEach((id) => {
+        if (!overlayOnly && !skipPathLayer && !nodesOnly && !viewCullRect) {
+            for (let i = 0; i < seqTokens.length; i++) {
+                let seqOffsetX = c.curve_manager.getSeqOffset(i);
+                let token = seqTokens[i];
+                let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                const imgGroup = c.curve_manager.treeItems.get(groupId);
+                const childrenIds = imgGroup?.children || [];
+                childrenIds.forEach((id) => {
+                    const item = c.curve_manager.treeItems.get(id);
+                    if (item && item.type === "image" && item.visible) {
+                        c.ctx.save();
+                        c.ctx.translate(offsetX + seqOffsetX * c.scale, offsetY);
+                        c.ctx.scale(c.scale, c.scale);
+                        const m = item.transform;
+                        c.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+                        c.ctx.drawImage(item.image, 0, 0);
+                        c.ctx.restore();
+                    }
+                });
+            }
+            // Render root-level images (not associated with any sequence group)
+            const rootChildren = c.curve_manager.rootChildren || [];
+            rootChildren.forEach((id) => {
                 const item = c.curve_manager.treeItems.get(id);
                 if (item && item.type === "image" && item.visible) {
                     c.ctx.save();
-                    c.ctx.translate(offsetX + seqOffsetX * c.scale, offsetY);
+                    c.ctx.translate(offsetX, offsetY);
                     c.ctx.scale(c.scale, c.scale);
                     const m = item.transform;
                     c.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
@@ -91,20 +798,6 @@ export class CanvasRendererService {
                 }
             });
         }
-        // Render root-level images (not associated with any sequence group)
-        const rootChildren = c.curve_manager.rootChildren || [];
-        rootChildren.forEach((id) => {
-            const item = c.curve_manager.treeItems.get(id);
-            if (item && item.type === "image" && item.visible) {
-                c.ctx.save();
-                c.ctx.translate(offsetX, offsetY);
-                c.ctx.scale(c.scale, c.scale);
-                const m = item.transform;
-                c.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-                c.ctx.drawImage(item.image, 0, 0);
-                c.ctx.restore();
-            }
-        });
         let unselectedNodeRenders = []; let selectedNodeRenders = [];
 
         // ── Build showHandlesSet from selection state (avoid iterating ALL nodes per frame) ──
@@ -125,11 +818,14 @@ export class CanvasRendererService {
             let cur = curve.startNode;
             while (cur) { addToShowHandles(cur, curve); cur = cur.nextOnCurve; }
         };
-        for (const curveId of (ix.selectedCurveIds || [])) {
-            const curve = curveStore.curveById.get(curveId);
-            if (curve) addAllNodes(curve);
+        // sparseNodes (drag overlay): only selected markers + neighbors — never whole curves.
+        if (!sparseNodes) {
+            for (const curveId of (ix.selectedCurveIds || [])) {
+                const curve = curveStore.curveById.get(curveId);
+                if (curve) addAllNodes(curve);
+            }
+            if (c.current_curve) addAllNodes(c.current_curve);
         }
-        if (c.current_curve) addAllNodes(c.current_curve);
         const selMarkers = ix.selectedNodeMarkerIds;
         if (selMarkers && selMarkers.size > 0) {
             for (const marker of selMarkers) {
@@ -137,42 +833,66 @@ export class CanvasRendererService {
                 if (node) addToShowHandles(node, node.curve);
             }
         }
+        if (sparseNodes && c.drag_initial_nodes?.size) {
+            for (const marker of c.drag_initial_nodes.keys()) {
+                const node = curveStore.domMap.get(marker);
+                if (node) addToShowHandles(node, node.curve);
+            }
+        }
+        // Control-handle drag may not list the parent in drag_initial_nodes; still need live handles.
+        if (sparseNodes && c.dragging_node_marker) {
+            const dragged =
+                curveStore.domMap.get(c.dragging_node_marker) ||
+                c.curve_manager?.find_node_by_curve?.(c.dragging_node_marker);
+            if (dragged) {
+                if (dragged.type == null) {
+                    const parent = dragged.nextOnCurve || dragged.lastOnCurve;
+                    if (parent) addToShowHandles(parent, parent.curve);
+                } else {
+                    addToShowHandles(dragged, dragged.curve);
+                }
+            }
+        }
 
         // ── PASS 1: Curve fill + stroke ──
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-            }
-
-            // ── Fill (batched per-group) ──
+        // skipPathLayer: stable blit already has path pixels (avoid covering guides/chrome).
+        if (!skipPathLayer && !nodesOnly) {
+            forEachPathPass((i, seqOffsetX, curveDataList) => {
+            // ── Fill (batched per-group; Path2D smart fills drawn individually) ──
             c.ctx.beginPath();
             let hasFill = false;
+            const path2dFills = [];
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
-                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
+                    if (!isCurveInstanceVisible(cd.curve, i, cd.refId ?? null)) continue;
+                    if (!skipViewportBoundsCheck && !this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
                     const refId = cd.refId ?? null;
                     const strokePreview = isCurveStrokePreview(c, cd.curve.id, refId);
                     if (!shouldBatchFillCurve(cd.curve, { strokePreview })) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
-        appendCurveFillPath(c.ctx, cd.curve, viewport, {
-                            refId,
-                            strokePreview
-                        });
+                    if (canFillSmartStrokeWithPath2D(cd.curve, { strokePreview })) {
+                        path2dFills.push({ curve: cd.curve, viewport });
+                        continue;
+                    }
+                    appendCurveFillPath(c.ctx, cd.curve, viewport, {
+                        refId,
+                        strokePreview
+                    });
                     hasFill = true;
                 }
             }
             if (hasFill) { c.ctx.fillStyle = p.path_fill_color; c.ctx.fill("nonzero"); }
+            for (const item of path2dFills) {
+                fillSmartStrokePath2D(c.ctx, item.curve, item.viewport, p.path_fill_color);
+            }
 
             // ── Stroke (per-curve) ──
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
-                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
+                    if (!isCurveInstanceVisible(cd.curve, i, cd.refId ?? null)) continue;
+                    if (!skipViewportBoundsCheck && !this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
                     const refId = cd.refId ?? null;
                     drawCurveStroke(c.ctx, cd.curve, viewport, p, {
@@ -182,20 +902,34 @@ export class CanvasRendererService {
                     });
                 }
             }
+            });
+        }
+
+        // Path pixels only — nodes/chrome stay out so NODE→SELECT cannot leave marker ghosts,
+        // and guide/selection drags can redraw chrome without stale blits.
+        if (
+            captureStableBeforeSelection &&
+            clear &&
+            !overlayOnly &&
+            !skipPathLayer &&
+            !viewCullRect &&
+            !curveFilter &&
+            !pathsOnly &&
+            !nodesOnly
+        ) {
+            this._refreshStableSceneCache();
+        }
+
+        // Pan edge strips: paths only — skip nodes + chrome (exact frame on pan end).
+        if (pathsOnly) {
+            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
+            return;
         }
 
         // ── PASS 2: Overlays ──
-        for (let i = 0; i < seqTokens.length; i++) {
-            let seqOffsetX = c.curve_manager.getSeqOffset(i);
-            let token = seqTokens[i];
-            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-            if (shouldIncludeCurrentDrawingCurve(c, ix, groupId)) {
-                if (!curveDataList.find((cd) => cd.curve === c.current_curve)) curveDataList.push({ curve: c.current_curve, matrix: new DOMMatrix(), refId: null, effectiveVis: true, effectiveLock: false });
-            }
-
+        forEachPathPass((i, seqOffsetX, curveDataList, nodeCurveDataList) => {
             // ── Hovered curve segment overlay ──
-            if (c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
+            if (!overlayOnly && c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
                 const seg = c.hovered_curve_segment;
                 for (const cd of curveDataList) {
                     if (seg.curve === cd.curve && seg.refId === cd.refId) {
@@ -218,17 +952,37 @@ export class CanvasRendererService {
             }
 
             // ── Node handles ──
-            if (activeIndices.has(i)) {
-                for (const cd of curveDataList) {
+            if (!skipNodes && activeIndices.has(i)) {
+                for (const cd of nodeCurveDataList) {
                     if (!cd.effectiveVis || cd.effectiveLock) continue;
                     if (c.getActiveTool() === "SELECT" || c.getActiveTool() === "MEASURE" || c.getActiveTool() === "ELLIPSE") continue;
                     if (c.getActiveTool() === "DRAW" && cd.curve !== c.current_curve) continue;
-                    if (!this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
+                    if (!isCurveInstanceVisible(cd.curve, i, cd.refId ?? null)) continue;
+                    if (!skipViewportBoundsCheck && !this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
                     let start_node = cd.curve.startNode;
                     while (start_node !== null) {
-                        let isSelected = snapshotIncludesNodeMarker(ix, start_node.main_node);
+                        const marker = start_node.main_node;
+                        if (excludeNodeMarkers?.size) {
+                            const c1m = start_node.control1?.main_node;
+                            const c2m = start_node.control2?.main_node;
+                            const excluded =
+                                excludeNodeMarkers.has(marker) ||
+                                excludeNodeMarkers.has(marker?.id) ||
+                                (c1m && (excludeNodeMarkers.has(c1m) || excludeNodeMarkers.has(c1m.id))) ||
+                                (c2m && (excludeNodeMarkers.has(c2m) || excludeNodeMarkers.has(c2m.id)));
+                            if (excluded) {
+                                start_node = start_node.nextOnCurve;
+                                continue;
+                            }
+                        }
+                        let isSelected = snapshotIncludesNodeMarker(ix, marker);
                         let showHandles = globalShowHandlesSet.has(start_node);
-                        let hoverStates = { main: c.hovered_node_marker === start_node.main_node, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node };
+                        // Drag overlay: only selected nodes + handle neighbors (not every marker).
+                        if (sparseNodes && !isSelected && !showHandles) {
+                            start_node = start_node.nextOnCurve;
+                            continue;
+                        }
+                        let hoverStates = { main: c.hovered_node_marker === marker, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node };
                         let nodeToDraw = start_node; let z = start_node.last_touched || 0;
                         const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
                         let drawFn = () => {
@@ -241,10 +995,20 @@ export class CanvasRendererService {
                     }
                 }
             }
-        }
+        });
         unselectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
         selectedNodeRenders.sort((a, b) => a.z - b.z).forEach((item) => item.fn());
-        if (c.previewData && c.last_on_curve_node_marker) {
+        if (nodesOnly) {
+            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
+            return;
+        }
+        // Pan edge strips: paths + nodes only. Guides/selection already live on the blit;
+        // re-emitting full chrome here was O(extra work) every frame for no benefit.
+        if (viewCullRect) {
+            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
+            return;
+        }
+        if (!overlayOnly && c.previewData && c.last_on_curve_node_marker) {
             const pd = c.previewData;
             c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd.p2_x, pd.p2_y, pd.p3_x, pd.p3_y);
             c.ctx.strokeStyle = p.preview_color; c.ctx.lineWidth = 0.5; c.ctx.stroke();
@@ -256,7 +1020,7 @@ export class CanvasRendererService {
             }
         }
         // Ellipse drag preview
-        if (c._ellipseWorldStartX !== undefined && c._ellipseWorldEndX !== undefined) {
+        if (!overlayOnly && c._ellipseWorldStartX !== undefined && c._ellipseWorldEndX !== undefined) {
             this._drawEllipsePreview(c, p);
         }
         // Node drag: ghost preview of affected curves at original (pre-drag) positions.
@@ -276,7 +1040,7 @@ export class CanvasRendererService {
                     const dAdv = dg.advance !== undefined ? dg.advance : 1000;
                     if (seqOffX2 + dAdv < vpBounds.minX || seqOffX2 > vpBounds.maxX) continue;
                 }
-                const cdl2 = c.curve_manager.getCurvesForGroup(gid2);
+                const cdl2 = getCurveDataList(gid2);
                 for (const cd of cdl2) {
                     if (!cd.curve?.startNode || !c.drag_preview.curveIds.has(cd.curve.id)) continue;
                     dragCtxMap.set(cd.curve.id, { seqOffsetX: seqOffX2, matrix: cd.matrix || new DOMMatrix() });
@@ -344,6 +1108,31 @@ export class CanvasRendererService {
                     c.ctx.stroke();
                 }
             c.ctx.restore();
+        }
+        // Retained drag overlay: static layer already has guides/metrics/dividers.
+        // Only redraw ephemeral snap guides created during this drag.
+        if (overlayOnly) {
+            const temps = (c.guidelines || []).filter((g) => g && g._temp);
+            if (temps.length > 0) {
+                const rad = Math.PI / 180;
+                for (const g of temps) {
+                    const screenX = g.x * c.scale + offsetX;
+                    const screenY = g.y * c.scale + offsetY;
+                    const a = (g.angle || 0) * rad;
+                    const cosA = Math.cos(a), sinA = Math.sin(a);
+                    const extend = 20000;
+                    c.ctx.save();
+                    c.ctx.strokeStyle = p.guide_stroke;
+                    c.ctx.lineWidth = 1;
+                    c.ctx.setLineDash([4, 4]);
+                    c.ctx.beginPath();
+                    c.ctx.moveTo(screenX - extend * cosA, screenY + extend * sinA);
+                    c.ctx.lineTo(screenX + extend * cosA, screenY - extend * sinA);
+                    c.ctx.stroke();
+                    c.ctx.restore();
+                }
+            }
+            return;
         }
         {
             const rad = Math.PI / 180;
@@ -477,10 +1266,7 @@ export class CanvasRendererService {
             }
         }
         if ((c.getActiveTool() === "SELECT" || c.getActiveTool() === "NODE") && c.is_box_selecting && c.box_select_start && c.box_select_end) {
-            c.ctx.save(); c.ctx.strokeStyle = p.marquee_stroke; c.ctx.fillStyle = p.marquee_fill; c.ctx.lineWidth = 1; c.ctx.setLineDash([4, 4]);
-            let x = Math.min(c.box_select_start.x, c.box_select_end.x); let y = Math.min(c.box_select_start.y, c.box_select_end.y);
-            let w = Math.abs(c.box_select_start.x - c.box_select_end.x); let h = Math.abs(c.box_select_start.y - c.box_select_end.y);
-            c.ctx.fillRect(x, y, w, h); c.ctx.strokeRect(x, y, w, h); c.ctx.restore();
+            this._drawBoxSelectMarquee();
         }
         // ── Render persistent rulers ──
         for (const ruler of (c.rulers || [])) {
@@ -624,7 +1410,7 @@ export class CanvasRendererService {
                 if ((hoveredLeftGid != null || hoveredRightGid != null) &&
                     hoveredScreenX >= -50 && hoveredScreenX <= logicalW + 50) {
                     const computeExtents = (gid) => {
-                        const cdList = c.curve_manager.getCurvesForGroup(gid) || [];
+                        const cdList = getCurveDataList(gid) || [];
                         let minX = Infinity, maxX = -Infinity;
                         for (const cd of cdList) {
                             if (!cd.effectiveVis || !cd.curve) continue;
@@ -665,6 +1451,9 @@ export class CanvasRendererService {
                 }
                 c.ctx.restore();
             }
+        }
+        if (trackExactCost) {
+            this._lastExactRenderMs = performance.now() - renderStartedAt;
         }
     }
     _isCurveInViewport(curve, matrix, seqOffsetX, vpBounds) {

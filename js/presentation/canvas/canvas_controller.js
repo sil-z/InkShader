@@ -130,6 +130,8 @@ export class CanvasController {
                 c.history.saveCurrentViewState(true);
                 break;
             case "model":
+                // Node-drag frames update geometry locally; defer Store/UI sync until mouseup.
+                if (c.current_state === "DRAGGING_NODE") break;
                 c.bumpEditorStoreModelRevision();
                 break;
             case "selection":
@@ -204,6 +206,7 @@ export class CanvasController {
         c.hovered_node_marker = null;
         c.hovered_curve_segment = null;
         c.is_box_selecting = false;
+        c.renderer?.endBoxSelectPreview?.();
         c.is_measuring = false;
         c.measure_start = null;
         c.measure_end = null;

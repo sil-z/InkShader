@@ -1349,6 +1349,7 @@ object-tree {
     box-sizing: border-box;
     background: var(--ui-bg-panel);
     user-select: none;
+    overflow: hidden;
 }
 .ruler_vertical {
     position: absolute;
@@ -1361,6 +1362,7 @@ object-tree {
     box-sizing: border-box;
     background: var(--ui-bg-panel);
     user-select: none;
+    overflow: hidden;
 }
 .ruler-indicator-h {
     position: absolute;

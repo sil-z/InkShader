@@ -1,4 +1,4 @@
-import { resolveMarkerById } from "./marker_resolution.js";
+import { resolveMarkerById, buildMarkerIdIndex } from "./marker_resolution.js";
 
 /**
  * @typedef {object} TreeCatalog
@@ -7,7 +7,6 @@ import { resolveMarkerById } from "./marker_resolution.js";
  * @property {Map<string, { id: string, groupId?: string }>} curveById
  * @property {(marker: object) => { id: string, groupId?: string }|null} findCurveByMarker
  */
-
 export function resolveTreeIdForCurve(treeItems, curve) {
     if (!treeItems || !curve) return null;
     if (treeItems.has(curve.id)) return curve.id;
@@ -28,6 +27,9 @@ export function createTreeCatalogFromCurveManager(curveManager) {
         },
         resolveMarkerById(markerId) {
             return resolveMarkerById(curveManager, markerId);
+        },
+        buildMarkerIdIndex() {
+            return buildMarkerIdIndex(curveManager);
         }
     };
 }

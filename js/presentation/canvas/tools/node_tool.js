@@ -152,6 +152,9 @@ export class NodeTool extends BaseTool {
             this.requestNodeSelection("clear", []);
         }
         c.notifyPropertiesUpdate();
+        // One exact frame after selection clear, then retain for marquee drag.
+        c.renderer.renderCanvas();
+        c.renderer.beginBoxSelectPreview?.();
         c.is_dirty = true;
     }
 
@@ -196,7 +199,6 @@ export class NodeTool extends BaseTool {
             c.curve_manager.adjustControlNode(c.dragging_node_marker, snapped_x, snapped_y);
         }
 
-        c.notifyPropertiesUpdate();
         c.is_dirty = true;
     }
 
@@ -242,6 +244,7 @@ export class NodeTool extends BaseTool {
         }
 
         c.current_state = 'IDLE';
+        c.renderer.endNodeDragPreview?.();
         c.drag_preview = null;
         c.dragging_node_marker = null; c.dragging_node_seq_idx = -1;
         c.dragging_node_matrix = null; c.dragging_node_refId = null;
@@ -267,6 +270,7 @@ export class NodeTool extends BaseTool {
     handleNodeBoxMouseUp(mouseX, mouseY, isShiftKey) {
         const c = this.canvas;
         c.is_box_selecting = false;
+        c.renderer.endBoxSelectPreview?.();
         let dx = mouseX - c.box_select_start.x, dy = mouseY - c.box_select_start.y;
         let markersToSelect = [];
         let activeGroupFromBox = null;
@@ -277,7 +281,15 @@ export class NodeTool extends BaseTool {
             if (grid && grid.size > 0) {
                 const entries = grid.queryRect(rect.x, rect.y, rect.w, rect.h);
                 const seqTokens = c.curve_manager.sequenceTokens || [];
+                const x1 = rect.x;
+                const y1 = rect.y;
+                const x2 = rect.x + rect.w;
+                const y2 = rect.y + rect.h;
                 for (const entry of entries) {
+                    // queryRect returns whole cells — keep only points inside the marquee.
+                    if (entry.worldX < x1 || entry.worldX > x2 || entry.worldY < y1 || entry.worldY > y2) {
+                        continue;
+                    }
                     markersToSelect.push({ marker: entry.node.main_node, refId: entry.refId || null });
                     if (entry.seqIdx !== undefined && entry.seqIdx >= 0) {
                         const token = seqTokens[entry.seqIdx];
@@ -290,7 +302,7 @@ export class NodeTool extends BaseTool {
                 }
             }
             if (activeGroupFromBox) CanvasDispatcher.requestSetActiveGroup(activeGroupFromBox);
-            c.notifyPropertiesUpdate(); c.is_dirty = true;
+            c.is_dirty = true;
         }
 
         if (markersToSelect.length > 0) {
@@ -301,9 +313,7 @@ export class NodeTool extends BaseTool {
         } else if (!isShiftKey) {
             this.requestObjectSelection("clear");
         }
-        if (Math.hypot(dx, dy) > 4) {
-            CanvasDispatcher.requestHistoryCommit("node-box-selection", {});
-        }
+        // CHANGE_NODE_SELECTION already auto-commits meta-only history — no second serialize/clone.
     }
 
     // =========================================================================

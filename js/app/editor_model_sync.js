@@ -66,7 +66,10 @@ export function pickModelRevisionFields(curveManager, storeState = null) {
     const markerIds = storeState?.selectedNodeIds || [];
     return {
         treeSnapshot,
-        curvesById: pickCurvesReadSnapshot(curveManager),
+        // Lazy: only selected curves (O(S)); other ids use getCurveById live fallback.
+        curvesById: pickCurvesReadSnapshot(curveManager, {
+            selectedCurveIds: storeState?.selectedCurveIds || []
+        }),
         nodesByMarkerId: pickNodesReadSnapshot(curveManager, markerIds),
         clipboardSummary: pickClipboardSummary(curveManager),
         ...(storeState ? pickInteractionReadFields(curveManager, storeState) : { selectionBoundsTransform: null }),

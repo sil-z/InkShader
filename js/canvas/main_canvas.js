@@ -100,9 +100,12 @@ class MainCanvasBase extends HTMLElement {
         this._hoveredDividerId = null;
         this._hoveredRulerId = null;
         this._hoveredRulerEndpoint = null;
+        this._zoomPreviewTimer = null;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
         /** During high-frequency edits, only these curve ids use smart-stroke preview (skeleton + browser lineWidth) */
         this._interactiveStrokePreviewIds = new Set();
+        /** Bumped when path paints must be rebuilt (geometry / sequence / theme). Selection does not bump. */
+        this._geometryEpoch = 0;
         this.commandStack = []; this.redoCommandStack = [];
         this.currentStateObj = null; this.is_restoring = false;
         this.max_command_log = 100;
@@ -217,8 +220,17 @@ class MainCanvasBase extends HTMLElement {
             : [...cm.curveStore.smartStrokeCurves];
         for (const curve of targets) {
             curve.invalidateBooleanCache?.();
+            // Geometry may have changed during the gesture — do not reuse stale Paper result.
+            if (curve) curve._booleanContentHash = null;
         }
+        this.bumpGeometryEpoch();
         this.is_dirty = true;
+    }
+    bumpGeometryEpoch() {
+        const cm = this.curve_manager;
+        if (cm) cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
+        this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+        this.renderer?.invalidateStableSceneCache?.();
     }
     get current_tool() {
         return resolveActiveCanvasTool(this);
@@ -304,6 +316,10 @@ class MainCanvasBase extends HTMLElement {
         this.renderRuntimeService.startLoop();
     }
     disconnectedCallback() {
+        if (this._zoomPreviewTimer !== null) {
+            globalThis.clearTimeout(this._zoomPreviewTimer);
+            this._zoomPreviewTimer = null;
+        }
         this.globalEventTrackers.forEach(cleanup => cleanup());
         this.globalEventTrackers = [];
         if (this.resizeObserver) { this.resizeObserver.disconnect(); this.resizeObserver = null; }

@@ -43,6 +43,69 @@ export function emitBooleanSubpaths(recorder, subpaths, mapPoint) {
     }
 }
 
+/**
+ * Build a model-space Path2D from cached boolean geometry (identical contours to emitBooleanSubpaths).
+ * Render via ctx.transform(viewportMatrix) + ctx.fill(path2d) to avoid re-tessellating every frame.
+ */
+export function buildBooleanPath2D(subpaths) {
+    if (typeof Path2D === "undefined" || !Array.isArray(subpaths)) return null;
+    const path = new Path2D();
+    let any = false;
+    for (const sub of subpaths) {
+        if (!sub?.segments?.length) continue;
+        const s0 = sub.segments[0];
+        path.moveTo(s0.x, s0.y);
+        for (let i = 1; i < sub.segments.length; i++) {
+            const prev = sub.segments[i - 1];
+            const curr = sub.segments[i];
+            path.bezierCurveTo(
+                prev.x + prev.outX,
+                prev.y + prev.outY,
+                curr.x + curr.inX,
+                curr.y + curr.inY,
+                curr.x,
+                curr.y
+            );
+        }
+        if (sub.closed) {
+            const prev = sub.segments[sub.segments.length - 1];
+            const curr = sub.segments[0];
+            path.bezierCurveTo(
+                prev.x + prev.outX,
+                prev.y + prev.outY,
+                curr.x + curr.inX,
+                curr.y + curr.inY,
+                curr.x,
+                curr.y
+            );
+            path.closePath();
+        }
+        any = true;
+    }
+    return any ? path : null;
+}
+
+/** Affine map: model → logical canvas pixels (same as createViewportTransform). */
+export function booleanViewportDOMMatrix({
+    scale = 1,
+    offsetX = 0,
+    offsetY = 0,
+    seqOffsetX = 0,
+    matrix = null
+} = {}) {
+    const m = new DOMMatrix();
+    m.translateSelf(offsetX + seqOffsetX * scale, offsetY);
+    m.scaleSelf(scale, scale);
+    if (matrix) {
+        m.multiplySelf(
+            matrix instanceof DOMMatrix
+                ? matrix
+                : new DOMMatrix([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f])
+        );
+    }
+    return m;
+}
+
 function isGap(pA, pB) {
     return Math.hypot(pA.x - pB.x, pA.y - pB.y) > 1e-3;
 }

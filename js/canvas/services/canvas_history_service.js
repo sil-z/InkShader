@@ -195,18 +195,109 @@ export class CanvasHistoryService {
         this._saveRuntimeState();
     }
 
+    _idListSame(a, b) {
+        const aa = a || [];
+        const bb = b || [];
+        if (aa.length !== bb.length) return false;
+        for (let i = 0; i < aa.length; i++) {
+            if (aa[i] !== bb[i]) return false;
+        }
+        return true;
+    }
+
     _isMetaSame(beforeState, afterState) {
         if (!beforeState || !afterState) return false;
-        const isSelSame = JSON.stringify(beforeState.selection) === JSON.stringify(afterState.selection);
-        const isCurveSame =
-            JSON.stringify(beforeState.selectedCurveIds || []) ===
-            JSON.stringify(afterState.selectedCurveIds || []);
-        const isRefSame =
-            JSON.stringify(beforeState.selectedRefIds || []) ===
-            JSON.stringify(afterState.selectedRefIds || []);
-        const isSeqSame = beforeState.sequenceText === afterState.sequenceText;
-        const isToolSame = (beforeState.currentTool || "DRAW") === (afterState.currentTool || "DRAW");
-        return isSelSame && isCurveSame && isRefSame && isSeqSame && isToolSame;
+        if ((beforeState.currentTool || "DRAW") !== (afterState.currentTool || "DRAW")) return false;
+        if (beforeState.sequenceText !== afterState.sequenceText) return false;
+        if ((beforeState.activeGroupId || null) !== (afterState.activeGroupId || null)) return false;
+        if (!this._idListSame(beforeState.selectedCurveIds, afterState.selectedCurveIds)) return false;
+        if (!this._idListSame(beforeState.selectedRefIds, afterState.selectedRefIds)) return false;
+        if (!this._idListSame(beforeState.activeIndices, afterState.activeIndices)) return false;
+        const bs = beforeState.selection || {};
+        const as = afterState.selection || {};
+        if (!this._idListSame(bs.treeIds, as.treeIds)) return false;
+        if (!this._idListSame(bs.nodes, as.nodes)) return false;
+        return true;
+    }
+
+    /**
+     * Selection / tool-only history: reuse current snapshot JSON — never call save_file.
+     * Full serialize of dense glyphs is multi-second and must not run on box-select mouseup.
+     */
+    _recordMetaOnlyHistory(detail, commandName) {
+        const c = this.canvas;
+        const cm = c.curve_manager;
+        const meta = interactionMetaFromCanvas(c);
+        const sessionImages = Array.from(cm.treeItems.entries())
+            .filter(([, item]) => item.type === "image")
+            .map(([, item]) => ({ ...item }));
+        const newState = {
+            json: c.currentStateObj?.json ?? null,
+            snapshotObj: c.currentStateObj?.snapshotObj ?? null,
+            selection: meta.selection,
+            selectedCurveIds: meta.selectedCurveIds,
+            selectedRefIds: meta.selectedRefIds,
+            sessionImages,
+            sequenceText: meta.sequenceText,
+            activeIndices: meta.activeIndices,
+            activeGroupId: meta.activeGroupId,
+            currentTool: meta.currentTool
+        };
+        if (c.currentStateObj && this._isMetaSame(c.currentStateObj, newState)) {
+            return false;
+        }
+
+        const payload = this._normalizeHistoryPayload(
+            detail?.action?.payload || detail?.payload || {}
+        );
+        const cloneIdList = (list) => (Array.isArray(list) ? list.slice() : []);
+        const entry = {
+            id: detail?.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            commandName,
+            payload,
+            action: detail?.action ? this._deepClone(detail.action) : null,
+            timestamp: detail?.timestamp || Date.now(),
+            snapshotPatches: [],
+            documentChanged: false,
+            beforeMeta: c.currentStateObj
+                ? {
+                      selection: {
+                          treeIds: cloneIdList(c.currentStateObj.selection?.treeIds),
+                          nodes: cloneIdList(c.currentStateObj.selection?.nodes)
+                      },
+                      selectedCurveIds: cloneIdList(c.currentStateObj.selectedCurveIds),
+                      selectedRefIds: cloneIdList(c.currentStateObj.selectedRefIds),
+                      sessionImages: this._cloneSessionImages(c.currentStateObj.sessionImages),
+                      sequenceText: c.currentStateObj.sequenceText,
+                      activeIndices: cloneIdList(c.currentStateObj.activeIndices),
+                      activeGroupId: c.currentStateObj.activeGroupId,
+                      currentTool: c.currentStateObj.currentTool
+                  }
+                : null,
+            afterMeta: {
+                selection: {
+                    treeIds: cloneIdList(newState.selection?.treeIds),
+                    nodes: cloneIdList(newState.selection?.nodes)
+                },
+                selectedCurveIds: cloneIdList(newState.selectedCurveIds),
+                selectedRefIds: cloneIdList(newState.selectedRefIds),
+                sessionImages: this._cloneSessionImages(newState.sessionImages),
+                sequenceText: newState.sequenceText,
+                activeIndices: cloneIdList(newState.activeIndices),
+                activeGroupId: newState.activeGroupId,
+                currentTool: newState.currentTool
+            }
+        };
+
+        c.commandStack.push(entry);
+        if (c.commandStack.length > c.max_command_log) c.commandStack.shift();
+        c.currentStateObj = newState;
+        c.redoCommandStack = [];
+        this._debugCommand(`recorded ${commandName} (meta-only)`, payload);
+        this._queueRuntimeStateSave();
+        this.saveCurrentViewState(false);
+        c.syncEditorStoreHistoryStacks();
+        return true;
     }
 
     _buildStateFromSnapshotAndMeta(snapshotObj, meta = {}) {
@@ -364,9 +455,13 @@ export class CanvasHistoryService {
     recordHistory(detail = {}) {
         const c = this.canvas;
         if (c.is_restoring) return false;
-        const newState = this.getHistoryState(/* clearDirty= */ false);
         const commandName =
             detail?.action?.type || detail?.commandName || "anonymous-command";
+        // Selection / tool-only: never pay full-document serialize (multi-second on dense glyphs).
+        if (isMetaOnlyHistoryCommand(commandName)) {
+            return this._recordMetaOnlyHistory(detail, commandName);
+        }
+        const newState = this.getHistoryState(/* clearDirty= */ false);
         const patchReport = c.currentStateObj?.snapshotObj
             ? this._buildSnapshotPatchesReport(c.currentStateObj.snapshotObj, newState.snapshotObj)
             : { patches: [], warnings: [] };
