@@ -74,6 +74,7 @@ export class PathPropertyPopup extends HTMLElement {
         this._togglingDirection = false;
         this._strokeSnapshot = null;
         this._skipCommitTarget = null;
+        this._hadCurves = false;
     }
 
     get docked() { return this._docked; }
@@ -180,9 +181,14 @@ export class PathPropertyPopup extends HTMLElement {
         const nextState = e?.detail?.afterState;
         const actionType = e?.detail?.action?.type;
         if (!nextState || typeof nextState !== 'object') {
+            this._hadCurves = false;
             this._hide();
             return;
         }
+
+        // CHANGE_NODE_SELECTION never changes curve selection — skip
+        // iteration of 1500+ tree IDs when no curves were previously selected.
+        if (actionType === 'CHANGE_NODE_SELECTION' && !this._hadCurves) return;
 
         const selIds = nextState.selectedTreeIds || [];
         const curves = [];
@@ -197,6 +203,7 @@ export class PathPropertyPopup extends HTMLElement {
         });
 
         if (curves.length === 0) {
+            this._hadCurves = false;
             if (this._docked) {
                 appEventBus.emit(PATH_PROPS_DOCKED, { curveIds: [], treeIds: [] });
             }

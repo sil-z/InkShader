@@ -38,6 +38,11 @@ export class EditorStore {
         this._recordHistory = typeof recordHistory === "function" ? recordHistory : null;
         this._undoHistory = typeof undoHistory === "function" ? undoHistory : null;
         this._redoHistory = typeof redoHistory === "function" ? redoHistory : null;
+        this._rafPending = false;
+        this._pendingAction = null;
+        this._pendingBefore = null;
+        this._pendingAfter = null;
+        this._pendingResult = null;
         const canvas = this._getCanvas();
         const seed = buildInteractionSeedFromCanvas(canvas);
         this.state = {
@@ -311,49 +316,71 @@ export class EditorStore {
         this._mergeViewAfterDispatch();
     }
 
-    _emitPayload(actionLike, beforeSnapshot, result) {
-        const afterSnapshot = this._snapshotState(this.state);
-        this.emit(CANVAS_EVENTS.STATE_CHANGED, {
-            action: {
-                type: actionLike.type,
-                payload: actionLike.payload ? { ...actionLike.payload } : {},
-                meta: actionLike.meta ? { ...actionLike.meta } : {},
+    _scheduleRafEmit(actionLike, beforeSnapshot, afterSnapshot, result) {
+        if (!this._rafPending) {
+            // First call: keep the original beforeSnapshot for accurate diffing
+            this._pendingBefore = beforeSnapshot;
+        }
+        this._pendingAction = actionLike;
+        this._pendingAfter = afterSnapshot ?? this._snapshotState(this.state);
+        this._pendingResult = result;
+        if (this._rafPending) return;
+        this._rafPending = true;
+        requestAnimationFrame(() => {
+            this._rafPending = false;
+            const action = this._pendingAction;
+            const before = this._pendingBefore ?? this._pendingAfter;
+            const after = this._pendingAfter;
+            const resultVal = this._pendingResult;
+            if (!action || !after) return;
+            this._pendingAction = null;
+            this._pendingBefore = null;
+            this._pendingAfter = null;
+            this._pendingResult = null;
+            const _e0 = performance.now();
+            this.emit(CANVAS_EVENTS.STATE_CHANGED, {
+                action: {
+                    type: action.type,
+                    payload: action.payload ? { ...action.payload } : {},
+                    meta: action.meta ? { ...action.meta } : {},
+                    timestamp: action.timestamp ?? Date.now()
+                },
+                beforeState: before,
+                afterState: after,
+                state: after,
+                result: resultVal,
                 timestamp: Date.now()
-            },
-            beforeState: beforeSnapshot,
-            afterState: afterSnapshot,
-            state: afterSnapshot,
-            result,
-            timestamp: Date.now()
+            });
+            const _e1 = performance.now();
+            if (_e1 - _e0 > 10) {
+                console.warn(`[PERF] _emitStateChanged: ${(_e1-_e0).toFixed(1)}ms action=${action?.type}`);
+            }
         });
+    }
+
+    _emitPayload(actionLike, beforeSnapshot, result) {
+        this._scheduleRafEmit(actionLike, beforeSnapshot, null, result);
     }
 
     _emitStateChanged(action, beforeSnapshot, afterSnapshot, result) {
-        const after = afterSnapshot ?? this._snapshotState(this.state);
-        const before = beforeSnapshot ?? after;
-        this.emit(CANVAS_EVENTS.STATE_CHANGED, {
-            action: {
-                type: action.type,
-                payload: action.payload ? { ...action.payload } : {},
-                meta: action.meta ? { ...action.meta } : {},
-                timestamp: action.timestamp ?? Date.now()
-            },
-            beforeState: before,
-            afterState: after,
-            state: after,
-            result,
-            timestamp: Date.now()
-        });
+        this._scheduleRafEmit(action, beforeSnapshot, afterSnapshot, result);
     }
 
     _finalizeDispatch(action, beforeSnapshot, result) {
+        const _f0 = performance.now();
         this._postDispatchInteraction(action);
+        const _f1 = performance.now();
         if (shouldCommitCommandAfterDispatch(action, result)) {
             this.commitCommand(action);
         }
+        const _f2 = performance.now();
         const afterSnapshot = this._snapshotState(this.state);
         if (!this._stateEquals(beforeSnapshot, afterSnapshot)) {
             this._emitStateChanged(action, beforeSnapshot, afterSnapshot, result);
+        }
+        const _f3 = performance.now();
+        if (_f3 - _f0 > 10) {
+            console.warn(`[PERF] _finalizeDispatch: post=${(_f1-_f0).toFixed(1)}ms commit=${(_f2-_f1).toFixed(1)}ms emit(queued)=${(_f3-_f2).toFixed(1)}ms TOTAL=${(_f3-_f0).toFixed(1)}ms`);
         }
     }
 
@@ -363,6 +390,7 @@ export class EditorStore {
         const beforeSnapshot = this._snapshotState(this.state);
         const run = typeof executor === "function" ? executor : () => undefined;
 
+        const _d0 = performance.now();
         if (!isHistoryNav) {
             this._preDispatchInteraction(action);
         }
@@ -377,6 +405,7 @@ export class EditorStore {
             }
             throw error;
         }
+        const _d1 = performance.now();
 
         if (result && typeof result.then === "function") {
             return result.then((resolved) => {
@@ -388,6 +417,10 @@ export class EditorStore {
 
         if (isHistoryNav) return result;
         this._finalizeDispatch(action, beforeSnapshot, result);
+        const _d2 = performance.now();
+        if (_d2 - _d0 > 10) {
+            console.warn(`[PERF] dispatchAction: preDispatch+run=${(_d1-_d0).toFixed(1)}ms finalize=${(_d2-_d1).toFixed(1)}ms TOTAL=${(_d2-_d0).toFixed(1)}ms action=${action?.type}`);
+        }
         return result;
     }
 

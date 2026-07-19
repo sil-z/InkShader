@@ -8,6 +8,7 @@ import { getCanvasCommandPort } from "../ports/canvas_command_host_port.js";
  * (or resolveMarkersByIds) — per-id full domMap scans are O(|selection| × |domMap|).
  */
 export function buildMarkerIdIndex(curveManager) {
+    const t0 = performance.now();
     const byId = new Map();
     if (!curveManager?.domMap) return byId;
     const cbId = curveManager.curveById;
@@ -20,6 +21,8 @@ export function buildMarkerIdIndex(curveManager) {
             byId.set(marker.id, { marker, live: isLive });
         }
     }
+    const t1 = performance.now();
+    if (t1 - t0 > 5) console.warn(`[PERF] buildMarkerIdIndex: ${(t1-t0).toFixed(1)}ms domMap=${curveManager.domMap.size} entries=${byId.size}`);
     return byId;
 }
 

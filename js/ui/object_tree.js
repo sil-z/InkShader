@@ -103,7 +103,7 @@ export class ObjectTree extends HTMLElement {
                 selectionChanged ||
                 actionType === "SET_TREE_SELECTION" ||
                 actionType === "SET_ACTIVE_GROUP" ||
-                actionType === "CHANGE_NODE_SELECTION" ||
+                (actionType === "CHANGE_NODE_SELECTION" && selectionChanged) ||
                 actionType === "CHANGE_OBJECT_SELECTION"
             ) {
                 this._patchTreeSelectionOnly(actionType);

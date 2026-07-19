@@ -12,6 +12,7 @@ import {
     resolveRefsFromSnapshot
 } from "../domain/selection/interaction_snapshot_query.js";
 import {
+    buildMarkerIdIndex,
     resolveMarkerById,
     resolveMarkersFromCanvas
 } from "../domain/selection/marker_resolution.js";
@@ -34,11 +35,15 @@ export function deriveObjectSelectionFromStoreState(storeState, curveManager) {
         refIds.add(nodeRefId);
         return { curveIds: [], refIds: [...refIds] };
     }
-    for (const markerId of storeState.selectedNodeIds || []) {
-        const marker = resolveMarkerById(curveManager, markerId);
-        if (!marker) continue;
-        const curve = curveManager?.find_curve_by_dom?.(marker);
-        if (curve?.id) curveIds.add(curve.id);
+    const markerIds = storeState.selectedNodeIds || [];
+    if (markerIds.length > 0) {
+        const markerIndex = buildMarkerIdIndex(curveManager);
+        for (const markerId of markerIds) {
+            const entry = markerIndex.get(markerId);
+            if (!entry?.marker) continue;
+            const curve = curveManager?.find_curve_by_dom?.(entry.marker);
+            if (curve?.id) curveIds.add(curve.id);
+        }
     }
     return { curveIds: [...curveIds], refIds: [...refIds] };
 }
@@ -83,8 +88,10 @@ export function mergeInteractionFromStoreState(storeState = {}) {
     if (!storeState || typeof storeState !== "object") {
         return createEmptyInteractionSnapshot();
     }
+    const treeIds = [...(storeState.selectedTreeIds || [])];
     return {
-        selectedTreeIds: [...(storeState.selectedTreeIds || [])],
+        selectedTreeIds: treeIds,
+        selectedTreeIdsSet: new Set(treeIds),
         selectedNodeMarkerIds: new Set(storeState.selectedNodeIds || []),
         selectedCurveIds: new Set(storeState.selectedCurveIds || []),
         selectedRefIds: [...(storeState.selectedRefIds || [])],
@@ -146,7 +153,7 @@ export class EditorInteractionState {
     get focusedSeqIdx() { return this._cached.focusedSeqIdx; }
 
     hasTreeSelection(id) {
-        return this._cached.selectedTreeIds.includes(id);
+        return this._cached.selectedTreeIdsSet.has(id);
     }
 
     get nodeSelectionCount() {

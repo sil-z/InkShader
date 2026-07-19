@@ -80,8 +80,12 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
 
     const nodeIds = state.selectedNodeIds || [];
     if (nodeIds.length > 0) {
+        const t0 = performance.now();
         const markers = resolveMarkersByIds(cm, nodeIds);
+        const t1 = performance.now();
         cm.changeNodeSelection("replace", markers, state._nodeSelectionRefId ?? null);
+        const t2 = performance.now();
+        if (t2 - t0 > 5) console.warn(`[PERF] applyInteractionFromStore: resolveMarkersByIds=${(t1-t0).toFixed(1)}ms changeNodeSelection=${(t2-t1).toFixed(1)}ms markers=${markers.length}`);
         return;
     }
 

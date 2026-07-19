@@ -266,7 +266,9 @@ export function reduceInteractionState(state, action, curveManager = null) {
         default:
             return state;
     }
-    return finalizeInteractionState(next, curveManager, action?.type);
+    // NOTE: Do NOT call finalizeInteractionState here — callers
+    // (_preDispatchInteraction / commitInteraction) always finalize after reduce.
+    return next;
 }
 
 export const INTERACTION_PAYLOAD_ACTIONS = Object.freeze(

@@ -37,6 +37,7 @@ export class PropertyPanel extends HTMLElement {
         this.currentTool = 'DRAW';
         this.globalEventTrackers = [];
         this.lastSignature = "";
+        this._lastStructSig = "";
         this._drawToolSettings = null;
         this._nodePropsDocked = true;
         this._pathPropsDocked = true;
@@ -510,21 +511,25 @@ export class PropertyPanel extends HTMLElement {
         }
 
         const activeGroupId = this.interaction.activeGroupId;
-        let sig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${nodeCount}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}_${activeGroupId || ''}`;
+        // Structure signature: what sections to show (excludes exact nodeCount to
+        // avoid full DOM rebuild on pure node selection changes; includes boolean
+        // hasNodes for npp section visibility).
+        const hasNodes = nodeCount > 0;
+        const structSig = `${hasRef}_${hasGroup}_${hasPath}_${selectedCurves.length}_${hasBounds}_${hasNodes}_${this._nodePropsDocked}_${this._pathPropsDocked}_${this._bboxDocked}_${activeGroupId || ''}`;
 
         // Track path section structure separately so unrelated changes
-        // (hasBounds, nodeCount) don't force a full DOM rebuild of the
-        // path section, which destroys and recreates the direction
-        // toggle button and causes a visible flash.
+        // don't force a full DOM rebuild of the path section, which
+        // destroys and recreates the direction toggle button.
         const pathSig = `${hasPath}_${this._pathPropsDocked}`;
 
-        if (this.lastSignature !== sig) {
+        if (this._lastStructSig !== structSig || !this.lastSignature) {
             if (this._focusedInput) {
                 this.patchValues(item, selectedCurves, bounds, nodeCount, selectedIds);
                 return;
             }
             this.buildDOM(hasRef, hasGroup, hasPath, selectedCurves.length, hasBounds, nodeCount, pathSig !== this._lastPathSig);
-            this.lastSignature = sig;
+            this._lastStructSig = structSig;
+            this.lastSignature = structSig;
             this._lastPathSig = pathSig;
         }
 
@@ -1267,6 +1272,12 @@ export class PropertyPanel extends HTMLElement {
                 patch('prop_out_y', multiNode ? '' : (hasC2 ? (0.8 * ch - node.control2.y).toFixed(1) : ''), !hasC2 || multiNode);
                 patch('prop_out_a', multiNode ? '' : (hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC2 || multiNode);
             }
+        }
+
+        // Update node count display when npp section exists (no buildDOM needed for count-only change).
+        const countEl = this.container.querySelector('.prop_node_count');
+        if (countEl && countEl.textContent !== String(nodeCount)) {
+            countEl.textContent = nodeCount > 1 ? `${nodeCount} ${t('prop.nodes_selected', 'nodes selected')}` : '';
         }
     }
 

@@ -475,6 +475,7 @@ export class CanvasRendererService {
      * Used as the node layer cache; drawn via single blit each frame.
      */
     _captureNodeLayerCache() {
+        const t0 = performance.now();
         const c = this.canvas;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();
         if (width <= 0 || height <= 0) return;
@@ -521,6 +522,8 @@ export class CanvasRendererService {
         cache.selCount = c.getInteractionSnapshot()?.selectedNodeMarkerIds?.size || 0;
         cache.activeTool = c.getActiveTool?.() || null;
         this._nodeLayerCache = cache;
+        const t1 = performance.now();
+        if (t1 - t0 > 10) console.warn(`[PERF] _captureNodeLayerCache: ${(t1-t0).toFixed(1)}ms sel=${cache.selCount} ${width}x${height} dpr=${dpr}`);
     }
 
     /**
@@ -704,6 +707,7 @@ export class CanvasRendererService {
     }
 
     _tryRenderFromStableScene() {
+        const t0 = performance.now();
         const c = this.canvas;
         const cache = this._stableSceneCache;
         if (!cache) { return false; }
@@ -734,9 +738,11 @@ export class CanvasRendererService {
         if (!this._blitSnapshot(cache)) return false;
         // Node layer cache: blit cached overlay (all nodes + selection, no hover).
         // CRITICAL: skip forEachPathPass traversal entirely — iterating 4096 nodes takes ~5s.
+        const t1 = performance.now();
         if (!this._isNodeLayerCacheValid()) {
             this._captureNodeLayerCache();
         }
+        const t2 = performance.now();
         if (this._nodeLayerCache) {
             // Body-shaped evenodd clip: exclude the hovered node body (and
             // for control hover, the handle sprite) so those pixels draw
@@ -757,6 +763,8 @@ export class CanvasRendererService {
         // Render chrome on top of cached scene (previewData, guidelines, metrics, dividers).
         // Paths + nodes are already in their respective caches; skip both for perf.
         this._renderScene({ clear: false, skipPathLayer: true, skipNodes: true });
+        const t3 = performance.now();
+        if (t3 - t0 > 10) console.warn(`[PERF] _tryRenderFromStableScene: blit+checks=${(t1-t0).toFixed(1)}ms nodeCache=${(t2-t1).toFixed(1)}ms rest=${(t3-t2).toFixed(1)}ms TOTAL=${(t3-t0).toFixed(1)}ms`);
         return true;
     }
 
@@ -1196,8 +1204,10 @@ export class CanvasRendererService {
             // (click) rather than shrinking until the next mousemove.
             if (c.hovered_node_marker) this._drawHoveredNode();
         } else {
+        const _perfLabel = `[PERF] nodeOverlay_${Math.random().toString(36).slice(2,6)}`;
+        const _perfT0 = performance.now();
         forEachPathPass((i, seqOffsetX, curveDataList, nodeCurveDataList) => {
-            // ── Hovered curve segment overlay ──
+            const _pt0 = performance.now();
             if (!overlayOnly && c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
                 const seg = c.hovered_curve_segment;
                 for (const cd of curveDataList) {
@@ -1273,7 +1283,11 @@ export class CanvasRendererService {
                     }
                 }
             }
+            const _pt1 = performance.now();
+            if (_pt1 - _pt0 > 5) console.warn(`[PERF] nodeOverlay pass i=${i} curves=${nodeCurveDataList?.length || 0} took ${(_pt1-_pt0).toFixed(1)}ms`);
         }); // end forEachPathPass overlay
+        const _perfT1 = performance.now();
+        if (_perfT1 - _perfT0 > 10) console.warn(`[PERF] nodeOverlay ALL PASSES took ${(_perfT1-_perfT0).toFixed(1)}ms`);
         } // end else (tool needs overlay)
         if (nodesOnly) {
             return;

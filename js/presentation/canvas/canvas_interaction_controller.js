@@ -1,9 +1,6 @@
 // js/presentation/canvas/canvas_interaction_controller.js — Tool dispatcher (delegates to specialized tools)
-import {
-    resolveCurvesFromSnapshot,
-    resolveRefsFromSnapshot,
-    resolveMarkerById
-} from "../../app/editor_interaction_state.js";
+import { buildMarkerIdIndex } from "../../domain/selection/marker_resolution.js";
+import { resolveCurvesFromSnapshot, resolveRefsFromSnapshot } from "../../domain/selection/interaction_snapshot_query.js";
 import { TransformTool } from "./tools/transform_tool.js";
 import { SelectTool } from "./tools/select_tool.js";
 import { DrawTool } from "./tools/draw_tool.js";
@@ -86,9 +83,13 @@ export class CanvasInteractionController {
             this._pushPreviewKeys(keys, curve.id, refId);
         };
 
-        for (const markerId of ix.selectedNodeMarkerIds) {
-            const marker = resolveMarkerById(cm, markerId);
-            if (marker) pushMarker(marker);
+        // Build index once O(|domMap|), not resolveMarkerById per marker O(|selected| × |domMap|)
+        const markerIndex = ix.selectedNodeMarkerIds?.size > 0 ? buildMarkerIdIndex(cm) : null;
+        if (markerIndex) {
+            for (const markerId of ix.selectedNodeMarkerIds) {
+                const entry = markerIndex.get(markerId);
+                if (entry?.marker) pushMarker(entry.marker);
+            }
         }
         if (c.dragging_node_marker) {
             pushMarker(c.dragging_node_marker, c.dragging_node_refId || null);
