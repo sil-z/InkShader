@@ -258,6 +258,15 @@ export class CurveStore {
         let prevNode = node.lastOnCurve;
         let nextNode = node.nextOnCurve;
 
+        // Closed curve: wrap around to the opposite end — for closed curves
+        // startNode.lastOnCurve is null and endNode.nextOnCurve is null, so
+        // without wrapping one adjacent node misses its symmetric→smooth
+        // degradation when deleting startNode or endNode.
+        if (curve.closed) {
+            if (!prevNode && node === curve.startNode) prevNode = curve.endNode;
+            if (!nextNode && node === curve.endNode) nextNode = curve.startNode;
+        }
+
         if (prevNode && prevNode.control_mode === 2) prevNode.control_mode = 1;
         if (nextNode && nextNode.control_mode === 2) nextNode.control_mode = 1;
 

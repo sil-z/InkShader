@@ -198,7 +198,19 @@ export class I18nManager {
 
     static init() {
         this.observer = new MutationObserver(mutations => {
-            if (mutations.some(m => m.addedNodes.length > 0)) this.translateDOM();
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
+                    if (node.nodeType !== 1) continue; // text/comment — no i18n attrs
+                    if (node.hasAttribute?.('data-i18n') || node.hasAttribute?.('data-i18n-tip') || node.hasAttribute?.('data-i18n-placeholder')) {
+                        this.translateDOM();
+                        return;
+                    }
+                    if (node.querySelector?.('[data-i18n],[data-i18n-tip],[data-i18n-placeholder]')) {
+                        this.translateDOM();
+                        return;
+                    }
+                }
+            }
         });
         this.translateDOM();
     }

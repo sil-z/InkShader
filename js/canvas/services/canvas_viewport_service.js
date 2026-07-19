@@ -23,7 +23,9 @@ export class CanvasViewportService {
     }
 
     _canvasRect() {
-        const el = this.canvas.canvasObj;
+        const c = this.canvas;
+        if (c._cachedCanvasRect) return c._cachedCanvasRect;
+        const el = c.canvasObj;
         if (!el || typeof el.getBoundingClientRect !== "function") return null;
         return el.getBoundingClientRect();
     }
@@ -77,7 +79,7 @@ export class CanvasViewportService {
             return { x: event.offsetX, y: event.offsetY };
         }
 
-        const rect = el.getBoundingClientRect();
+        const rect = this.canvas._cachedCanvasRect || el.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) {
             return { x: clientX - rect.left, y: clientY - rect.top };
         }

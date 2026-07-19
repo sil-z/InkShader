@@ -206,7 +206,10 @@ export class CanvasUtilsService {
                         if (cdist <= threshold) {
                             let z = node.last_touched || 0;
                             let isSel = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
-                            hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                            // Prefer control handles when distance is tied with main node (smooth/reflecting
+                            // nodes have handles at the same position). The tiny epsilon breaks ties so the
+                            // control handle sorts before the main node in the sort below.
+                            hits.push({ marker: ctrlMarker, dist: cdist - 0.001, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
                         }
                     };
                     checkCtrl(node.control1, node.control1?.main_node);
@@ -303,7 +306,7 @@ export class CanvasUtilsService {
                         if (cdist <= threshold) {
                             const z = node.last_touched || 0;
                             const isSel = snapshotIncludesCurve(ix, node.curve) || curveIsNodeSelected(node.curve);
-                            hits.push({ marker: ctrlMarker, dist: cdist, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                            hits.push({ marker: ctrlMarker, dist: cdist - 0.001, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
                         }
                     };
                     checkCtrl(node.control1, node.control1?.main_node);

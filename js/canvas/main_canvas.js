@@ -102,6 +102,17 @@ class MainCanvasBase extends HTMLElement {
         this._hoveredRulerEndpoint = null;
         this._zoomPreviewTimer = null;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
+        // Track is_dirty assignments for debugging
+        this._dirtyStack = false; let _is_dirty = true;
+        Object.defineProperty(this, 'is_dirty', { configurable: true,
+          get() { return _is_dirty; },
+          set(v) {
+            if (v === true && !_is_dirty) {
+              this._dirtyStack = new Error().stack?.split('\n').slice(2,6).join('|') || '';
+            }
+            _is_dirty = v;
+          }
+        });
         /** During high-frequency edits, only these curve ids use smart-stroke preview (skeleton + browser lineWidth) */
         this._interactiveStrokePreviewIds = new Set();
         /** Bumped when path paints must be rebuilt (geometry / sequence / theme). Selection does not bump. */

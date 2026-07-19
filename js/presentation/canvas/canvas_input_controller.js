@@ -66,17 +66,14 @@ export class CanvasInputController {
         if (c.mouse_pos_output && c.current_state !== 'PANNING') {
             const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
             const baselineWorldY = 0.8 * c.canvas_size_height;
-            c.mouse_pos_output.textContent = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
+            c._pendingMouseText = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
         }
         if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
-            const pa = c.painting_area.getBoundingClientRect();
+            const pa = c._cachedPaintingRect || c.painting_area.getBoundingClientRect();
             const px = e.clientX - pa.left;
             const py = e.clientY - pa.top;
             const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
-            c._rulerIndicatorH.classList.toggle('is-visible', inCanvas);
-            c._rulerIndicatorH.style.left = `${px - 5}px`;
-            c._rulerIndicatorV.classList.toggle('is-visible', inCanvas);
-            c._rulerIndicatorV.style.top = `${py - 5}px`;
+            c._pendingRulerState = { px, py, inCanvas };
         }
         if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
         if ((tool === 'SELECT' || tool === 'NODE') && c.is_box_selecting) {
@@ -120,7 +117,13 @@ export class CanvasInputController {
             return;
         }
 
-        if (c.current_state === 'IDLE') {
+        // Throttle expensive geometry hit-testing to ~30Hz (max ~32ms interval).
+        // Hover feedback at this rate feels instant but avoids ~8ms of JS per mousemove.
+        const _hitTestBudget = c._lastHitTestTime || 0;
+        const _canHitTest = performance.now() - _hitTestBudget >= 32;
+        if (_canHitTest) c._lastHitTestTime = performance.now();
+
+        if (c.current_state === 'IDLE' && _canHitTest) {
             let hitResult = c.utils.hitTestNode(mouseX, mouseY);
             let hitMarker = hitResult ? hitResult.marker : null;
             // Nodes sit above strokes: only test curve when no node is under the cursor.
@@ -163,6 +166,8 @@ export class CanvasInputController {
             if (hoverStateChanged) c.is_dirty = true;
         }
         if (c.current_state === 'IDLE' && tool === 'SELECT') {
+            // SELECT handles + hitTestCurve for cursor are throttled with the same budget.
+            if (_canHitTest) {
             let handleHit = c.utils.hitTestTransformHandles(mouseX, mouseY);
             if (handleHit === 'tl' || handleHit === 'br') c.canvasObj.dataset.cursor = 'nwse-resize';
             else if (handleHit === 'tr' || handleHit === 'bl') c.canvasObj.dataset.cursor = 'nesw-resize';
@@ -182,6 +187,7 @@ export class CanvasInputController {
                 const ix = c.getInteractionSnapshot();
                 const refItem = hitCurveSegment?.refId ? c.curve_manager.treeItems.get(hitCurveSegment.refId) : null;
                 c.canvasObj.dataset.cursor = (hitCurveSegment && (snapshotIncludesCurve(ix, hitCurveSegment.curve) || snapshotIncludesRef(ix, refItem))) ? 'move' : 'default';
+            }
             }
         } else if (c.hovered_node_marker) {
             // Node under cursor: do not keep guide/divider resize cursors.
@@ -459,15 +465,18 @@ export class CanvasInputController {
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
                 const isDrawingTool = c.getActiveTool() === 'DRAW' || c.getActiveTool() === 'ELLIPSE';
                 const tool = c.getActiveTool();
-                const nodeUnderCursor = (tool === 'NODE' || tool === 'DRAW')
-                    ? c.utils.hitTestNode(pointer.x, pointer.y)
-                    : null;
+                // handleWindowMouseMove (window mousemove) runs AFTER this handler (bubble phase)
+                // and already manages node hover + clears guide/divider/metric hovers when a node
+                // is under cursor. Avoid duplicating hitTestNode here — use the previous frame's
+                // hovered_node_marker to suppress guide hit testing.
+                const hasNodeUnderCursor = (tool === 'NODE' || tool === 'DRAW')
+                    && !!c.hovered_node_marker;
                 if (c.guideline_lock) {
                     if (c._hoveredUserGuideId !== null) {
                         c._hoveredUserGuideId = null;
                         c.is_dirty = true;
                     }
-                } else if (nodeUnderCursor) {
+                } else if (hasNodeUnderCursor) {
                     // Nodes sit above guides — do not steal hover / cursor.
                     if (c._hoveredUserGuideId !== null) {
                         c._hoveredUserGuideId = null;
@@ -483,13 +492,13 @@ export class CanvasInputController {
                         c.is_dirty = true;
                     }
                 }
-                const divHit = nodeUnderCursor ? null : c.utils.hitTestDividerLines(pointer.x, pointer.y);
+                const divHit = hasNodeUnderCursor ? null : c.utils.hitTestDividerLines(pointer.x, pointer.y);
                 const divId = divHit ? divHit.groupId + "-" + divHit.seqIndex + (divHit.isLeftEdge ? "-l" : "-r") : null;
                 if (c._hoveredDividerId !== divId) {
                     c._hoveredDividerId = divId;
                     c.is_dirty = true;
                 }
-                const metricKey = nodeUnderCursor ? null : c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
+                const metricKey = hasNodeUnderCursor ? null : c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
                 if (c._hoveredMetricGuideKey !== metricKey) {
                     c._hoveredMetricGuideKey = metricKey;
                     if (metricKey && !isDrawingTool) c.canvasObj.dataset.cursor = 'ns-resize';

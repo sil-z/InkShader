@@ -196,6 +196,11 @@ export class Curve {
         if (!nextNode && this.closed && this.endNode === startNode) { nextNode = this.startNode; isClosingSegment = true; }
         if (!nextNode) return null;
 
+        // Splitting a segment breaks the symmetric constraint for the
+        // adjacent nodes — degrade from symmetric (2) to smooth (1).
+        if (startNode.control_mode === 2) startNode.control_mode = 1;
+        if (nextNode.control_mode === 2) nextNode.control_mode = 1;
+
         let p0 = { x: startNode.x, y: startNode.y };
         let p1 = startNode.control1 ? { x: startNode.control1.x, y: startNode.control1.y } : p0;
         let p2 = nextNode.control2 ? { x: nextNode.control2.x, y: nextNode.control2.y } : { x: nextNode.x, y: nextNode.y };

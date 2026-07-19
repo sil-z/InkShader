@@ -215,9 +215,13 @@ export class CurveManager {
         const curve = controlNode?.curve;
         const ok = this.curveStore.deleteControlNode(marker);
         if (ok) {
-            if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
-            else this.notifyModelUpdate();
-            this._markDirtyByMarker(marker);
+            if (curve?.groupId) {
+                this._markDirtyByMarker(marker);
+                this.notifyTreeUpdate();
+            } else {
+                this.notifyModelUpdate();
+                this._markDirtyByMarker(marker);
+            }
         }
         return ok;
     }
@@ -266,7 +270,11 @@ export class CurveManager {
         if (result.isEmpty) {
             this.remove_curve(result.curve.id);
         } else {
-            this.invalidateGroupCache(result.curve.groupId);
+            // notifyTreeUpdate bumps _geometryEpoch so the renderer
+            // invalidates the stable-scene cache and redraws the modified
+            // curve path.  _markDirtyByMarker already registered the affected
+            // glyph, so tree caches are invalidated via dirty-glyph tracking.
+            this.notifyTreeUpdate();
         }
         return true;
     }

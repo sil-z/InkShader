@@ -76,10 +76,8 @@ export class DrawTool extends BaseTool {
 
         c.current_state = 'PAINTING_HANDLE';
         c.painting_handle_start = { x: mouseX, y: mouseY };
-        // Don't set interactive stroke preview for the current drawing curve:
-        // curves with stroke_width=0 rely on the skeleton line for visibility,
-        // but the skeleton is suppressed during interactive preview mode.
-        c.renderer.update_previewData(mouseX, mouseY);
+        // Preview hidden on press (requirement: no ghost preview during handle drag).
+        c.previewData = null;
         c.is_dirty = true;
     }
 
@@ -105,6 +103,9 @@ export class DrawTool extends BaseTool {
 
     handleMouseMovePaintingHandle(mouseX, mouseY) {
         const c = this.canvas;
+        c._paintMoveCount = (c._paintMoveCount || 0) + 1;
+        const moveSeq = c._paintMoveCount;
+
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
         let seqOffsetX = c.drawing_seq_offset !== undefined ? c.drawing_seq_offset : 0;
         const worldX = (mouseX - offsetX) / c.scale - seqOffsetX;
@@ -112,24 +113,24 @@ export class DrawTool extends BaseTool {
 
         if (!c.last_on_curve_node_marker || !c.current_curve) return;
 
+        // Defer adjustControlNode to rAF render tick (_renderPaintHandlePreview):
+        // batching multiple mousemove events into a single geometry update per
+        // frame avoids wasting half the calls (mousemove can fire at 120+ Hz while
+        // rAF maxes at 60 Hz) and eliminates the ~34ms handler delay.
         if (c.new_curve_handle === null && (Math.abs(mouseX - c.painting_handle_start.x) > 1 || Math.abs(mouseY - c.painting_handle_start.y) > 1)) {
             c.curve_manager.changeSmoothModeOnSingleNode(c.last_on_curve_node_marker, 2, true);
             let last_node_n = c.curve_manager.find_node_by_curve(c.last_on_curve_node_marker);
             if (!last_node_n?.control1?.main_node || !last_node_n.control2?.main_node) return;
             c.new_curve_handle = last_node_n.control1.main_node;
-
-            let other_x = 2 * last_node_n.x - worldX, other_y = 2 * last_node_n.y - worldY;
-            c.curve_manager.adjustControlNode(last_node_n.control1.main_node, worldX, worldY);
-            c.curve_manager.adjustControlNode(last_node_n.control2.main_node, other_x, other_y);
+            c._pendingPaintPos = { worldX, worldY };
             c.is_dirty = true;
         } else if (c.new_curve_handle !== null) {
-            let last_node_n = c.curve_manager.find_node_by_curve(c.last_on_curve_node_marker);
-            if (!last_node_n?.control1?.main_node || !last_node_n.control2?.main_node) return;
-            let other_x = 2 * last_node_n.x - worldX, other_y = 2 * last_node_n.y - worldY;
-
-            c.curve_manager.adjustControlNode(last_node_n.control1.main_node, worldX, worldY);
-            c.curve_manager.adjustControlNode(last_node_n.control2.main_node, other_x, other_y);
+            c._pendingPaintPos = { worldX, worldY };
             c.is_dirty = true;
+        }
+
+        if (moveSeq % 60 === 0) {
+            console.log(`[draw-move#${moveSeq}] deferred  state=${c.current_state}`);
         }
     }
 
@@ -145,6 +146,7 @@ export class DrawTool extends BaseTool {
             c.curve_manager.changeSmoothModeOnSingleNode(c.last_on_curve_node_marker, mode);
         }
         c.new_curve_handle = null;
+        c._pendingPaintPos = null;
         c.current_state = 'IDLE';
         c.dragging_node_marker = null; c.dragging_node_seq_idx = -1;
         c.dragging_node_matrix = null; c.dragging_node_refId = null;
@@ -176,6 +178,7 @@ export class DrawTool extends BaseTool {
         c.current_state = "IDLE";
         c.closing_path_on_mouseup = false;
         c.new_curve_handle = null;
+        c._pendingPaintPos = null;
         c.previewData = null;
         c.dragging_node_marker = null;
     }
