@@ -20,76 +20,17 @@ export class CanvasRendererService {
         this._rulerHState = null;
         this._rulerVState = null;
         this._canvasState = null;
-        this._viewportPreviewCache = null;
         this._nodeDragPreviewCache = null;
-        this._zoomPreviewCache = null;
         this._boxSelectPreviewCache = null;
         /** Path fills/strokes at a viewport; reused when only selection/hover overlays change. */
         this._stableSceneCache = null;
         /** Full overlay (nodes + selection effects, no hover) cached to offscreen canvas. */
         this._nodeLayerCache = null;
-        /** Last full-scene paint cost (ms); drives adaptive zoom/pan retained mode. */
-        this._lastExactRenderMs = 0;
 
     }
 
     /** Stable blit must be path-only (no nodes/chrome). Bump when capture point changes. */
     static STABLE_SCENE_FORMAT = 2;
-
-    /**
-     * Whether wheel-zoom should use bitmap scale preview instead of exact redraw.
-     * Light documents stay on exact zoom; heavy scenes blit until settle (snappy;
-     * path soft-blur + temporary node scale clear on settle — mid-gesture node
-     * redraw proved too expensive).
-     */
-    shouldUseRetainedZoomPreview() {
-        const measured = this._lastExactRenderMs || 0;
-        // Missed ~45fps budget on last exact paint → prefer blit zoom.
-        if (measured >= 22) return true;
-
-        const cm = this.canvas?.curve_manager;
-        if (!cm) return false;
-        // domMap includes on-curve + control markers (~2–3× vertices).
-        const markers = cm.domMap?.size || 0;
-        if (markers >= 1200) return true;
-
-        let booleanSegs = 0;
-        const smart = cm.curveStore?.smartStrokeCurves;
-        if (smart?.size) {
-            for (const curve of smart) {
-                const geom = curve?.cached_boolean_geometry;
-                if (!Array.isArray(geom)) continue;
-                for (const sub of geom) {
-                    booleanSegs += sub?.segments?.length || 0;
-                    if (booleanSegs >= 2500) return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /** Capture the current viewport for transient wheel-zoom compositing. */
-    beginZoomPreview() {
-        if (!this.shouldUseRetainedZoomPreview()) {
-            // Drop any stale preview so render stays on exact path.
-            if (this._zoomPreviewCache) {
-                this._zoomPreviewCache = null;
-            }
-            return false;
-        }
-        if (this._zoomPreviewCache) return true;
-        const cache = this._captureViewportSnapshot();
-        if (!cache) return false;
-        cache.baseScale = cache.scale;
-        this._zoomPreviewCache = cache;
-        return true;
-    }
-
-    /** End transient wheel-zoom compositing and request an exact frame. */
-    endZoomPreview() {
-        this._zoomPreviewCache = null;
-        this.canvas.is_dirty = true;
-    }
 
     /**
      * Instant framebuffer snapshot (drawImage of the current canvas).
@@ -122,38 +63,6 @@ export class CanvasRendererService {
         cache.viewportWidth = width;
         cache.viewportHeight = height;
         return cache;
-    }
-
-    /**
-     * Start transform-only panning from an instant snapshot of the current frame.
-     * Each pan tick: integer nearest-neighbor blit only (uncovered margins blank until
-     * pan end). Mid-gesture exact/strip fills were either chaotic or too expensive.
-     */
-    beginViewportPreview() {
-        const c = this.canvas;
-        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
-        if (width <= 0 || height <= 0) return false;
-        const existing = this._viewportPreviewCache;
-        if (
-            existing &&
-            existing.baseOffset?.x === c.offset.x &&
-            existing.baseOffset?.y === c.offset.y &&
-            existing.scale === c.scale &&
-            existing.viewportWidth === width &&
-            existing.viewportHeight === height
-        ) {
-            return true;
-        }
-        const cache = this._captureViewportSnapshot();
-        if (!cache) return false;
-        this._viewportPreviewCache = cache;
-        return true;
-    }
-
-    /** End transform-only panning and request an exact frame. */
-    endViewportPreview() {
-        this._viewportPreviewCache = null;
-        this.canvas.is_dirty = true;
     }
 
     /**
@@ -243,9 +152,7 @@ export class CanvasRendererService {
 
     /** Drop retained bitmaps (resize / theme / settled geometry). */
     invalidateRetainedCaches() {
-        this._viewportPreviewCache = null;
         this._nodeDragPreviewCache = null;
-        this._zoomPreviewCache = null;
         this._boxSelectPreviewCache = null;
         this._rulerHState = null;
         this._rulerVState = null;
@@ -352,20 +259,6 @@ export class CanvasRendererService {
             cache.height
         );
         return true;
-    }
-
-    /**
-     * Retained pan: integer nearest-neighbor blit from the gesture-start capture.
-     * Uncovered margins stay blank until endViewportPreview (exact paint).
-     * No mid-gesture exact refresh — that reintroduced severe pan jank.
-     */
-    _renderViewportPreview() {
-        const c = this.canvas;
-        const cache = this._viewportPreviewCache;
-        if (!cache || cache.scale !== c.scale) return false;
-        const dx = Math.round(c.offset.x - cache.baseOffset.x);
-        const dy = Math.round(c.offset.y - cache.baseOffset.y);
-        return this._blitSnapshot(cache, dx, dy);
     }
 
     _renderNodeDragPreview() {
@@ -526,44 +419,6 @@ export class CanvasRendererService {
 
         const dtPaths = tPaths - t0, dtBlit = tNodesBlit - tPaths,
               dtRest = tEnd - tNodesBlit;
-        const dtTotal = tEnd - t0;
-        if (dtPaths > 3 || dtBlit > 2 || dtRest > 2) {
-            console.log(`[paint-handle#${seq}] paths=${dtPaths.toFixed(1)}ms  blit+clip=${dtBlit.toFixed(1)}ms  rest=${dtRest.toFixed(1)}ms  total=${dtTotal.toFixed(1)}ms`);
-        }
-        return true;
-    }
-
-    _renderZoomPreview() {
-        const c = this.canvas;
-        const cache = this._zoomPreviewCache;
-        if (!cache || !cache.baseScale || !c.ctx) return false;
-        const factor = c.scale / cache.baseScale;
-        if (!Number.isFinite(factor) || factor <= 0) return false;
-        const { width, height } = c.viewportService.getCanvasUserSpaceSize();
-        if (width <= 0 || height <= 0) return false;
-        const ruler = c.ruler_size;
-        const baseLogicalX = ruler + cache.baseOffset.x;
-        const baseLogicalY = ruler + cache.baseOffset.y;
-        const currentLogicalX = ruler + c.offset.x;
-        const currentLogicalY = ruler + c.offset.y;
-        const tx = currentLogicalX - baseLogicalX * factor;
-        const ty = currentLogicalY - baseLogicalY * factor;
-        const dpr = cache.dpr;
-        c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        c.ctx.clearRect(0, 0, width, height);
-        // Delayed mode: soft blit only; settle does the exact crisp frame.
-        c.ctx.imageSmoothingEnabled = true;
-        c.ctx.drawImage(
-            cache.canvas,
-            0,
-            0,
-            cache.canvas.width,
-            cache.canvas.height,
-            tx,
-            ty,
-            cache.width * factor,
-            cache.height * factor
-        );
         return true;
     }
 
@@ -623,20 +478,15 @@ export class CanvasRendererService {
         const c = this.canvas;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();
         if (width <= 0 || height <= 0) return;
-        const t0 = performance.now();
-
         // ── Phase A: offscreen canvas allocation ──
         const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
-        const tCanvas = performance.now();
         const cache = this._createCacheCanvas(width, height, dpr);
         if (!cache) return;
-        const dtCanvas = performance.now() - tCanvas;
 
         // ── Phase B: render overlay to offscreen ──
         const originalCtx = c.ctx;
         const originalViewport = c.viewportConfig;
         const originalOffset = c.offset;
-        const tRender = performance.now();
         try {
             c.ctx = cache.ctx;
             // Match the main canvas rendering: nearest-neighbor for sprite blits
@@ -661,10 +511,8 @@ export class CanvasRendererService {
             c.viewportConfig = originalViewport;
             c.offset = originalOffset;
         }
-        const dtRender = performance.now() - tRender;
 
-        // ── Phase C: metadata + log ──
-        const tMeta = performance.now();
+        // ── Phase C: metadata ──
         cache.baseOffset = { x: c.offset.x, y: c.offset.y };
         cache.scale = c.scale;
         cache.viewportWidth = width;
@@ -673,10 +521,6 @@ export class CanvasRendererService {
         cache.selCount = c.getInteractionSnapshot()?.selectedNodeMarkerIds?.size || 0;
         cache.activeTool = c.getActiveTool?.() || null;
         this._nodeLayerCache = cache;
-        const totalMs = performance.now() - t0;
-        if (totalMs > 50) {
-            console.log(`[cache] render=${totalMs.toFixed(0)}ms  alloc=${dtCanvas.toFixed(1)}ms  scene=${dtRender.toFixed(0)}ms  (${width}x${height} @${dpr}x)`);
-        }
     }
 
     /**
@@ -918,8 +762,11 @@ export class CanvasRendererService {
 
     renderCanvas() {
         const state = this.canvas.current_state;
-        if (state === "PANNING" && this._renderViewportPreview()) return;
-        if (this._zoomPreviewCache && this._renderZoomPreview()) return;
+        if (state === "PANNING") {
+            this._renderScene();
+            return;
+        }
+
         if (state === "DRAGGING_NODE" && this._renderNodeDragPreview()) return;
         if (state === "DRAGGING_NODE") {
             this._renderScene({ sparseNodes: true });
@@ -927,17 +774,11 @@ export class CanvasRendererService {
         }
         if (state === "PAINTING_HANDLE" && this._renderPaintHandlePreview()) return;
         if (this.canvas.is_box_selecting && this._renderBoxSelectPreview()) return;
-        const t0 = performance.now();
         const hit = this._tryRenderFromStableScene();
-        const dt = performance.now() - t0;
         if (hit) {
-            if (dt > 500) console.log(`[rc] cache-hit ${dt.toFixed(0)}ms`);
             return;
         }
-        const tFull = performance.now();
         this._renderScene({ captureStableBeforeSelection: true });
-        const fullDt = performance.now() - tFull;
-        if (fullDt > 100) console.log(`[rc] full-render ${fullDt.toFixed(0)}ms`);
     }
 
     _renderScene({
@@ -967,8 +808,6 @@ export class CanvasRendererService {
     } = {}) {
         const c = this.canvas;
         if (!c.ctx) return;
-        const trackExactCost = clear && !overlayOnly && !skipPathLayer && !viewCullRect && !curveFilter && !pathsOnly && !nodesOnly;
-        const renderStartedAt = trackExactCost ? performance.now() : 0;
         const dpr = c.viewportConfig?.devicePixelRatio || c.env.getDevicePixelRatio();
         const { width: logicalW, height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
@@ -1262,13 +1101,9 @@ export class CanvasRendererService {
 
         // ── PASS 1: Curve fill + stroke ──
         // skipPathLayer: stable blit already has path pixels (avoid covering guides/chrome).
-        const tPass1 = performance.now();
         if (!skipPathLayer && !nodesOnly) {
-            let _pLoopMs = 0, _pFillMs = 0, _pStrokeMs = 0, _pCurveCount = 0;
-            const _pT0 = performance.now();
             forEachPathPass((i, seqOffsetX, curveDataList) => {
             // ── Fill (batched per-group; Path2D smart fills drawn individually) ──
-            const _tFill0 = performance.now();
             c.ctx.beginPath();
             let hasFill = false;
             const path2dFills = [];
@@ -1296,10 +1131,8 @@ export class CanvasRendererService {
             for (const item of path2dFills) {
                 fillSmartStrokePath2D(c.ctx, item.curve, item.viewport, p.path_fill_color);
             }
-            _pFillMs += performance.now() - _tFill0;
 
             // ── Stroke (per-curve) ──
-            const _tStroke0 = performance.now();
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
@@ -1312,18 +1145,9 @@ export class CanvasRendererService {
                         refId,
                         strokePreview: isCurveStrokePreview(c, cd.curve.id, refId)
                     });
-                    _pCurveCount++;
                 }
             }
-            _pStrokeMs += performance.now() - _tStroke0;
             });
-            _pLoopMs = performance.now() - _pT0 - _pFillMs - _pStrokeMs;
-            const dtP1 = performance.now() - tPass1;
-            if (_pCurveCount < 100 && dtP1 > 3) {
-                console.log(`[rc] pass1-paths: fill=${_pFillMs.toFixed(1)}ms  stroke=${_pStrokeMs.toFixed(1)}ms  loop=${_pLoopMs.toFixed(1)}ms  curves=${_pCurveCount}  total=${dtP1.toFixed(1)}ms`);
-            } else if (dtP1 > 100) {
-                console.log(`[rc] pass1-paths ${dtP1.toFixed(0)}ms  fill=${_pFillMs.toFixed(0)}ms  stroke=${_pStrokeMs.toFixed(0)}ms  loop=${_pLoopMs.toFixed(0)}ms  curves=${_pCurveCount}`);
-            }
         }
 
         // Path pixels only — nodes/chrome stay out so NODE→SELECT cannot leave marker ghosts,
@@ -1343,7 +1167,6 @@ export class CanvasRendererService {
 
         // Pan edge strips: paths only — skip nodes + chrome (exact frame on pan end).
         if (pathsOnly) {
-            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
             return;
         }
 
@@ -1351,9 +1174,6 @@ export class CanvasRendererService {
         // SELECT/MEASURE/ELLIPSE tools don't render node handles or hovered segments;
         // the forEachPathPass traversal is pure overhead. Skip it entirely.
         const _overlayTool = c.getActiveTool?.() || 'SELECT';
-        const _overlayNTokens = seqTokens.length;
-        let _overlayFnCalls = 0;
-        let tOverlay = 0;
         if (skipOverlay || _overlayTool === 'SELECT' || _overlayTool === 'MEASURE' || _overlayTool === 'ELLIPSE') {
             // no overlay work needed for these tools
         } else if (captureStableBeforeSelection && !this._isNodeLayerCacheValid()) {
@@ -1376,9 +1196,7 @@ export class CanvasRendererService {
             // (click) rather than shrinking until the next mousemove.
             if (c.hovered_node_marker) this._drawHoveredNode();
         } else {
-        tOverlay = performance.now();
         forEachPathPass((i, seqOffsetX, curveDataList, nodeCurveDataList) => {
-            _overlayFnCalls++;
             // ── Hovered curve segment overlay ──
             if (!overlayOnly && c.hovered_curve_segment && c.getActiveTool() !== "SELECT" && c.hovered_curve_segment.seqIndex === i) {
                 const seg = c.hovered_curve_segment;
@@ -1404,9 +1222,6 @@ export class CanvasRendererService {
 
             // ── Node handles ──
             if (!skipNodes && activeIndices.has(i)) {
-                const _tb4 = performance.now();
-                let _nCurves = 0; let _nNodes = 0;
-                const _tFilter = performance.now();
                 // Single filter pass: collect passing curves into _filtered[].
                 // Reads hot properties into locals to avoid repeated accessor dispatch (~4× faster).
                 const _filtered = [];
@@ -1424,13 +1239,11 @@ export class CanvasRendererService {
                 const _nFiltered = _filtered.length;
                 // Draw only from filtered list (no re-filtering needed).
                 if (_nFiltered > 0) {
-                    const _tFilterDone = performance.now();
                     for (const cd of _filtered) {
                         const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
                         const mapPt = createViewportTransform(viewport);
                         let start_node = cd.curve.startNode;
                         while (start_node !== null) {
-                            _nNodes++;
                             const marker = start_node.main_node;
                             if (excludeNodeMarkers?.size) {
                                 const c1m = start_node.control1?.main_node;
@@ -1458,32 +1271,18 @@ export class CanvasRendererService {
                             start_node = start_node.nextOnCurve;
                         }
                     }
-                    const _tDone = performance.now();
-                    const _dtF = _tDone - _tFilter;
-                    if (_dtF > 10) {
-                        console.log(`[rc] draw-filtered: filter=${(_tFilterDone-_tFilter).toFixed(0)}ms  draw=${(_tDone-_tFilterDone).toFixed(0)}ms  total=${_dtF.toFixed(0)}ms  curves=${_filtered.length} nodes=${_nNodes}`);
-                    }
                 }
-                const _dtN = performance.now() - _tb4;
-                if (_dtN > 100) console.log(`[rc] nodes=${_dtN.toFixed(0)}ms curves=${_nFiltered} nodes=${_nNodes}`);
             }
         }); // end forEachPathPass overlay
         } // end else (tool needs overlay)
-        if (_overlayFnCalls > 0) {
-            const dtOverlay = performance.now() - tOverlay;
-            if (dtOverlay > 50) console.log(`[rc] overlay=${dtOverlay.toFixed(0)}ms tokens=${_overlayNTokens} fnCalls=${_overlayFnCalls}`);
-        }
         if (nodesOnly) {
-            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
             return;
         }
         // Pan edge strips: paths + nodes only. Guides/selection already live on the blit;
         // re-emitting full chrome here was O(extra work) every frame for no benefit.
         if (viewCullRect) {
-            if (trackExactCost) this._lastExactRenderMs = performance.now() - renderStartedAt;
             return;
         }
-        const tChrome = performance.now();
         if (!overlayOnly && c.previewData && c.last_on_curve_node_marker) {
             const pd = c.previewData;
             c.ctx.beginPath(); c.ctx.moveTo(pd.p0_x, pd.p0_y); c.ctx.bezierCurveTo(pd.p1_x, pd.p1_y, pd.p2_x, pd.p2_y, pd.p3_x, pd.p3_y);
@@ -1926,14 +1725,6 @@ export class CanvasRendererService {
                     c.ctx.restore();
                 }
                 c.ctx.restore();
-            }
-        }
-        {
-            const tChromeEnd = performance.now();
-            const dtChrome = tChromeEnd - tChrome;
-            if (dtChrome > 200) console.log(`[rc] chrome=${dtChrome.toFixed(0)}ms`);
-            if (trackExactCost) {
-                this._lastExactRenderMs = tChromeEnd - renderStartedAt;
             }
         }
     }

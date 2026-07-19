@@ -129,9 +129,6 @@ export class DrawTool extends BaseTool {
             c.is_dirty = true;
         }
 
-        if (moveSeq % 60 === 0) {
-            console.log(`[draw-move#${moveSeq}] deferred  state=${c.current_state}`);
-        }
     }
 
     // =========================================================================

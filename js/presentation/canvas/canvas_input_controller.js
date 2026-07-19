@@ -811,7 +811,6 @@ export class CanvasInputController {
             let isCtrlLeftPan = (e.button === 0 && e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
             let isMiddlePan = (e.button === 1);
             if (isMiddlePan || isCtrlLeftPan) {
-                c.renderer.beginViewportPreview?.();
                 e.preventDefault(); c.current_state = 'PANNING';
                 c.canvasObj.dataset.cursor = 'move';
                 c.drag_start = { x: e.clientX, y: e.clientY }; c.offset_start = { x: c.offset.x, y: c.offset.y };
@@ -1654,7 +1653,6 @@ export class CanvasInputController {
             }
             if (c.current_state === 'PANNING') {
                 c.current_state = 'IDLE';
-                c.renderer.endViewportPreview?.();
                 c.editorStore?.syncViewFromCanvas?.();
                 c.history.saveCurrentViewState();
                 return;
@@ -1735,7 +1733,6 @@ export class CanvasInputController {
             }
             if(e.ctrlKey || e.altKey) {
                 if (c.current_state !== 'PANNING') {
-                    const useZoomPreview = c.renderer.beginZoomPreview?.() === true;
                     const viewport = c.viewportConfig || {};
                     const ruler_w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
                     const ruler_h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
@@ -1744,17 +1741,6 @@ export class CanvasInputController {
                     let isFixedCenter = e.altKey;
                     c.renderer.change_canvas_size(e.deltaY, logical_x, logical_y, isFixedCenter);
                     c.renderer.update_previewData(mouseX, mouseY); c.is_dirty = true;
-                    if (c._zoomPreviewTimer !== null && c._zoomPreviewTimer !== undefined) {
-                        globalThis.clearTimeout(c._zoomPreviewTimer);
-                        c._zoomPreviewTimer = null;
-                    }
-                    // Retained (blurry) zoom only settles after idle; exact zoom paints each tick.
-                    if (useZoomPreview) {
-                        c._zoomPreviewTimer = globalThis.setTimeout(() => {
-                            c._zoomPreviewTimer = null;
-                            c.renderer.endZoomPreview?.();
-                        }, 120);
-                    }
                 }
             }
         }, { passive: false });
