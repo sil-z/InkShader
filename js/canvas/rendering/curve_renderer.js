@@ -218,10 +218,13 @@ export function drawCurveStroke(
     const scale = viewport.scale ?? 1;
 
     if (strokePreview) {
-        // Skeleton centerline (see appendCurveFillPath); always stroke so dense movers stay visible.
-        if (renderMode === "stroke" || renderMode === "all") {
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = theme.path_stroke_color;
+        // During high-frequency editing, all strokes use direct lineWidth
+        // rendering with the actual stroke width. Smart objects temporarily
+        // skip the expensive boolean expand outline — they render as a simple
+        // stroked line, cheap enough for real-time editing.
+        if (curve.stroke_width > 0 && (renderMode === "stroke" || renderMode === "all")) {
+            ctx.lineWidth = curve.stroke_width * scale;
+            ctx.strokeStyle = theme.path_fill_color;
             ctx.stroke();
         }
     } else if (!curve.smart_stroke && curve.stroke_width > 0) {

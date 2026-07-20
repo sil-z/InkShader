@@ -205,6 +205,7 @@ export class CurveManager {
         const ok = this.curveStore.adjustControlNode(marker, x, y);
         if (ok) {
             this._markDirtyByMarker(marker);
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
             this.notifyModelUpdate();
         }
         return ok;
@@ -215,6 +216,7 @@ export class CurveManager {
         const curve = controlNode?.curve;
         const ok = this.curveStore.deleteControlNode(marker);
         if (ok) {
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
             if (curve?.groupId) {
                 this._markDirtyByMarker(marker);
                 this.notifyTreeUpdate();
@@ -232,7 +234,8 @@ export class CurveManager {
             const node = this.curveStore.find_node_by_curve(marker);
             const curve = node?.curve;
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
-            else this.notifyModelUpdate();
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+            if (!curve?.groupId) this.notifyModelUpdate();
             this._markDirtyByMarker(marker);
         }
         return ok;
@@ -244,7 +247,10 @@ export class CurveManager {
             // Keep boolean/group flat caches during interactive drag; mouseup flushes.
             this._markDirty(gid);
         }
-        if (changed) this.notifyModelUpdate();
+        if (changed) {
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+            this.notifyModelUpdate();
+        }
         return changed;
     }
 
@@ -254,7 +260,8 @@ export class CurveManager {
             const node = this.curveStore.find_node_by_curve(marker);
             const curve = node?.curve;
             if (curve?.groupId) this.invalidateGroupCache(curve.groupId);
-            else this.notifyModelUpdate();
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+            if (!curve?.groupId) this.notifyModelUpdate();
             this._markDirtyByMarker(marker);
         }
         return ok;
@@ -283,7 +290,8 @@ export class CurveManager {
         const result = this.curveStore.updateNodeProperty(marker, propId, numVal);
         if (!result) return false;
         if (result.curve?.groupId) this.invalidateGroupCache(result.curve.groupId);
-        else this.notifyModelUpdate();
+        this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+        if (!result.curve?.groupId) this.notifyModelUpdate();
         this._markDirtyByMarker(marker);
         return true;
     }
@@ -470,7 +478,14 @@ export class CurveManager {
     }
     setSingleObjectProperties(id, props) {
         this._markDirty(id);
-        return this.treeStore.setSingleObjectProperties(id, props);
+        const changed = this.treeStore.setSingleObjectProperties(id, props);
+        // Bump geometry epoch so the renderer invalidates its stable scene cache
+        // (visual-only property changes like `closed` don't go through notifyTreeUpdate,
+        // but they do change the rendered appearance — the stale cache would show the old state).
+        if (changed) {
+            this._geometryEpoch = (this._geometryEpoch || 0) + 1;
+        }
+        return changed;
     }
     toggleSingleObjectLock(id, l) {
         this._markDirty(id);

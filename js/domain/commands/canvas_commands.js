@@ -407,12 +407,15 @@ export class CanvasCommands {
      */
     changeSelectedObjectsTransform(hasChanged = false) {
         this.curve_manager.syncTreeSelectionFromCanvas();
-        this.notifyPropertiesUpdate();
-        this.is_dirty = true;
         if (hasChanged) {
             this.curve_manager.rebuildSpatialGrid();
             this._commitHistory("changeSelectedObjectsTransform");
+            // Bump geometry epoch so the renderer invalidates its stable scene cache
+            // (transform operations modify node positions without notifyTreeUpdate).
+            this.curve_manager._geometryEpoch = (this.curve_manager._geometryEpoch || 0) + 1;
         }
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
         return hasChanged;
     }
 
@@ -430,6 +433,7 @@ export class CanvasCommands {
         // recordHistory is requested so the snapshot delta is captured.
         if (!changed && !options.recordHistory) return false;
 
+        this.curve_manager._geometryEpoch = (this.curve_manager._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         this.curve_manager.rebuildSpatialGrid();
@@ -1476,6 +1480,7 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         this.curve_manager.rebuildSpatialGrid();
@@ -1597,6 +1602,7 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         this.curve_manager.rebuildSpatialGrid();
@@ -1767,6 +1773,7 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         cm.notifyModelUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;

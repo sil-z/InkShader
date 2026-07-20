@@ -41,6 +41,8 @@ export class GlyphSequenceBar extends HTMLElement {
         this._textSig = "";
         this._activeSig = "";
         this._offSig = "";
+        this._vpSig = "";
+        this._lastWidth = 0;
         this._previewCanvas = document.createElement("canvas");
         this._previewCanvas.width = 120;
         this._previewCanvas.height = 120;
@@ -80,14 +82,22 @@ export class GlyphSequenceBar extends HTMLElement {
         const onRender = () => {
             const c = this._canvas;
             if (!c) return;
-            if (c.current_state === 'DRAGGING_DIVIDER') {
-                this._render();
-                return;
-            }
             const offKey = `${c.offset?.x ?? 0},${c.scale}`;
             if (offKey !== this._offSig) {
                 this._offSig = offKey;
-                this._updatePositions();
+                // Full re-render to re-evaluate collapse/expand — the rendered
+                // width of each glyph changes with scale, so items that fit or
+                // overlap at one zoom level may not at another.
+                this._render();
+                return;
+            }
+            // Re-evaluate collapse/expand when container width changes
+            // (divider drag, window resize). The canvasrendered event fires
+            // after these resize scenarios complete.
+            const cw = this.clientWidth;
+            if (cw !== this._lastWidth) {
+                this._lastWidth = cw;
+                this._render();
             }
         };
         document.addEventListener("canvasrendered", onRender);
@@ -143,6 +153,7 @@ export class GlyphSequenceBar extends HTMLElement {
             const lastGi = lastGid ? EditorModel.getTreeItem(lastGid) : null;
             lastEnd += (lastOff + (lastGi?.advance ?? 1000)) * sc;
         }
+        const containerW = this.clientWidth;
         const deferred = [];
         for (let i = 0; i < tokens.length; i++) {
             const tok = tokens[i];
@@ -162,7 +173,8 @@ export class GlyphSequenceBar extends HTMLElement {
             const totMin = 20 + 2 + 20 + 2 + 20 + 2 + 20 + 2 + 20 + 2 + 20;
             const isLast = i === tokens.length - 1;
             const pd = { gid, name, codeStr, isMissing, idx: i, locked, hidden, active, sx, availW };
-            if (availW < 20 && !isLast) {
+            // Defer if squeezed between neighbours, or if doesn't fit in the container
+            if (availW < 20 || (sx + totMin > containerW && !isLast)) {
                 deferred.push(pd);
                 continue;
             }
@@ -250,9 +262,9 @@ export class GlyphSequenceBar extends HTMLElement {
                 this._showMergedPopup(e, deferred);
             });
             pos.appendChild(eb);
-            pos.style.left = `${firstSx}px`;
+            // Clamp ellipsis to visible area so overflow-hidden doesn't hide it
+            pos.style.left = `${Math.min(firstSx, containerW - 22)}px`;
             tr.appendChild(pos);
-            if (firstSx + 22 > lastEnd) lastEnd = firstSx + 22;
         }
     }
     // Lightweight position update when only viewport offset/scale changed

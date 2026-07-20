@@ -431,6 +431,7 @@ export class TreeStore {
                 curve._lastHash = null;
                 curve._booleanContentHash = null;
                 curve._booleanPath2D = null;
+                curve._invalidateBounds();
             }
             return changed;
         }

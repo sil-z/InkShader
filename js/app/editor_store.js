@@ -424,6 +424,24 @@ export class EditorStore {
         return result;
     }
 
+    /** Emit STATE_CHANGED synchronously (bypasses RAF deferral — for model/tree revisions that UI must receive immediately). */
+    _emitStateChangeNow(actionLike, beforeSnapshot, result) {
+        const afterState = this._snapshotState(this.state);
+        this.emit(CANVAS_EVENTS.STATE_CHANGED, {
+            action: {
+                type: actionLike.type,
+                payload: actionLike.payload ? { ...actionLike.payload } : {},
+                meta: actionLike.meta ? { ...actionLike.meta } : {},
+                timestamp: actionLike.timestamp ?? Date.now()
+            },
+            beforeState: beforeSnapshot,
+            afterState: afterState,
+            state: afterState,
+            result: result,
+            timestamp: Date.now()
+        });
+    }
+
     bumpModelRevision() {
         const canvas = this._getCanvas();
         const cm = canvas?.curve_manager;
@@ -458,7 +476,7 @@ export class EditorStore {
         };
         if (this._stateEquals(beforeState, next)) return;
         this.state = next;
-        this._emitPayload(
+        this._emitStateChangeNow(
             { type: "MODEL_REVISION", meta: { source: "model" } },
             beforeState,
             true
@@ -478,7 +496,7 @@ export class EditorStore {
         };
         if (this._stateEquals(beforeState, next)) return;
         this.state = next;
-        this._emitPayload(
+        this._emitStateChangeNow(
             { type: "TREE_REVISION", meta: { source: "tree" } },
             beforeState,
             true
