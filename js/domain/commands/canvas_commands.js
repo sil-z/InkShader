@@ -188,6 +188,7 @@ export class CanvasCommands {
         this.hovered_node_marker = newMarker;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.bumpGeometryEpoch();
         this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("insertMainNode");
         return newMarker;
@@ -1165,6 +1166,7 @@ export class CanvasCommands {
         if (!changed) return false;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        this.bumpGeometryEpoch();
         this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("insertNodeSelectedSegments");
         return true;

@@ -241,6 +241,7 @@ class MainCanvasBase extends HTMLElement {
         if (cm) cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this._geometryEpoch = (this._geometryEpoch || 0) + 1;
         this.renderer?.invalidateStableSceneCache?.();
+        this.is_dirty = true;
     }
     get current_tool() {
         return resolveActiveCanvasTool(this);
