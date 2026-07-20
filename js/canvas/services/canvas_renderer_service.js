@@ -519,8 +519,13 @@ export class CanvasRendererService {
         cache.viewportWidth = width;
         cache.viewportHeight = height;
         cache.geometryEpoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
-        cache.selCount = c.getInteractionSnapshot()?.selectedNodeMarkerIds?.size || 0;
+        const ix2 = c.getInteractionSnapshot();
+        cache.selCount = ix2?.selectedNodeMarkerIds?.size || 0;
         cache.activeTool = c.getActiveTool?.() || null;
+        // Fingerprint selected curve IDs so cache invalidates when curve selection changes
+        // (handle visibility depends on selectedCurveIds).
+        const curveIdsArr = ix2?.selectedCurveIds ? [...ix2.selectedCurveIds].sort() : [];
+        cache.selectedCurveIdsKey = JSON.stringify(curveIdsArr);
         this._nodeLayerCache = cache;
         const t1 = performance.now();
         if (t1 - t0 > 10) console.warn(`[PERF] _captureNodeLayerCache: ${(t1-t0).toFixed(1)}ms sel=${cache.selCount} ${width}x${height} dpr=${dpr}`);
@@ -697,12 +702,14 @@ export class CanvasRendererService {
         if (this._nodeLayerCache.baseOffset.x !== c.offset.x || this._nodeLayerCache.baseOffset.y !== c.offset.y) return false;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();
         if (this._nodeLayerCache.viewportWidth !== width || this._nodeLayerCache.viewportHeight !== height) return false;
+        const curIx = c.getInteractionSnapshot();
         // Invalidate when selection count changes (cache has selection colors baked in).
-        const curSel = c.getInteractionSnapshot()?.selectedNodeMarkerIds?.size || 0;
-        if (this._nodeLayerCache.selCount !== curSel) return false;
+        if (this._nodeLayerCache.selCount !== (curIx?.selectedNodeMarkerIds?.size || 0)) return false;
         // Invalidate when active tool changes (cache may have NODE overlay visible for DRAW tool).
-        const curTool = c.getActiveTool?.() || null;
-        if (this._nodeLayerCache.activeTool !== curTool) return false;
+        if (this._nodeLayerCache.activeTool !== (c.getActiveTool?.() || null)) return false;
+        // Invalidate when curve selection changes (handle visibility depends on selectedCurveIds).
+        const curIdsArr = curIx?.selectedCurveIds ? [...curIx.selectedCurveIds].sort() : [];
+        if (this._nodeLayerCache.selectedCurveIdsKey !== JSON.stringify(curIdsArr)) return false;
         return true;
     }
 
@@ -769,9 +776,13 @@ export class CanvasRendererService {
     }
 
     renderCanvas() {
-        const state = this.canvas.current_state;
-        if (state === "PANNING") {
-            this._renderScene();
+        const c2 = this.canvas;
+        const state = c2.current_state;
+        if (state === "PANNING" || c2._zoomSkipHandles) {
+            // Skip control handles during PANNING or zoom (continuous scroll).
+            // c._zoomSkipHandles is set by wheel handler and cleared 200ms after last wheel event
+            // via debounce timer, after which a final frame renders with handles.
+            this._renderScene({ skipHandles: true });
             return;
         }
 
@@ -811,6 +822,8 @@ export class CanvasRendererService {
         skipOverlay = false,
         /** When true, force hoverStates to {} (for caching overlay without hover baked in). */
         noHover = false,
+        /** When true, skip control handle lines + handle sprites in node overlay (PANNING perf). */
+        skipHandles = false,
         /** Skip character preview text + image children (they're already in the cached blit). */
         skipCharsAndImages = false
     } = {}) {
@@ -1053,6 +1066,10 @@ export class CanvasRendererService {
                 }
             });
         }
+        // ── [PERF] timing anchor for PANNING diagnostics ──
+        const _panPerf = c.current_state === "PANNING" ? { t0: performance.now(), labels: [], times: [] } : null;
+        const _panLog = (label) => { if (_panPerf) { const now = performance.now(); _panPerf.labels.push(label); _panPerf.times.push(now - _panPerf.t0); } };
+
         // ── Build showHandlesSet from selection state (avoid iterating ALL nodes per frame) ──
         let globalShowHandlesSet = new Set();
         const curveStore = c.curve_manager.curveStore;
@@ -1107,6 +1124,8 @@ export class CanvasRendererService {
             }
         }
 
+        _panLog('showHandlesSet');
+
         // ── PASS 1: Curve fill + stroke ──
         // skipPathLayer: stable blit already has path pixels (avoid covering guides/chrome).
         if (!skipPathLayer && !nodesOnly) {
@@ -1157,6 +1176,7 @@ export class CanvasRendererService {
             }
             });
         }
+        _panLog('pass1_fill_stroke');
 
         // Path pixels only — nodes/chrome stay out so NODE→SELECT cannot leave marker ghosts,
         // and guide/selection drags can redraw chrome without stale blits.
@@ -1269,7 +1289,7 @@ export class CanvasRendererService {
                                 }
                             }
                             let isSelected = snapshotIncludesNodeMarker(ix, marker);
-                            let showHandles = globalShowHandlesSet.has(start_node);
+                            let showHandles = skipHandles ? false : globalShowHandlesSet.has(start_node);
                             if (sparseNodes && !isSelected && !showHandles) {
                                 start_node = start_node.nextOnCurve;
                                 continue;
@@ -1289,6 +1309,7 @@ export class CanvasRendererService {
         const _perfT1 = performance.now();
         if (_perfT1 - _perfT0 > 10) console.warn(`[PERF] nodeOverlay ALL PASSES took ${(_perfT1-_perfT0).toFixed(1)}ms`);
         } // end else (tool needs overlay)
+        _panLog('pass2_node_overlay');
         if (nodesOnly) {
             return;
         }
@@ -1554,6 +1575,7 @@ export class CanvasRendererService {
                 c.ctx.restore();
             }
         }
+        _panLog('select_overlay');
         if ((c.getActiveTool() === "SELECT" || c.getActiveTool() === "NODE") && c.is_box_selecting && c.box_select_start && c.box_select_end) {
             this._drawBoxSelectMarquee();
         }
@@ -1740,6 +1762,15 @@ export class CanvasRendererService {
                 }
                 c.ctx.restore();
             }
+        }
+        _panLog('chrome');
+        const _perfTotal = _panPerf ? _panPerf.times[_panPerf.times.length - 1] : 0;
+        if (_panPerf && _perfTotal > 5) {
+            // Show incremental cost next to cumulative for easier reading
+            const parts = _panPerf.labels.map((l, i) => `${l}${i===0?'':('+' + (_panPerf.times[i] - _panPerf.times[i-1]).toFixed(1))}`).join(' → ');
+            console.warn(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: ${parts}`);
+        } else if (_panPerf) {
+            console.log(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: frames OK`);
         }
     }
     _isCurveInViewport(curve, matrix, seqOffsetX, vpBounds) {

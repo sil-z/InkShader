@@ -1655,6 +1655,10 @@ export class CanvasInputController {
                 c.current_state = 'IDLE';
                 c.editorStore?.syncViewFromCanvas?.();
                 c.history.saveCurrentViewState();
+                // Force repaint: PANNING renders with skipHandles=true, so the last PANNING
+                // frame has no control handles. Without is_dirty, the next rAF tick skips
+                // rendering (dirty=false), leaving the handle-less frame frozen on screen.
+                c.is_dirty = true;
                 return;
             }
             if (c.current_state === 'DRAGGING_DIVIDER') {
@@ -1740,7 +1744,17 @@ export class CanvasInputController {
                     let logical_y = mouseY - ruler_h - c.offset.y;
                     let isFixedCenter = e.altKey;
                     c.renderer.change_canvas_size(e.deltaY, logical_x, logical_y, isFixedCenter);
-                    c.renderer.update_previewData(mouseX, mouseY); c.is_dirty = true;
+                    c.renderer.update_previewData(mouseX, mouseY);
+                    // Skip control handles during continuous zoom (same rationale as PANNING).
+                    // Debounce: each wheel tick resets the 200ms timer; after zoom stops, timer
+                    // clears the flag and forces a final render WITH handles.
+                    c._zoomSkipHandles = true;
+                    if (c._zoomEndTimer) clearTimeout(c._zoomEndTimer);
+                    c._zoomEndTimer = setTimeout(() => {
+                        c._zoomSkipHandles = false;
+                        c.is_dirty = true;
+                    }, 200);
+                    c.is_dirty = true;
                 }
             }
         }, { passive: false });
