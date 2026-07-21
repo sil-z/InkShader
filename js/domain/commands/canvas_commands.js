@@ -1003,6 +1003,7 @@ export class CanvasCommands {
 
             if (!Array.isArray(curve.cached_boolean_geometry) || curve.cached_boolean_geometry.length === 0) {
                 curve.smart_stroke = originalSmart;
+                curve.smart_stroke = originalSmart;
                 cs.updateSmartStrokeStatus(curve);
                 continue;
             }

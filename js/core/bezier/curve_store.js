@@ -147,7 +147,10 @@ export class CurveStore {
             mainNode.control_mode = 1;
         }
 
-        if (curve) curve._invalidateBounds();
+        if (curve) {
+            curve._invalidateBounds();
+            curve.invalidateBooleanCache();
+        }
         return true;
     }
 
@@ -246,7 +249,10 @@ export class CurveStore {
             }
         }
         node.control_mode = mode;
-        if (node.curve) node.curve._invalidateBounds();
+        if (node.curve) {
+            node.curve._invalidateBounds();
+            node.curve.invalidateBooleanCache();
+        }
         return true;
     }
 
@@ -335,6 +341,7 @@ export class CurveStore {
         if (node) {
             this.domMap.set(main_node, node);
             this_curve._invalidateBounds();
+            this_curve.invalidateBooleanCache();
         }
         return node;
     }

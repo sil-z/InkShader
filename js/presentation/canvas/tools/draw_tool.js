@@ -78,7 +78,7 @@ export class DrawTool extends BaseTool {
         c.painting_handle_start = { x: mouseX, y: mouseY };
         // Preview hidden on press (requirement: no ghost preview during handle drag).
         c.previewData = null;
-        c.is_dirty = true;
+        c.bumpGeometryEpoch();  // Force full re-render (stable cache stale — current curve changed)
     }
 
     // =========================================================================

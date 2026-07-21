@@ -394,6 +394,26 @@ export class Curve {
         return segments;
     }
 
+    computeExpandedStrokeOutlineNew(halfWidth) {
+        let current = this.startNode;
+
+        let innerRing = [];
+        let outerRing = [];
+
+        while(current && current.nextOnCurve && current !== this.endNode) {
+            let next = current.nextOnCurve;
+
+            let p0 = { x: current.x, y: current.y };
+            let p1 = { x: current.control1?.x ?? current.x, y: current.control1?.y ?? current.y };
+            let p2 = { x: next.control2?.x ?? next.x, y: next.control2?.y ?? next.y };
+            let p3 = { x: next.x, y: next.y };
+
+            
+
+            current = next;
+        }
+    }
+
     /**
      * Smart stroke expanded outline (offset Bezier list in model coordinates)
      * @param {number} halfWidth half-width (model units; rendered using stroke_width * scale / 2)
@@ -772,6 +792,8 @@ export class Curve {
 
         return outline;
     }
+
+    
 
     getSkeletonVertices() {
         if (!this.startNode) return [];
