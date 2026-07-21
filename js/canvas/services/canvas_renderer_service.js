@@ -1494,7 +1494,7 @@ export class CanvasRendererService {
             }
             return;
         }
-        {
+        if (!skipOverlay) {
             const rad = Math.PI / 180;
             const allGuides = c.guidelines || [];
             if (allGuides.length > 0) {
@@ -1650,6 +1650,7 @@ export class CanvasRendererService {
             c.ctx.fillStyle = p.measure_color; c.ctx.fillText(text, midX + 5, midY - 3); c.ctx.restore();
         }
 
+        if (!skipOverlay) {
         // ── Render baseline (permanent reference at design y=0, not draggable) ──
         {
             const fs = c.fontSettings || {};
@@ -1717,7 +1718,9 @@ export class CanvasRendererService {
                 c.ctx.restore();
             }
         }
+        }
 
+        if (!skipOverlay) {
         // ── Render dividers ──
         if (c.curve_manager.activeSequenceIndices.size > 0 && c.divider_visible !== false) {
             c.ctx.save(); c.ctx.strokeStyle = p.canvas_divider; c.ctx.setLineDash([4, 4]); c.ctx.lineWidth = 1; c.ctx.beginPath();
@@ -1812,6 +1815,7 @@ export class CanvasRendererService {
                 }
                 c.ctx.restore();
             }
+        }
         }
         _panLog('chrome');
         //const _perfTotal = _panPerf ? _panPerf.times[_panPerf.times.length - 1] : 0;
@@ -2055,7 +2059,12 @@ export class CanvasRendererService {
     }
 
     _getGroupSeqOffsets(c) {
-        const storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        let storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        // Reject stale activeGroupId that points to a hidden/removed group
+        if (storeId) {
+            const gi = c.curve_manager.treeItems.get(storeId);
+            if (!gi || gi.hidden_by_sequence) storeId = null;
+        }
         const activeGroupId = storeId ?? c.curve_manager.ensureActiveGroup();
         if (!activeGroupId) return null;
         const seqTokens = c.curve_manager.sequenceTokens || [];

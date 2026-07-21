@@ -22,8 +22,12 @@ export class EllipseTool {
     handleMouseDown(mouseX, mouseY, worldX, worldY, isCtrl) {
         const c = this.canvas;
         // Read from Store first (source of truth); CM projection may lag behind async event bus
-        const activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId
-            ?? c.curve_manager.ensureActiveGroup();
+        let activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        if (activeGroupId) {
+            const gi = c.curve_manager.treeItems.get(activeGroupId);
+            if (!gi || gi.hidden_by_sequence) activeGroupId = null;
+        }
+        activeGroupId = activeGroupId ?? c.curve_manager.ensureActiveGroup();
         if (!activeGroupId) return;
         const activeGroup = c.curve_manager.treeItems.get(activeGroupId);
         if (activeGroup && activeGroup.locked) return;
@@ -79,7 +83,11 @@ export class EllipseTool {
 
     _createEllipse(c, sx, sy, ex, ey) {
         const cm = c.curve_manager;
-        const storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        let storeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+        if (storeId) {
+            const gi = cm.treeItems.get(storeId);
+            if (!gi || gi.hidden_by_sequence) storeId = null;
+        }
         const activeGroupId = storeId ?? cm.ensureActiveGroup();
         if (!activeGroupId) return;
         c.commands.syncActiveGroupForDraw(activeGroupId);

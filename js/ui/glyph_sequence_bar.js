@@ -206,7 +206,7 @@ export class GlyphSequenceBar extends HTMLElement {
                     cs.textContent = pd.codeStr;
                     pos.appendChild(cs);
                 }
-                pos.appendChild(this._mkInsertBtn(pd.idx));
+                pos.appendChild(isLast ? this._mkInsertLastBtn(pd.idx) : this._mkInsertBtn(pd.idx));
                 pos.addEventListener("click", (e) => { e.stopPropagation(); this._focusInTree(pd.gid); });
             } else if (deferred.length > 0) {
                 const all = [...deferred, pd];
@@ -235,7 +235,7 @@ export class GlyphSequenceBar extends HTMLElement {
                     cs.textContent = pd.codeStr;
                     pos.appendChild(cs);
                 }
-                pos.appendChild(this._mkInsertBtn(pd.idx));
+                pos.appendChild(isLast ? this._mkInsertLastBtn(pd.idx) : this._mkInsertBtn(pd.idx));
                 pos.addEventListener("click", (e) => { e.stopPropagation(); this._focusInTree(pd.gid); });
             } else {
                 const eb = document.createElement("div");
@@ -391,6 +391,20 @@ export class GlyphSequenceBar extends HTMLElement {
         });
         return b;
     }
+    _mkInsertLastBtn(idx) {
+        const b = document.createElement("div");
+        b.className = "seq-bar-ins-last-btn";
+        const text = document.createElement("span");
+        text.className = "seq-bar-ins-last-label";
+        text.textContent = "Click to add glyphs";
+        b.appendChild(text);
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const r = b.getBoundingClientRect();
+            this._addMenu(r.left, r.bottom + 4, idx + 1, b);
+        });
+        return b;
+    }
     _mkLockBtn(gid) {
         const gi = gid ? EditorModel.getTreeItem(gid) : null;
         const locked = !!(gi?.locked);
@@ -425,7 +439,10 @@ export class GlyphSequenceBar extends HTMLElement {
         const b = document.createElement("div");
         b.className = "seq-bar-add-btn";
         b.style.left = `${left}px`;
-        b.appendChild(this._mkSvg("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"));
+        const text = document.createElement("span");
+        text.className = "seq-bar-add-label";
+        text.textContent = "Click to add glyphs";
+        b.appendChild(text);
         b.addEventListener("click", (e) => {
             e.stopPropagation();
             const r = b.getBoundingClientRect();

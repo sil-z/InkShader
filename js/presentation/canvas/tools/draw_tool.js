@@ -28,20 +28,41 @@ export class DrawTool extends BaseTool {
         const c = this.canvas;
         // Read from Store first (source of truth); CM projection may lag behind async event bus
         let activeGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
-        // Verify the group still exists in the current tree.  The store's activeGroupId
-        // can be stale (from a previous project) if seedFromCanvas hasn't completed yet,
-        // or after createNewProject — using a non-existent group leads to a phantom
-        // preview that never commits on mouse-up.
-        if (activeGroupId && !c.curve_manager.treeItems.has(activeGroupId)) {
-            activeGroupId = null;
+        // Verify the group exists and is not hidden_by_sequence. The store's
+        // activeGroupId can be stale (previous project, or group removed from
+        // sequence text) — using a hidden/removed group causes rendering errors.
+        if (activeGroupId) {
+            const gi = c.curve_manager.treeItems.get(activeGroupId);
+            if (!gi || gi.hidden_by_sequence) {
+                activeGroupId = null;
+            }
         }
         activeGroupId = activeGroupId ?? c.curve_manager.ensureActiveGroup();
         if (!activeGroupId) {
-            // No group to draw in — reset stale state to prevent phantom preview
-            c.previewData = null;
-            c.last_on_curve_node_marker = null;
-            c.is_dirty = true;
-            return;
+            // No active group — auto-resolve from click position
+            const seqTokens = c.curve_manager.sequenceTokens;
+            if (seqTokens && seqTokens.length > 0) {
+                for (let i = 0; i < seqTokens.length; i++) {
+                    const tok = seqTokens[i];
+                    const gid = tok.isChar ? c.curve_manager.getDefaultGroupForChar(tok.value) : tok.value;
+                    if (!gid) continue;
+                    const off = c.curve_manager.getSeqOffset(i);
+                    const gi = c.curve_manager.treeItems.get(gid);
+                    const adv = gi?.advance ?? 1000;
+                    if (worldX_raw >= off && worldX_raw < off + adv) {
+                        activeGroupId = gid;
+                        c.curve_manager.activeGroupId = gid;
+                        break;
+                    }
+                }
+            }
+            if (!activeGroupId) {
+                // No group to draw in — reset stale state to prevent phantom preview
+                c.previewData = null;
+                c.last_on_curve_node_marker = null;
+                c.is_dirty = true;
+                return;
+            }
         }
         // Do not draw on a locked group
         const activeGroup = c.curve_manager.treeItems.get(activeGroupId);
