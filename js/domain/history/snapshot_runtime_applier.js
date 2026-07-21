@@ -305,6 +305,8 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
             }
             return true;
         case "editor_guideline_lock":
+            canvas.guideline_lock = !!value;
+            return true;
         default:
             if (FONT_SNAPSHOT_KEYS.has(key)) {
                 const snapshotObj = canvas.currentStateObj?.snapshotObj || {};

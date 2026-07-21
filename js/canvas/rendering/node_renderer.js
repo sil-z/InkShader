@@ -192,6 +192,7 @@ export function drawCurveNode(
         }
     }
 
+
     // ── Node body sprite ──
     const baseR = hoverStates.main ? 5 : 4.2;
     const selKey = isSelected ? "s" : "u";

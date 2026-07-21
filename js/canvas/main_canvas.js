@@ -55,6 +55,8 @@ class MainCanvasBase extends HTMLElement {
         this.scaleBase = this.scale;   // Scale at zoomTicks = 0 (initially 0.4, matched to current default)
         this.offset = { x: 0, y: 0 }; this.offset_start = { x: 0, y: 0 };
         this.guideline_lock = false;
+        this._guidelineLockSaved = false;
+        this._guidelineLockDisabled = false;
         this.snap_alignment_enabled = true;
         this.snap_coincident_enabled = true;
         this.divider_visible = true;

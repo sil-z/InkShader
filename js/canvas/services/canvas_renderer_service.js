@@ -282,12 +282,64 @@ export class CanvasRendererService {
         // 2) Cached static nodes on top (includes ALL non-moving markers).
         if (!this._blitSnapshotOnTop(cache)) return false;
         // 3) Live moving markers on top.
+        //     Exclude non-dragged nodes on the same curves to prevent double-draw
+        //     (they are already in the cached blit from step 2).
+        const excludeFromOverlay = new Set();
+        const cm = c.curve_manager;
+        const addExclude = (m) => {
+            if (m == null) return;
+            excludeFromOverlay.add(m);
+            if (m?.id != null) excludeFromOverlay.add(m.id);
+        };
+        // Collect set of "actively moving" markers (= not in cache)
+        const moving = new Set();
+        for (const marker of c.drag_initial_nodes?.keys?.() || []) {
+            moving.add(marker);
+            if (marker?.id != null) moving.add(marker.id);
+            const n = cm?.find_node_by_curve?.(marker);
+            if (n) {
+                if (n.control1?.main_node) { moving.add(n.control1.main_node); if (n.control1.main_node.id) moving.add(n.control1.main_node.id); }
+                if (n.control2?.main_node) { moving.add(n.control2.main_node); if (n.control2.main_node.id) moving.add(n.control2.main_node.id); }
+            }
+        }
+        if (c.dragging_node_marker != null) {
+            moving.add(c.dragging_node_marker);
+            if (c.dragging_node_marker?.id != null) moving.add(c.dragging_node_marker.id);
+        }
+        // Control-handle drag: parent + its controls are also moving
+        {
+            const dragged = cm?.find_node_by_curve?.(c.dragging_node_marker);
+            if (dragged && dragged.type == null) {
+                const parent = dragged.nextOnCurve || dragged.lastOnCurve;
+                if (parent) {
+                    const pn = parent.main_node;
+                    if (pn) { moving.add(pn); if (pn.id) moving.add(pn.id); }
+                    const c1 = parent.control1?.main_node;
+                    if (c1) { moving.add(c1); if (c1.id) moving.add(c1.id); }
+                    const c2 = parent.control2?.main_node;
+                    if (c2) { moving.add(c2); if (c2.id) moving.add(c2.id); }
+                }
+            }
+        }
+        // Everything on dragged curves that is NOT moving should be excluded
+        for (const curveId of cache.curveIds) {
+            const curve = cm?.curveById?.get(curveId);
+            if (!curve?.startNode) continue;
+            let node = curve.startNode;
+            while (node) {
+                if (!moving.has(node.main_node) && !moving.has(node.main_node?.id)) {
+                    addExclude(node.main_node);
+                }
+                node = node.nextOnCurve;
+            }
+        }
         this._renderScene({
             clear: false,
             curveFilter: (curve) => cache.curveIds.has(curve?.id),
             sparseNodes: true,
             skipPathLayer: true,
-            overlayOnly: true
+            overlayOnly: true,
+            excludeNodeMarkers: excludeFromOverlay
         });
         return true;
     }
@@ -376,18 +428,20 @@ export class CanvasRendererService {
                     const other_y = 2 * last_node_n.y - pp.worldY;
                     curveStore.adjustControlNode(last_node_n.control1.main_node, pp.worldX, pp.worldY);
                     curveStore.adjustControlNode(last_node_n.control2.main_node, other_x, other_y);
+                    // Adjusting control nodes changes curve geometry — invalidate boolean
+                    // cache so ensureBooleanCache recomputes with the new handle positions.
+                    if (last_node_n.curve) {
+                        last_node_n.curve.invalidateBooleanCache();
+                        last_node_n.curve._booleanContentHash = null;
+                    }
                 }
             }
         }
-
-        const t0 = performance.now();
-        const seq = ++this._paintHandleSeq || (this._paintHandleSeq = 1);
 
         // ── 1) ALL paths fresh — single batched pass for correct even-odd fill ──
         //     skipOverlay: no nodes/chrome needed in this pass (node cache handles
         //     static markers; current-curve nodes render in step 3).
         this._renderScene({ clear: true, skipNodes: true, skipOverlay: true });
-        const tPaths = performance.now();
 
         // ── 2) Node-layer cache with evenodd clip (excludes current-curve bbox) ──
         const { width: vw, height: vh } = c.viewportService.getCanvasUserSpaceSize();
@@ -401,10 +455,10 @@ export class CanvasRendererService {
             c.ctx.clip('evenodd');
             clipActive = true;
         }
-        if (!this._isNodeLayerCacheValid()) this._captureNodeLayerCache();
+        const cacheWasValid = this._isNodeLayerCacheValid();
+        if (!cacheWasValid) { this._captureNodeLayerCache(); }
         if (this._nodeLayerCache) this._blitSnapshotOnTop(this._nodeLayerCache);
         if (clipActive) c.ctx.restore();
-        const tNodesBlit = performance.now();
 
         // ── 3) Current curve's nodes + chrome (single pass, no extra overlay loop) ──
         if (c.current_curve) {
@@ -415,10 +469,6 @@ export class CanvasRendererService {
             });
         }
         if (c.hovered_node_marker) this._drawHoveredNode();
-        const tEnd = performance.now();
-
-        const dtPaths = tPaths - t0, dtBlit = tNodesBlit - tPaths,
-              dtRest = tEnd - tNodesBlit;
         return true;
     }
 
@@ -1764,14 +1814,13 @@ export class CanvasRendererService {
             }
         }
         _panLog('chrome');
-        const _perfTotal = _panPerf ? _panPerf.times[_panPerf.times.length - 1] : 0;
-        if (_panPerf && _perfTotal > 5) {
-            // Show incremental cost next to cumulative for easier reading
-            const parts = _panPerf.labels.map((l, i) => `${l}${i===0?'':('+' + (_panPerf.times[i] - _panPerf.times[i-1]).toFixed(1))}`).join(' → ');
-            console.warn(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: ${parts}`);
-        } else if (_panPerf) {
-            console.log(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: frames OK`);
-        }
+        //const _perfTotal = _panPerf ? _panPerf.times[_panPerf.times.length - 1] : 0;
+        //if (_panPerf && _perfTotal > 5) {
+        //    const parts = _panPerf.labels.map((l, i) => `${l}${i===0?'':('+' + (_panPerf.times[i] - _panPerf.times[i-1]).toFixed(1))}`).join(' → ');
+        //    console.warn(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: ${parts}`);
+        //} else if (_panPerf) {
+        //    console.log(`[PERF] PANNING ${_perfTotal.toFixed(1)}ms: frames OK`);
+        //}
     }
     _isCurveInViewport(curve, matrix, seqOffsetX, vpBounds) {
         const bounds = curve.getBounds(matrix || undefined);

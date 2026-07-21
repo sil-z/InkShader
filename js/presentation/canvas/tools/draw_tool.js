@@ -75,6 +75,7 @@ export class DrawTool extends BaseTool {
         c.commands.addMainNode(worldX, worldY);
 
         c.current_state = 'PAINTING_HANDLE';
+        c.new_curve_handle = null;
         c.painting_handle_start = { x: mouseX, y: mouseY };
         // Preview hidden on press (requirement: no ghost preview during handle drag).
         c.previewData = null;

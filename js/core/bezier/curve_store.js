@@ -283,6 +283,7 @@ export class CurveStore {
         if (node.control2) this.domMap.delete(node.control2.main_node);
 
         curve._invalidateBounds();
+        curve.invalidateBooleanCache();
         return { curve, isEmpty: !curve.startNode };
     }
 

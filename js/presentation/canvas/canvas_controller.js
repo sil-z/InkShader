@@ -191,6 +191,20 @@ export class CanvasController {
         }
         c.history.saveCurrentViewState(true);
 
+        // Guideline lock: force-locked + disabled in DRAW/ELLIPSE, restored on exit
+        const isDrawMode = mode === "DRAW" || mode === "ELLIPSE";
+        const wasDrawMode = previousTool === "DRAW" || previousTool === "ELLIPSE";
+        if (isDrawMode && !wasDrawMode) {
+            c._guidelineLockSaved = c.guideline_lock;
+            c.guideline_lock = true;
+            c._guidelineLockDisabled = true;
+        } else if (wasDrawMode && !isDrawMode) {
+            c.guideline_lock = c._guidelineLockSaved;
+            c._guidelineLockDisabled = false;
+        }
+        if (c.lock_guideline_icon) c.lock_guideline_icon.classList.toggle('is-visible', !!c.guideline_lock);
+        if (c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.classList.toggle('is-visible', !c.guideline_lock);
+
         if (previousTool === "NODE" && mode !== "NODE") {
             const st = c.editorStore?.getState?.() || {};
             const { curveIds, refIds } = deriveObjectSelectionFromStoreState(st, c.curve_manager);
@@ -300,6 +314,7 @@ export class CanvasController {
         if(c.lock_guideline_icon_unlocked) c.lock_guideline_icon_unlocked.classList.add('is-visible');
 
         c.lock_guideline_button?.addEventListener("mousedown", () => {
+            if (c._guidelineLockDisabled) return;
             c.guideline_lock = !c.guideline_lock;
             if(c.guideline_lock) { c.lock_guideline_icon.classList.add('is-visible'); c.lock_guideline_icon_unlocked.classList.remove('is-visible'); }
             else { c.lock_guideline_icon.classList.remove('is-visible'); c.lock_guideline_icon_unlocked.classList.add('is-visible'); }

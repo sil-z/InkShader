@@ -93,7 +93,7 @@ export class ProjectManager {
 
                 const emptySnapshot = JSON.stringify({
                     version: "1.0",
-                    editor_guidelines: [], editor_guideline_lock: false,
+                    editor_guidelines: [],
                     editor_sequence: "", editor_active_indices: [],
                     family_name: "InkShader_Default_Font",
                     project_name: name,

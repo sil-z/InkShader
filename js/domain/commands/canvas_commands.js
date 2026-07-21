@@ -1016,6 +1016,7 @@ export class CanvasCommands {
                 newCurve.stroke_width = 0;
                 newCurve.smart_stroke = true;
                 newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise !== false;
+                newCurve.show_skeleton = curve.show_skeleton;
 
                 let last_main_node = null;
 

@@ -166,7 +166,6 @@ export class SnapshotSerializer {
             "editor_guidelines": (editorState.guidelines || []).map(g => ({
                 id: g.id, x: g.x, y: g.y, angle: g.angle
             })),
-            "editor_guideline_lock": editorState.guideline_lock || false,
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
             "family_name": fontSettings.family || "InkShader_Default_Font",
