@@ -389,7 +389,15 @@ export class Curve {
             current = current.nextOnCurve;
         }
         if (this.closed && this.startNode !== this.endNode && this.endNode && this.startNode) {
-            pushSeg(this.endNode, this.startNode);
+            // Skip closing segment when endNode is at the same position as startNode.
+            // Emitting a zero-length segment causes Paper.js resolveCrossings to create a
+            // degenerate sub-path that contains only the start node plus crossing division
+            // points — that sub-path has near-zero area and produces no visible fill.
+            const dx = this.endNode.x - this.startNode.x;
+            const dy = this.endNode.y - this.startNode.y;
+            if (dx * dx + dy * dy > 1e-6) {
+                pushSeg(this.endNode, this.startNode);
+            }
         }
         return segments;
     }
@@ -434,12 +442,20 @@ export class Curve {
             current = next;
         }
         if (this.closed && this.startNode !== this.endNode && this.endNode && this.startNode) {
-            segments.push({
-                p0: { x: this.endNode.x, y: this.endNode.y },
-                p1: { x: this.endNode.control1?.x ?? this.endNode.x, y: this.endNode.control1?.y ?? this.endNode.y },
-                p2: { x: this.startNode.control2?.x ?? this.startNode.x, y: this.startNode.control2?.y ?? this.startNode.y },
-                p3: { x: this.startNode.x, y: this.startNode.y }
-            });
+            // Skip zero-length closing segment (endNode at same position as startNode);
+            // it produces degenerate offset geometry that creates a gap in the stroke
+            // outline ring, causing Paper.js unite() to produce unfilled regions for
+            // self-intersecting paths (e.g. figure-8 where startNode is alone in its lobe).
+            const closeDx = this.endNode.x - this.startNode.x;
+            const closeDy = this.endNode.y - this.startNode.y;
+            if (closeDx * closeDx + closeDy * closeDy > 1e-6) {
+                segments.push({
+                    p0: { x: this.endNode.x, y: this.endNode.y },
+                    p1: { x: this.endNode.control1?.x ?? this.endNode.x, y: this.endNode.control1?.y ?? this.endNode.y },
+                    p2: { x: this.startNode.control2?.x ?? this.startNode.x, y: this.startNode.control2?.y ?? this.startNode.y },
+                    p3: { x: this.startNode.x, y: this.startNode.y }
+                });
+            }
         }
 
         if (segments.length === 0) return null;
@@ -593,8 +609,9 @@ export class Curve {
                     let n3 = getNormal(1, p0, p1, p2, p3);
                     if (!n3 || endHandleDegenerate) {
                         // Exact analytic normal: when p2=p3, B'(1)=0 but the
-                        // first non-zero derivative is B''(1)=6(p1-p3), giving
-                        // tangent direction p3→p1. Use the limit, not sampling.
+                        // first non-zero derivative is B''(1)=6(p1-p3).
+                        // For t→1⁻ we have (t-1)<0, so the limit tangent
+                        // direction is p3-p1 (the REVERSE of B''(1)).
                         const _tx = p3.x - p1.x, _ty = p3.y - p1.y;
                         const _tl = Math.hypot(_tx, _ty);
                         if (_tl > 1e-8) {
@@ -605,11 +622,6 @@ export class Curve {
                                 || { x: n0.x, y: n0.y };
                         }
                     }
-
-                    if (startHandleDegenerate)
-                        console.log('DEGEN start depth='+depth, 'p0', p0, 'p1', p1, 'p2', p2, 'n0', n0);
-                    if (endHandleDegenerate)
-                        console.log('DEGEN end depth='+depth, 'p1', p1, 'p3', p3, 'p3-p1', { x: p3.x-p1.x, y: p3.y-p1.y }, 'n3', n3);
 
                     let k0 = getCurvature(0, p0, p1, p2, p3);
                     let k3 = getCurvature(1, p0, p1, p2, p3);

@@ -296,9 +296,13 @@ export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerCo
             recorder.closePath();
             return;
         }
-        emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, true);
-        recorder.closePath();
-        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, true);
+        // Emit forward+backward as a single connected ring (not two separate
+        // closed subpaths).  Two separate closed offset rings self-intersect
+        // for figure‑8 skeletons, producing degenerate boolean-unite results.
+        // Merging them into one ring — forward (outer) → backward reversed
+        // (inner) → closePath — gives Paper.js a clean annulus boundary.
+        emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);
+        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
         recorder.closePath();
     } else {
         emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);

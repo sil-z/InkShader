@@ -104,7 +104,7 @@ export function refreshCurveBooleanCache(curve) {
         emitCubicBezierSegments(fillRec, curve.getSkeletonBezierSegments(), identity, {
             close: curve.closed && curve.startNode !== curve.endNode
         });
-        allSolidPieces.push(...buildPaperPaths(pScope, fillRec));
+        allSolidPieces.push(...buildPaperPaths(pScope, fillRec, { resolveCrossings: false }));
     }
 
     if (curve.smart_stroke && curve.stroke_width > 0) {
@@ -138,16 +138,24 @@ export function refreshCurveBooleanCache(curve) {
         }
     }
 
-    // Resolve any remaining self-intersections in the united result
-    if (resultPath && typeof resultPath.resolveCrossings === "function") {
-        try {
-            const resolved = resultPath.resolveCrossings();
-            if (resolved && resolved !== resultPath) {
-                resultPath.remove();
-                resultPath = resolved;
+    // Resolve any remaining self-intersections in the united result.
+    // Skipped for smart-stroke paths because resolveCrossings splits
+    // self-intersecting figure‑8 outlines into sub‑paths with conflicting
+    // winding directions, creating an unfilled "hole" in Canvas fill("nonzero").
+    // Canvas itself handles self‑intersecting paths correctly without splitting.
+    // Non-smart paths keep resolveCrossings because curve_renderer.js bypasses
+    // the boolean cache entirely for those (it emits the skeleton directly).
+    if (!curve?.smart_stroke) {
+        if (resultPath && typeof resultPath.resolveCrossings === "function") {
+            try {
+                const resolved = resultPath.resolveCrossings();
+                if (resolved && resolved !== resultPath) {
+                    resultPath.remove();
+                    resultPath = resolved;
+                }
+            } catch (e) {
+                console.warn("resolveCrossings on united result failed", e);
             }
-        } catch (e) {
-            console.warn("resolveCrossings on united result failed", e);
         }
     }
 
@@ -164,6 +172,7 @@ export function refreshCurveBooleanCache(curve) {
     for (const p of paths) {
         if (!(p instanceof pScope.Path) || p.segments.length < 2) continue;
         mergeCoincidentPathSegments(p);
+        if (p.segments.length < 2) continue;
         const subGeom = [];
         for (const seg of p.segments) {
             subGeom.push({
