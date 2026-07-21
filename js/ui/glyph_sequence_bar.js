@@ -570,6 +570,8 @@ export class GlyphSequenceBar extends HTMLElement {
         const groups = EditorModel.listSequenceMenuGroups();
         for (const g of groups) {
             if (g.charCode != null && typeof g.charCode === "string") {
+                // Multi-character charCodes are ligatures — don't place in ASCII grid
+                if (g.charCode.length > 1) continue;
                 const cp = g.charCode.codePointAt(0);
                 if (cp >= 32 && cp <= 126) asciiCharToGroup.set(cp, g);
             }
@@ -577,6 +579,8 @@ export class GlyphSequenceBar extends HTMLElement {
         const nonAsciiGroups = groups.filter((g) => {
             if (g.charCode == null) return true;
             if (typeof g.charCode === "string") {
+                // Multi-character charCodes are ligatures — keep in "Other Groups"
+                if (g.charCode.length > 1) return true;
                 const cp = g.charCode.codePointAt(0);
                 return cp < 32 || cp > 126;
             }
@@ -609,6 +613,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 const fresh = EditorModel.listSequenceMenuGroups();
                 for (const g of fresh) {
                     if (g.charCode != null && typeof g.charCode === "string") {
+                        // Multi-character charCodes are ligatures — don't place in ASCII grid
+                        if (g.charCode.length > 1) continue;
                         const cp = g.charCode.codePointAt(0);
                         if (cp >= 32 && cp <= 126) asciiCharToGroup.set(cp, g);
                     }
@@ -616,6 +622,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 const freshNonAscii = fresh.filter((g) => {
                     if (g.charCode == null) return true;
                     if (typeof g.charCode === "string") {
+                        // Multi-character charCodes are ligatures — keep in "Other Groups"
+                        if (g.charCode.length > 1) return true;
                         const cp = g.charCode.codePointAt(0);
                         return cp < 32 || cp > 126;
                     }

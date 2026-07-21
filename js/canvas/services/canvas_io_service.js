@@ -226,8 +226,10 @@ export class CanvasIOService {
                 continue;
             }
 
-            const hexCode = item.charCode.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase();
-            const unicodeTag = `<unicode hex="${hexCode}"/>`;
+            const charStr = String(item.charCode);
+            const unicodeTag = Array.from(charStr).map(ch =>
+                `<unicode hex="${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}"/>`
+            ).join('\n      ');
             const recorder = new GlifRecorder(c.canvas_size_height);
             const curveDataList = c.curve_manager.getCurvesForGroup(item.id);
             for (const cd of curveDataList) {

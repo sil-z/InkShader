@@ -49,11 +49,29 @@ export class ProjectManager {
         return true;
     }
 
+    /** True when the project has no content AND no command history — i.e. never actually modified by the user. */
+    isProjectPristine() {
+        if (!this._isEmptyProject()) return false;
+        const c = this.canvas;
+        if (c.commandStack && c.commandStack.length > 0) return false;
+        if (c.redoCommandStack && c.redoCommandStack.length > 0) return false;
+        return true;
+    }
+
     async saveToCache(projectName) {
         const name = projectName || this.activeProjectName;
         if (!name) return;
+        // Never persist a pristine (empty, never-modified) project to cache.
+        // Prevents auto-created "New Font 1" from lingering as garbage when
+        // the user switches to another project before making any edits.
+        if (this.isProjectPristine()) return;
         const data = this._buildSnapshotData();
         await StorageUtils.saveProject(name, data);
+        // Persist the active project name to localStorage now that
+        // real (non-pristine) content has been saved to IndexedDB.
+        // This ensures the project can be found on next page load even
+        // if it was created as a pristine (not-yet-saved) new project.
+        StorageUtils.saveActiveProject(name);
     }
 
     async ensureMaxCacheLimit() {
@@ -65,10 +83,10 @@ export class ProjectManager {
         if (this._creatingProject) return this._creatingProject;
         this._creatingProject = (async () => {
             try {
-                const hasContent = !this._isEmptyProject();
+                const pristine = this.isProjectPristine();
 
-                // Save current work before creating new project
-                if (hasContent) {
+                if (!pristine) {
+                    // Save current work before creating new project
                     if (this.activeProjectName) {
                         await this.saveToCache(this.activeProjectName);
                     } else {
@@ -76,6 +94,10 @@ export class ProjectManager {
                         const tempName = await this.ensureUniqueName("New Font");
                         await this.saveToCache(tempName);
                     }
+                } else if (this.activeProjectName && await StorageUtils.projectExists(this.activeProjectName)) {
+                    // Current project was never modified (e.g. auto-created "New Font 1").
+                    // Delete its cache entry to prevent empty-project garbage from accumulating.
+                    await StorageUtils.deleteProject(this.activeProjectName);
                 }
 
                 // Find an unused numbered name (e.g. "New Font 1", "New Font 2")
@@ -135,14 +157,7 @@ export class ProjectManager {
                 c.curve_manager.clearAllSelection();
                 c.curve_manager.activeGroupId = null;
 
-                const data = {
-                    // Deep-clone snapshot to avoid shared-ref corruption via history service's _saveRuntimeState
-                    latestSnapshot: this._deepClone(c.currentStateObj.snapshotObj),
-                    commandStack: [],
-                    redoCommandStack: []
-                };
-                await StorageUtils.saveProject(name, data);
-                this.setActiveProjectName(name);
+                this.activeProjectName = name;
 
                 // Sync editor store to the new (empty) canvas state so stale activeGroupId
                 // from the previous project doesn't leak into handleMouseDown.

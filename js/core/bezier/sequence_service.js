@@ -58,10 +58,60 @@ export class SequenceService {
     // =========================================================================
 
     parseSequence(text) {
-        return parseSequenceTokens(text, {
+        const tokens = parseSequenceTokens(text, {
             resolveGroupByName: (name) => this._treeStore.getGroupByName(name),
             getDisplayChar: (char) => this._getDisplayChar(char)
         });
+        // Post-process: merge consecutive character tokens that form a known
+        // ligature charCode (multi-character string) in defaultGlyphs.
+        // This allows sequence text like "fi" to resolve to a single group
+        // whose charCode is "fi" instead of two separate groups for "f" and "i".
+        return this._mergeLigatureTokens(tokens);
+    }
+
+    /**
+     * Merge consecutive isChar tokens whose combined string matches a
+     * ligature entry in defaultGlyphs. Picks the LONGEST possible match
+     * so that if both "f" and "fi" exist as charCodes, "fi" wins.
+     * @param {Array} tokens
+     * @returns {Array}
+     */
+    _mergeLigatureTokens(tokens) {
+        if (this.defaultGlyphs.size === 0) return tokens;
+        const result = [];
+        let i = 0;
+        while (i < tokens.length) {
+            if (tokens[i].isChar) {
+                // Try to match the longest consecutive character sequence
+                // that forms a known ligature charCode.
+                let bestMatch = null;   // { composite, length }
+                let composite = tokens[i].value;
+                let j = i + 1;
+
+                // Extend with consecutive isChar tokens
+                while (j < tokens.length && tokens[j].isChar) {
+                    composite += tokens[j].value;
+                    if (this.defaultGlyphs.has(composite)) {
+                        bestMatch = { composite, length: j - i + 1 };
+                    }
+                    j++;
+                }
+
+                if (bestMatch) {
+                    result.push({
+                        isChar: true,
+                        value: bestMatch.composite,
+                        raw: tokens.slice(i, i + bestMatch.length).map(t => t.raw).join(''),
+                        display: bestMatch.composite
+                    });
+                    i += bestMatch.length;
+                    continue;
+                }
+            }
+            result.push(tokens[i]);
+            i++;
+        }
+        return result;
     }
 
     rebuildDefaultGlyphs() {

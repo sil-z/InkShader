@@ -167,6 +167,15 @@ export class CanvasHistoryService {
     _saveRuntimeState() {
         const c = this.canvas;
         if (!c.currentStateObj?.snapshotObj) return;
+
+        // Never persist a pristine (empty, never-modified) project to cache.
+        // The ProjectManager saves active-project data through saveToCache which has
+        // its own pristine guard, but _saveRuntimeState is the timeout-based auto-save
+        // path that fires after any history record — it calls StorageUtils.saveProject
+        // directly and MUST also check pristine to prevent auto-created empty projects
+        // from accumulating as garbage in IndexedDB.
+        if (c.projectManager?.isProjectPristine?.()) return;
+
         // Use the cached JSON string (already set by getHistoryState / _syncCurrentStateJson)
         // instead of deepCloning the snapshotObj. This avoids re-serializing the entire document
         // on every auto-save — the serialization cost was already paid when the snapshot was created.
@@ -177,8 +186,13 @@ export class CanvasHistoryService {
             redoCommandStack: this._deepClone(c.redoCommandStack || [])
         };
         if (c.projectManager && c.projectManager.getActiveProjectName()) {
-            StorageUtils.saveProject(c.projectManager.getActiveProjectName(), data)
+            const projectName = c.projectManager.getActiveProjectName();
+            StorageUtils.saveProject(projectName, data)
                 .catch((e) => console.error(" [Storage] Project save failed:", e));
+            // Persist the active project name to localStorage alongside the
+            // IndexedDB save, so that on next page load the project is findable
+            // even if it was auto-created without localStorage persistence.
+            StorageUtils.saveActiveProject(projectName);
         }
         StorageUtils.save(data).catch((e) => console.error(" [Storage] Runtime state save failed:", e));
     }
