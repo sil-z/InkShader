@@ -124,6 +124,18 @@ export function finalizeInteractionState(state, curveManager = null, actionType 
         const catalog = createTreeCatalogFromCurveManager(curveManager);
         return { ...state, ...deriveTreeFieldsFromState(state, catalog) };
     }
+    // Defensive: ensure activeGroupId matches the selected curves' actual groupId.
+    // Commands that change curve groups (e.g. changeSelectedObjectsGroup) do not
+    // go through a selection action, so the derived invariant would not otherwise
+    // be enforced.  This catches any path — current or future — that could cause
+    // a divergence between the selected object's group and activeGroupId.
+    if (curveManager && (state.selectedCurveIds?.length || state.selectedRefIds?.length)) {
+        const catalog = createTreeCatalogFromCurveManager(curveManager);
+        const derived = deriveTreeFieldsFromState(state, catalog);
+        if (derived.activeGroupId !== state.activeGroupId) {
+            return { ...state, activeGroupId: derived.activeGroupId };
+        }
+    }
     return state;
 }
 

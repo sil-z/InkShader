@@ -374,6 +374,9 @@ export class CanvasCommands {
         this.curve_manager.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
+        // When objects are moved to a different group, update the active group
+        // so the tree view and render layer reflect the new context.
+        syncActiveGroupToStore(this, targetId);
         this._commitHistoryUnlessDispatching("changeSelectedObjectsGroup");
         return true;
     }

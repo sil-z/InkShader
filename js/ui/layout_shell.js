@@ -153,8 +153,8 @@ export function initializeLayoutShell() {
             makeItem('file.new_project', false, () => CanvasDispatcher.requestNewProject()),
             { separator: true },
             makeItem('file.load_json', false, () => CanvasDispatcher.requestLoad()),
-            makeItem('file.load_ufo', true, null),
-            makeItem('file.load_svg', true, null),
+            makeItem('file.load_ufo', false, () => _triggerImportUFO()),
+            makeItem('file.load_svg', false, () => _triggerImportSVG()),
             { separator: true },
             {
                 label: I18nManager.t('file.load_cache'),
@@ -426,75 +426,30 @@ window.addEventListener('beforeunload', () => {
 });
 
 /**
- * Basic SVG export: creates an SVG string from the current canvas curves
- * and triggers a file download.
+ * SVG export: delegates to CanvasIOService.exportToSVG() which generates
+ * a proper SVG with font layer (FontForge-compatible) + visual path layers.
  */
 function _triggerExportSVG() {
     const canvas = window.__canvas;
     if (!canvas) return;
+    canvas.io.exportToSVG();
+}
 
-    const c = canvas;
-    const cm = c.curve_manager;
-    if (!cm) return;
+/**
+ * UFO import: delegates to CanvasIOService.triggerImportUFO().
+ */
+function _triggerImportUFO() {
+    const canvas = window.__canvas;
+    if (!canvas) return;
+    canvas.io.triggerImportUFO();
+}
 
-    const w = c.canvas_size_width || 1000;
-    const h = c.canvas_size_height || 1000;
-
-    let svgContent = '';
-    // Iterate all curve items in the tree (dedup by curveId)
-    const seenIds = new Set();
-    const allCurves = [];
-    for (const [id, item] of cm.treeItems.entries()) {
-        if (item.type === 'curve' && item.curveId && !seenIds.has(item.curveId)) {
-            seenIds.add(item.curveId);
-            allCurves.push({ id: item.curveId });
-        }
-    }
-    for (const { id } of allCurves) {
-        const curve = cm.curveById.get(id);
-        if (!curve || !curve.startNode) continue;
-
-        let d = '';
-        let node = curve.startNode;
-        let first = true;
-        while (node) {
-            const x = node.x;
-            const y = h - node.y; // Flip Y for SVG
-            if (first) {
-                d += `M ${x.toFixed(2)} ${y.toFixed(2)}`;
-                first = false;
-            } else {
-                const c1x = node.control1 ? node.control1.x : null;
-                const c1y = node.control1 ? h - node.control1.y : null;
-                const c2x = node.control2 ? node.control2.x : null;
-                const c2y = node.control2 ? h - node.control2.y : null;
-                if (c1x !== null && c1y !== null && c2x !== null && c2y !== null) {
-                    d += `C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`;
-                } else {
-                    d += `L ${x.toFixed(2)} ${y.toFixed(2)}`;
-                }
-            }
-            if (node === curve.endNode) {
-                if (curve.closed && d.length > 0) d += ' Z';
-                break;
-            }
-            node = node.nextOnCurve;
-        }
-        if (d) {
-            const fill = curve.closed ? ' fill="black"' : '';
-            svgContent += `  <path d="${d}" stroke="black" stroke-width="${curve.stroke_width || 1}"${fill} />\n`;
-        }
-    }
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">\n${svgContent}</svg>`;
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const dateStr = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    a.download = `InkShader_export_${dateStr}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+/**
+ * SVG import: auto-detects between font import (has <defs><font>) and
+ * image import (visual path layers), delegates accordingly.
+ */
+function _triggerImportSVG() {
+    const canvas = window.__canvas;
+    if (!canvas) return;
+    canvas.io.triggerImportSVGAuto();
 }

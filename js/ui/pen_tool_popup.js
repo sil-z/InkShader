@@ -159,6 +159,11 @@ export class PenToolPopup extends HTMLElement {
                 this._restoreStrokeInput(target);
                 return;
             }
+            // Immediately update local copy so _patchValues (called via _handleStateChanged)
+            // reads the fresh value before the state event round-trips.
+            if (this._drawToolSettings) {
+                this._drawToolSettings[prop] = target.type === 'checkbox' ? val : numVal;
+            }
             CanvasDispatcher.requestSetPenProperties(
                 { [prop]: (target.type === 'checkbox' ? val : numVal) },
                 { recordHistory }

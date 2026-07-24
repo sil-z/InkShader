@@ -1954,7 +1954,9 @@ export class CanvasRendererService {
         const tokenSummary = tokens.length > 0
             ? `${tokens.length},${c.curve_manager.getSeqOffset(tokens.length - 1)}`
             : '0';
-        const canvasKey = `${c.scale},${left},${top},${tokenSummary},${c.canvas_size_height}`;
+        const fs = c.fontSettings || {};
+        // Include font metrics in cache key so ascender/descender/upm changes trigger repaint
+        const canvasKey = `${c.scale},${left},${top},${tokenSummary},${c.canvas_size_height},${fs.ascender},${fs.descender},${fs.upm}`;
         if (canvasKey === this._canvasState) return;
         this._canvasState = canvasKey;
         let w;
@@ -1971,7 +1973,6 @@ export class CanvasRendererService {
         }
         // Position the white canvas (main_canvas DIV) so its top edge aligns with
         // the ascender line and bottom edge aligns with the descender line.
-        const fs = c.fontSettings || {};
         const upm = fs.upm || 1000;
         const fontH = c.canvas_size_height * c.scale;
         const baselineY = top + 0.8 * fontH;
