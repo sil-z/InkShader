@@ -199,6 +199,7 @@ export class NodeTool extends BaseTool {
             c.curve_manager.adjustControlNode(c.dragging_node_marker, snapped_x, snapped_y);
         }
 
+        c.bumpEditorStoreModelRevision();
         c.is_dirty = true;
     }
 

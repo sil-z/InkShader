@@ -1122,7 +1122,8 @@ logger-panel {
     letter-spacing: 0.5px;
 }
 pen-tool-popup .property_group_title,
-ellipse-tool-popup .property_group_title {
+ellipse-tool-popup .property_group_title,
+expand-stroke-popup .property_group_title {
     padding: 4px 10px;
 }
 .property_single_row {
@@ -1598,7 +1599,8 @@ group-settings-popup .npp-drag-handle {
 preferences-popup,
 pen-tool-popup,
 ellipse-tool-popup,
-font-popup {
+font-popup,
+expand-stroke-popup {
     position: fixed;
     z-index: 2000;
     background: var(--ui-bg-overlay);
@@ -1615,10 +1617,12 @@ font-popup {
 preferences-popup.visible,
 pen-tool-popup.visible,
 ellipse-tool-popup.visible,
-font-popup.visible {
+font-popup.visible,
+expand-stroke-popup.visible {
     display: block;
 }
 preferences-popup,
+expand-stroke-popup,
 font-popup {
     overflow: hidden;
 }
@@ -1757,7 +1761,8 @@ font-popup .pen-tool-row input[type="number"] {
     -moz-appearance: textfield;
 }
 pen-tool-popup .npp-row input[type="checkbox"],
-ellipse-tool-popup .npp-row input[type="checkbox"] {
+ellipse-tool-popup .npp-row input[type="checkbox"],
+expand-stroke-popup .npp-row input[type="checkbox"] {
     width: auto;
     height: auto;
     flex: none;

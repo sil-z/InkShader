@@ -37,6 +37,20 @@ function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
+    if (snapshotObj.expand_stroke_round_cap !== undefined) {
+        canvas.expandStrokeRoundCap = !!snapshotObj.expand_stroke_round_cap;
+        // Propagate to all smart-stroke curves so the rendering reads the correct flag
+        const cm = canvas.curve_manager;
+        if (cm?.curveStore?.curveById) {
+            cm.curveStore.curveById.forEach((curve) => {
+                if (curve.smart_stroke && curve.stroke_width > 0) {
+                    curve._expandRoundCap = canvas.expandStrokeRoundCap;
+                    curve._lastHash = null;
+                    curve._booleanContentHash = null;
+                }
+            });
+        }
+    }
 }
 
 function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
@@ -1002,6 +1016,8 @@ export class CanvasCommands {
             let originalSmart = curve.smart_stroke;
             curve.smart_stroke = true;
             cs.updateSmartStrokeStatus(curve);
+            // Propagate the canvas round-cap toggle to each curve
+            curve._expandRoundCap = canvas.expandStrokeRoundCap === true;
             curve.updateBooleanCache();
 
             if (!Array.isArray(curve.cached_boolean_geometry) || curve.cached_boolean_geometry.length === 0) {

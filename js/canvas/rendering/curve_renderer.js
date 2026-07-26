@@ -91,7 +91,12 @@ function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = tr
 
     const outline = curve.computeExpandedStrokeOutline(halfWidth);
     if (!outline) return false;
-    emitExpandedStrokeOutline(ctx, outline, mapPoint);
+    const roundCap = !curve.closed && curve._expandRoundCap === true;
+    emitExpandedStrokeOutline(ctx, outline, mapPoint, {
+        roundCap,
+        curve: roundCap ? curve : null,
+        halfWidth: roundCap ? halfWidth : 0
+    });
     return true;
 }
 

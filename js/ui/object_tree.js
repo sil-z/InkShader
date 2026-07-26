@@ -65,6 +65,14 @@ export class ObjectTree extends HTMLElement {
                 if (!itemDiv) return;
                 // Regular groups do not participate in selection; references do
                 if (itemDiv.dataset.type === "group" && itemDiv.dataset.isref !== "true") return;
+                // If the item is already selected, do NOT reset selection here —
+                // the user may be about to drag the multi-selection.  Let the
+                // dragstart handler decide what to drag (it uses the current DOM
+                // selection).  Ctrl/Shift/clicks still go through applyTreeItemSelection.
+                if (!e.shiftKey && !e.ctrlKey && !e.metaKey &&
+                    this.interaction.hasTreeSelection(itemDiv.dataset.id)) {
+                    return;
+                }
                 this.applyTreeItemSelection(e, itemDiv);
             });
             this.tree.addEventListener("click", (e) => {
@@ -336,13 +344,14 @@ export class ObjectTree extends HTMLElement {
         lockBtn.appendChild(lockImg);
         lockBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const itemDiv = lockBtn.closest(".tree_item");
-            if (!itemDiv) return;
-            const gid = itemDiv.dataset.id;
-            const gi = EditorModel.getTreeItem(gid);
+            const selected = Array.from(
+                this.tree.querySelectorAll('.tree_item.selected')
+            ).map(el => el.dataset.id);
+            if (selected.length === 0) return;
+            const gi = EditorModel.getTreeItem(selected[0]);
             if (!gi) return;
             const locked = !!gi.locked;
-            CanvasDispatcher.requestToggleSelectedObjectsLock([gid], !locked);
+            CanvasDispatcher.requestToggleSelectedObjectsLock(selected, !locked);
         });
         const hideBtn = document.createElement("button");
         hideBtn.className = "tree_hide_btn";
@@ -353,13 +362,14 @@ export class ObjectTree extends HTMLElement {
         hideBtn.appendChild(hideImg);
         hideBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const itemDiv = hideBtn.closest(".tree_item");
-            if (!itemDiv) return;
-            const gid = itemDiv.dataset.id;
-            const gi = EditorModel.getTreeItem(gid);
+            const selected = Array.from(
+                this.tree.querySelectorAll('.tree_item.selected')
+            ).map(el => el.dataset.id);
+            if (selected.length === 0) return;
+            const gi = EditorModel.getTreeItem(selected[0]);
             if (!gi) return;
             const hidden = gi.visible === false;
-            CanvasDispatcher.requestToggleSelectedObjectsDisplay([gid], hidden);
+            CanvasDispatcher.requestToggleSelectedObjectsDisplay(selected, hidden);
         });
         right.append(lockBtn, hideBtn);
         el.append(right);
@@ -586,14 +596,13 @@ export class ObjectTree extends HTMLElement {
                 const currentSb = item.querySelector('.tree_select_btn');
                 if (currentSb) currentSb.classList.add('is-active');
             }
-            this.dragItems = [];
-            this.interaction.selectedTreeIds.forEach(selId => {
-                const el = this.tree.querySelector(`.tree_item[data-id="${selId}"]`);
-                if (el) {
-                    el.classList.add('dragging');
-                    this.dragItems.push(el);
-                }
-            });
+            // Query the DOM for selected items rather than reading
+            // this.interaction.selectedTreeIds (which may be stale if a
+            // STATE_CHANGED from pointerdown selection change hasn't fired yet).
+            this.dragItems = Array.from(
+                this.tree.querySelectorAll('.tree_item.selected')
+            );
+            this.dragItems.forEach(el => el.classList.add('dragging'));
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', '');
             const onDragEnd = () => {

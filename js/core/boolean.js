@@ -98,8 +98,11 @@ export class BooleanEngine {
     }
 
     _buildPaperPaths(InkShaderCurves) {
-        // Returns [basePieces, operandPieces] where basePieces are the sub-pieces
-        // of the first curve and operandPieces are sub-pieces of all remaining curves.
+        // Returns [basePieces, operandPieces] where basePieces are the pieces
+        // of the first curve and operandPieces are pieces of all remaining curves.
+        // Each InkShader curve becomes a single Paper.js item (Path or CompoundPath)
+        // so that self-intersecting curves whose boolean cache was decomposed into
+        // multiple non-self-intersecting sub-paths remain one entity for boolean ops.
         let basePieces = [];
         let operandPieces = [];
         for (let i = 0; i < InkShaderCurves.length; i++) {
@@ -110,6 +113,7 @@ export class BooleanEngine {
             if (!Array.isArray(curve.cached_boolean_geometry) || curve.cached_boolean_geometry.length === 0) {
                 continue;
             }
+            const subPaths = [];
             for (let sub of curve.cached_boolean_geometry) {
                 if (sub.segments.length < 2) continue;
                 let p = new this.paperScope.Path();
@@ -121,8 +125,15 @@ export class BooleanEngine {
                         new this.paperScope.Point(seg.outX, seg.outY)
                     ));
                 }
-                (i === 0 ? basePieces : operandPieces).push(p);
+                subPaths.push(p);
             }
+            if (subPaths.length === 0) continue;
+            // Combine sub-paths of a self-intersecting curve into one entity
+            // so Paper.js boolean ops treat the whole curve as a single unit.
+            const piece = subPaths.length === 1
+                ? subPaths[0]
+                : new this.paperScope.CompoundPath({ children: subPaths });
+            (i === 0 ? basePieces : operandPieces).push(piece);
         }
         return { basePieces, operandPieces };
     }

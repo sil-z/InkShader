@@ -10,6 +10,7 @@ import "./pen_tool_popup.js";
 import "./ellipse_tool_popup.js";
 import "./dropdown_menu.js";
 import "./font_popup.js";
+import "./expand_stroke_popup.js";
 
 export function initializeLayoutShell() {
     const dockContainer = document.querySelector(".dock-container");
@@ -87,6 +88,19 @@ export function initializeLayoutShell() {
     document.getElementById("btn_action_difference")?.addEventListener("click", () => CanvasDispatcher.requestBooleanDifference());
     document.getElementById("btn_action_exclusion")?.addEventListener("click", () => CanvasDispatcher.requestBooleanExclusion());
     document.getElementById("btn_action_expand")?.addEventListener("click", () => CanvasDispatcher.requestExpandStroke());
+    if (!document.querySelector('expand-stroke-popup')) {
+        document.body.appendChild(document.createElement('expand-stroke-popup'));
+    }
+    const expandBtn = document.querySelector('#btn_action_expand');
+    if (expandBtn) {
+        expandBtn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const popup = document.querySelector('expand-stroke-popup');
+            if (popup) {
+                popup.show(expandBtn);
+            }
+        });
+    }
     document.getElementById("btn_action_insert_node")?.addEventListener("click", () => CanvasDispatcher.requestInsertNode());
     document.getElementById("btn_action_delete_node")?.addEventListener("click", () => CanvasDispatcher.requestDeleteNode());
     document.getElementById("btn_action_join_node")?.addEventListener("click", () => CanvasDispatcher.requestJoinNode());

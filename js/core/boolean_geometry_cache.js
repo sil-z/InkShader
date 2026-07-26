@@ -108,10 +108,16 @@ export function refreshCurveBooleanCache(curve) {
     }
 
     if (curve.smart_stroke && curve.stroke_width > 0) {
-        const outline = curve.computeExpandedStrokeOutline(curve.stroke_width / 2);
+        const hw = curve.stroke_width / 2;
+        const outline = curve.computeExpandedStrokeOutline(hw);
         if (outline) {
             const strokeRec = new LocalRecorder();
-            emitExpandedStrokeOutline(strokeRec, outline, identity);
+            const roundCap = !curve.closed && curve._expandRoundCap === true;
+            emitExpandedStrokeOutline(strokeRec, outline, identity, {
+                roundCap,
+                curve: roundCap ? curve : null,
+                halfWidth: roundCap ? hw : 0
+            });
             allSolidPieces.push(...buildPaperPaths(pScope, strokeRec, { resolveCrossings: false }));
         }
     }

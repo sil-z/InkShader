@@ -106,6 +106,62 @@ export function booleanViewportDOMMatrix({
     return m;
 }
 
+/**
+ * Emit a rounded cap: two cubic Bézier segments (A→M→B) forming a semicircular arc
+ * with AB as the diameter.  A and B are the actual offset-path endpoints and are
+ * NOT moved.  A midpoint M bulges outward by radius (|AB|/2) in the direction of
+ * tDirRef, and each half is a 90° circular arc approximated with the standard
+ * cubic k = 4/3·tan(π/8) ≈ 0.55228.
+ *
+ * Pen MUST be at A before calling; ends at B.
+ *
+ * @param {Object} recorder - path recorder
+ * @param {Function} mapPoint - coordinate mapper (model → target space)
+ * @param {{x:number,y:number}} a - forward offset endpoint (pen starts here)
+ * @param {{x:number,y:number}} b - backward offset endpoint (cap ends here)
+ * @param {{x:number,y:number}} tDirRef - outward tangent direction (determines bulge side)
+ */
+function emitRoundCap(recorder, mapPoint, a, b, tDirRef) {
+    const k = 0.5522847498; // (4/3) * tan(pi/8) — standard for 90° circular arc
+
+    // Vector from A to B (diameter of the semicircle)
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len = Math.hypot(vx, vy);
+    if (len < 1e-8) return;
+
+    const r = len / 2; // radius of the semicircle
+
+    // Unit direction from A to B
+    const ux = vx / len;
+    const uy = vy / len;
+
+    // Outward perpendicular: choose the side of AB that aligns with tDirRef.
+    // Left normal of v: (-vy/len, vx/len)
+    const lnx = -vy / len;
+    const lny = vx / len;
+    const dot = lnx * tDirRef.x + lny * tDirRef.y;
+    const sgn = dot >= 0 ? 1 : -1;
+    const nx = sgn * lnx; // outward unit normal
+    const ny = sgn * lny;
+
+    // M = midpoint of the semicircle arc, bulging outward by r
+    const mx = (a.x + b.x) / 2 + r * nx;
+    const my = (a.y + b.y) / 2 + r * ny;
+
+    // First cubic: A → M  (90° arc from A toward the outward side)
+    const m_mapped = mapPoint(mx, my);
+    const cp1 = mapPoint(a.x + k * r * nx, a.y + k * r * ny);
+    const cp2 = mapPoint(mx - k * r * ux, my - k * r * uy);
+    recorder.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, m_mapped.x, m_mapped.y);
+
+    // Second cubic: M → B  (90° arc from the outward side to B)
+    const cp3 = mapPoint(mx + k * r * ux, my + k * r * uy);
+    const cp4 = mapPoint(b.x + k * r * nx, b.y + k * r * ny);
+    const b_mapped = mapPoint(b.x, b.y);
+    recorder.bezierCurveTo(cp3.x, cp3.y, cp4.x, cp4.y, b_mapped.x, b_mapped.y);
+}
+
 function isGap(pA, pB) {
     return Math.hypot(pA.x - pB.x, pA.y - pB.y) > 1e-3;
 }
@@ -284,7 +340,7 @@ function emitOffsetSegmentList(recorder, offsetSegs, mapPoint, reverse = false, 
     }
 }
 
-export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerContourOnly = false, curve = null } = {}) {
+export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerContourOnly = false, curve = null, roundCap = false, halfWidth = 0 } = {}) {
     if (!outline || !recorder) return;
     const { closed, forwardPaths, backwardPaths } = outline;
     if (!forwardPaths?.length) return;
@@ -306,16 +362,103 @@ export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerCo
         recorder.closePath();
     } else {
         emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);
-        if (outline.openCuspCaps?.endMinus) {
-            const endCap = mapPoint(outline.openCuspCaps.endMinus.x, outline.openCuspCaps.endMinus.y);
-            recorder.lineTo(endCap.x, endCap.y);
-            emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false, { skipInitialLineTo: true });
+
+        if (roundCap && curve?.endNode?.lastOnCurve) {
+            _emitRoundCaps(recorder, mapPoint, outline, curve, halfWidth);
         } else {
-            emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+            if (outline.openCuspCaps?.endMinus) {
+                const endCap = mapPoint(outline.openCuspCaps.endMinus.x, outline.openCuspCaps.endMinus.y);
+                recorder.lineTo(endCap.x, endCap.y);
+                emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false, { skipInitialLineTo: true });
+            } else {
+                emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+            }
+            const firstSub = forwardPaths[0][0];
+            const p0 = mapPoint(firstSub.p0.x, firstSub.p0.y);
+            recorder.lineTo(p0.x, p0.y);
         }
+        recorder.closePath();
+    }
+}
+
+/**
+ * Emit semicircle caps at both open-curve endpoints using actual offset-path
+ * endpoint positions, then emit the reversed backward paths.
+ */
+function _emitRoundCaps(recorder, mapPoint, outline, curve, halfWidth) {
+    const { forwardPaths, backwardPaths } = outline;
+    if (!forwardPaths?.length || !backwardPaths?.length) return;
+
+    const hw = halfWidth;
+    if (hw <= 0) {
+        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
         const firstSub = forwardPaths[0][0];
         const p0 = mapPoint(firstSub.p0.x, firstSub.p0.y);
         recorder.lineTo(p0.x, p0.y);
-        recorder.closePath();
+        return;
+    }
+
+    // — End cap —
+    // Get actual offset-path endpoint positions
+    const fwdEndSeg = forwardPaths[forwardPaths.length - 1];
+    const bwdEndSeg = backwardPaths[backwardPaths.length - 1];
+    const endA = fwdEndSeg[fwdEndSeg.length - 1].p3;  // forward offset end (pen is here)
+    const endB = bwdEndSeg[bwdEndSeg.length - 1].p3;  // backward offset end
+
+    // Outward tangent at curve end: use derivative-based direction (matching the offset
+    // generator's normals) for correct bulge side determination. Fall back to chord
+    // direction when the derivative is degenerate (zero-length handle).
+    const en = curve.endNode;
+    let eTx, eTy, eLen;
+    if (en.control2) {
+        const cdx = 3 * (en.x - en.control2.x);
+        const cdy = 3 * (en.y - en.control2.y);
+        eLen = Math.hypot(cdx, cdy);
+        if (eLen > 1e-8) { eTx = cdx / eLen; eTy = cdy / eLen; }
+    }
+    if (!eLen || eLen < 1e-8) {
+        const edx = en.x - en.lastOnCurve.x;
+        const edy = en.y - en.lastOnCurve.y;
+        eLen = Math.hypot(edx, edy);
+        if (eLen > 1e-8) { eTx = edx / eLen; eTy = edy / eLen; }
+    }
+    if (eLen > 1e-8) {
+        emitRoundCap(recorder, mapPoint, endA, endB, { x: eTx, y: eTy });
+    } else {
+        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+        const firstSub = forwardPaths[0][0];
+        const p0 = mapPoint(firstSub.p0.x, firstSub.p0.y);
+        recorder.lineTo(p0.x, p0.y);
+        return;
+    }
+
+    // Reversed backward path (the end cap arc already landed at the backward offset)
+    emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false, { skipInitialLineTo: true });
+
+    // — Start cap —
+    // Actual offset-path start positions
+    const startC = backwardPaths[0][0].p0;  // backward offset start (pen is here)
+    const startD = forwardPaths[0][0].p0;   // forward offset start
+
+    // Outward tangent at start: derivative-based, then negated (bulge away from curve interior)
+    const sn = curve.startNode;
+    let sTx, sTy, sLen;
+    if (sn.control1) {
+        const cdx = 3 * (sn.control1.x - sn.x);
+        const cdy = 3 * (sn.control1.y - sn.y);
+        sLen = Math.hypot(cdx, cdy);
+        if (sLen > 1e-8) { sTx = cdx / sLen; sTy = cdy / sLen; }
+    }
+    if (!sLen || sLen < 1e-8) {
+        const sdx = sn.nextOnCurve.x - sn.x;
+        const sdy = sn.nextOnCurve.y - sn.y;
+        sLen = Math.hypot(sdx, sdy);
+        if (sLen > 1e-8) { sTx = sdx / sLen; sTy = sdy / sLen; }
+    }
+    if (sLen > 1e-8) {
+        emitRoundCap(recorder, mapPoint, startC, startD, { x: -sTx, y: -sTy });
+    } else {
+        const p0 = mapPoint(startD.x, startD.y);
+        recorder.lineTo(p0.x, p0.y);
     }
 }
