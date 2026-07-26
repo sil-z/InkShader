@@ -137,7 +137,7 @@ export class ObjectTree extends HTMLElement {
             if (item && item.isRef && item.refId) {
                 this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetTreeSelection([item.refId]);
-                queueMicrotask(() => { this._skipTreeScroll = false; });
+                requestAnimationFrame(() => { this._skipTreeScroll = false; });
             }
         } else if (action === 'unlink') {
             CanvasDispatcher.requestUnlink(ids);
@@ -177,7 +177,7 @@ export class ObjectTree extends HTMLElement {
         }
         this._skipTreeScroll = true;
         CanvasDispatcher.requestSetTreeSelection(Array.from(newSelection), activeGroupId);
-        queueMicrotask(() => { this._skipTreeScroll = false; });
+        requestAnimationFrame(() => { this._skipTreeScroll = false; });
     }
     handleLeftClick(e) {
         if (e.target.closest(".tree_right")) return;
@@ -196,7 +196,7 @@ export class ObjectTree extends HTMLElement {
                 this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetActiveGroup(itemDiv.dataset.id);
                 CanvasDispatcher.requestSetTreeSelection([], itemDiv.dataset.id);
-                queueMicrotask(() => { this._skipTreeScroll = false; });
+                requestAnimationFrame(() => { this._skipTreeScroll = false; });
             }
             return;
         }
@@ -214,7 +214,7 @@ export class ObjectTree extends HTMLElement {
             else if (item?.parentId) activeGroupId = item.parentId;
             this._skipTreeScroll = true;
             CanvasDispatcher.requestSetTreeSelection(Array.from(newSelection), activeGroupId);
-            queueMicrotask(() => { this._skipTreeScroll = false; });
+            requestAnimationFrame(() => { this._skipTreeScroll = false; });
         }
     }
     handleRightClick(e) {
@@ -231,7 +231,7 @@ export class ObjectTree extends HTMLElement {
         if (!this.interaction.hasTreeSelection(id)) {
             this._skipTreeScroll = true;
             CanvasDispatcher.requestSetTreeSelection([id]);
-            queueMicrotask(() => { this._skipTreeScroll = false; });
+            requestAnimationFrame(() => { this._skipTreeScroll = false; });
         }
         const menu = document.createElement("div");
         menu.className = "tree_menu";
@@ -575,7 +575,7 @@ export class ObjectTree extends HTMLElement {
             if (!this.interaction.hasTreeSelection(id)) {
                 this._skipTreeScroll = true;
                 CanvasDispatcher.requestSetTreeSelection([id]);
-                queueMicrotask(() => { this._skipTreeScroll = false; });
+                requestAnimationFrame(() => { this._skipTreeScroll = false; });
                 this.tree.querySelectorAll('.tree_item.selected').forEach(el => {
                     el.classList.remove('selected');
                     const sb = el.querySelector('.tree_select_btn');

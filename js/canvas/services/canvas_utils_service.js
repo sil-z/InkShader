@@ -497,13 +497,19 @@ export class CanvasUtilsService {
                                 if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
                             }
                         }
-                    } else {
+                    }
+                    // Skeleton-based padding fallback for both smart-stroke and normal curves.
+                    // Smart-stroke boolean geometry covers only the exact expanded outline —
+                    // without padding even a thin stroke is hard to click. The skeleton
+                    // isPointInStroke test with padded lineWidth provides the same ~14px
+                    // screen-space buffer that normal curves enjoy.
+                    if (!isHit) {
                         const segs = curve.getSkeletonBezierSegments();
                         const strokeWorld = Math.max(
                             14 / c.scale,
                             (curve.stroke_width || 0) + 14 / c.scale
                         );
-                        if (curveGeneratesFillArea(curve) && curve.closed && curve.startNode !== curve.endNode) {
+                        if (!smartBand && curveGeneratesFillArea(curve) && curve.closed && curve.startNode !== curve.endNode) {
                             c.ctx.beginPath();
                             emitCubicBezierSegments(c.ctx, segs, mapWorld, { close: true });
                             if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
