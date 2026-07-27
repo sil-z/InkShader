@@ -206,10 +206,15 @@ export class CanvasUtilsService {
                         if (cdist <= threshold) {
                             let z = node.last_touched || 0;
                             let isSel = snapshotIncludesCurve(ix, curve) || curveIsNodeSelected(curve);
-                            // Prefer control handles when distance is tied with main node (smooth/reflecting
-                            // nodes have handles at the same position). The tiny epsilon breaks ties so the
-                            // control handle sorts before the main node in the sort below.
-                            hits.push({ marker: ctrlMarker, dist: cdist - 0.001, z, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                            // Only apply the -0.001 epsilon / last_touched priority when the handle
+                            // is AT its own parent node's position (collapsed-handle case). A neighbor's
+                            // handle sitting at a different node's position must NOT win over the main
+                            // node body — neither by distance epsilon nor by parent's last_touched.
+                            const worldDist = Math.hypot(ctrlNode.x - node.x, ctrlNode.y - node.y) * c.scale;
+                            const handleAtParentPos = worldDist <= threshold;
+                            const effectiveDist = handleAtParentPos ? cdist - 0.001 : cdist;
+                            const effectiveZ = handleAtParentPos ? z : 0;
+                            hits.push({ marker: ctrlMarker, dist: effectiveDist, z: effectiveZ, seqIndex: seqIdx, matrix, refId, isFromSelectedCurve: isSel ? 1 : 0 });
                         }
                     };
                     checkCtrl(node.control1, node.control1?.main_node);
@@ -306,7 +311,11 @@ export class CanvasUtilsService {
                         if (cdist <= threshold) {
                             const z = node.last_touched || 0;
                             const isSel = snapshotIncludesCurve(ix, node.curve) || curveIsNodeSelected(node.curve);
-                            hits.push({ marker: ctrlMarker, dist: cdist - 0.001, z, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
+                            const worldDist = Math.hypot(ctrlNode.x - node.x, ctrlNode.y - node.y) * c.scale;
+                            const handleAtParentPos = worldDist <= threshold;
+                            const effectiveDist = handleAtParentPos ? cdist - 0.001 : cdist;
+                            const effectiveZ = handleAtParentPos ? z : 0;
+                            hits.push({ marker: ctrlMarker, dist: effectiveDist, z: effectiveZ, seqIndex: info.seqIdx, matrix: info.matrix, refId: info.refId, isFromSelectedCurve: isSel ? 1 : 0 });
                         }
                     };
                     checkCtrl(node.control1, node.control1?.main_node);
@@ -321,7 +330,8 @@ export class CanvasUtilsService {
                 if (b.z !== a.z) return b.z - a.z;
                 return a.dist - b.dist;
             });
-            return { marker: hits[0].marker, seqIndex: hits[0].seqIndex, matrix: hits[0].matrix, refId: hits[0].refId };
+            const h = hits[0];
+            return { marker: h.marker, seqIndex: h.seqIndex, matrix: h.matrix, refId: h.refId };
         }
         return null;
     }

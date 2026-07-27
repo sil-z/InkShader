@@ -80,11 +80,22 @@ export class NodeTool extends BaseTool {
                 this.requestNodeSelection("replace", [parentMarker], refId);
             }
             c.new_selected_temp = parentMarker;
+        } else if (!isAlreadySelected) {
+            // Handle hit on unselected node: redirect to parent body drag.
+            // Otherwise adjustControlNode moves only the handle, leaving the
+            // node body at the break position — the "handle doesn't follow" bug.
+            this.requestNodeSelection("replace", [parentMarker], refId);
+            c.dragging_node_marker = parentMarker;
+            c.new_selected_temp = parentMarker;
+            dragged_n = parentMainNode;
+            isMainNode = true;
         }
 
         c.drag_initial_mouse = { x: mouseX, y: mouseY };
         c.drag_initial_nodes.clear();
-        for (const marker of resolveMarkersFromStore(c)) {
+        const resolvedMarkers = resolveMarkersFromStore(c);
+        const selectedCount = resolvedMarkers.length;
+        for (const marker of resolvedMarkers) {
             const n = c.curve_manager.find_node_by_curve(marker);
             if (n) {
                 c.drag_initial_nodes.set(marker, {
@@ -94,6 +105,7 @@ export class NodeTool extends BaseTool {
                 });
             }
         }
+
 
         c.drag_initial_target = { x: dragged_n.x, y: dragged_n.y };
         if (dragged_n.type === null) {

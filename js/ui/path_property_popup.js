@@ -35,6 +35,10 @@ const POPUP_HTML = `
         <label data-i18n="prop.skel">Skeleton</label>
         <input type="checkbox" id="ppp_show_skel">
     </div>
+    <div class="ppp-row ppp-path-field">
+        <label data-i18n="prop.expand_round_cap">Round Cap</label>
+        <input type="checkbox" id="ppp_expand_round_cap">
+    </div>
     <div class="ppp-row ppp-single-path">
         <label data-i18n="prop.name">Name</label>
         <input type="text" id="ppp_name">
@@ -296,6 +300,7 @@ export class PathPropertyPopup extends HTMLElement {
             patch('ppp_closed', curve.closed);
             patch('ppp_smart_stroke', curve.smart_stroke);
             patch('ppp_show_skel', curve.show_skeleton);
+            patch('ppp_expand_round_cap', curve._expandRoundCap === true);
 
             const item = getTreeItem();
             patch('ppp_name', item?.name ?? '');
@@ -377,11 +382,12 @@ export class PathPropertyPopup extends HTMLElement {
             return;
         }
 
-        if (['ppp_closed', 'ppp_smart_stroke', 'ppp_show_skel'].includes(id)) {
+        if (['ppp_closed', 'ppp_smart_stroke', 'ppp_show_skel', 'ppp_expand_round_cap'].includes(id)) {
             const propMap = {
                 'ppp_closed': 'closed',
                 'ppp_smart_stroke': 'smart_stroke',
-                'ppp_show_skel': 'show_skeleton'
+                'ppp_show_skel': 'show_skeleton',
+                'ppp_expand_round_cap': 'expand_round_cap'
             };
             const prop = propMap[id];
             const updates = [];

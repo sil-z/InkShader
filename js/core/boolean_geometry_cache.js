@@ -118,7 +118,44 @@ export function refreshCurveBooleanCache(curve) {
                 curve: roundCap ? curve : null,
                 halfWidth: roundCap ? hw : 0
             });
-            allSolidPieces.push(...buildPaperPaths(pScope, strokeRec, { resolveCrossings: false }));
+            const strokePaths = buildPaperPaths(pScope, strokeRec, { resolveCrossings: true });
+
+            // Swallowtail filtering: resolveCrossings splits self-intersecting
+            // offset paths into CompoundPath children with alternating winding.
+            // Remove only children whose bounding box is smaller than the stroke
+            // width in BOTH dimensions — these are tight-curve offset artifacts
+            // (swallowtails).  Keep any child that can span the full stroke width,
+            // indicating a genuine forward-backward offset crossing ("P"‑shape
+            // enclosed area).  Preserved children retain their opposite winding
+            // from resolveCrossings, creating correct holes under fill("nonzero").
+            const swHw = curve.stroke_width / 2;
+            for (let i = 0; i < strokePaths.length; i++) {
+                const p = strokePaths[i];
+                if (p instanceof pScope.CompoundPath && p.children.length > 1) {
+                    // Absolute size threshold: a genuine forward-backward crossing
+                    // loop always spans the full stroke width (2×halfWidth) in at
+                    // least one bounding-box dimension.  A tight-curve swallowtail
+                    // artifact is always compact in both dimensions.
+                    const swallowThreshold = swHw * 2; // stroke width
+                    const keep = [];
+                    for (const child of p.children) {
+                        if (!(child instanceof pScope.Path)) { keep.push(child); continue; }
+                        const b = child.bounds;
+                        if (b.width < swallowThreshold && b.height < swallowThreshold) {
+                            child.remove(); // swallowtail
+                        } else {
+                            keep.push(child);
+                        }
+                    }
+                    if (keep.length === 1) {
+                        const clone = keep[0].clone();
+                        p.remove();
+                        strokePaths[i] = clone;
+                    }
+                    // else keep CompoundPath with alternating-winding children
+                }
+            }
+            allSolidPieces.push(...strokePaths);
         }
     }
 
@@ -165,6 +202,12 @@ export function refreshCurveBooleanCache(curve) {
         }
     }
 
+    // Reorient resolves winding within CompoundPath children: outer paths
+    // get clockwise winding, inner (hole) paths get counter-clockwise.
+    // For open smart-stroke paths, the swallowtail filtering above keeps
+    // genuine forward-backward crossing loops as CompoundPath children with
+    // natural alternating winding from resolveCrossings — reorient preserves
+    // this arrangement so fill("nonzero") correctly leaves holes unfilled.
     if (curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
         try {
             resultPath.reorient(true, curve.smart_stroke_clockwise);

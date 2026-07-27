@@ -240,9 +240,16 @@ export function drawCurveStroke(
         }
     }
 
-    if (curve.show_skeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
+    if (curve.show_skeleton && (renderMode === "stroke" || renderMode === "all")) {
         ctx.beginPath();
-        emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));
+        if (strokePreview && curve.smart_stroke && curve.stroke_width > 0) {
+            // During drag, skip boolean cache (too expensive) and render the
+            // skeleton as a simple non-expanded path stroke.
+            emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(),
+                createViewportTransform(viewport), { close: isCurveClosedRing(curve) });
+        } else {
+            emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));
+        }
         ctx.lineWidth = 1;
         ctx.strokeStyle = theme.path_stroke_color;
         ctx.stroke();

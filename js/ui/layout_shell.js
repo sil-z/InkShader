@@ -91,16 +91,17 @@ export function initializeLayoutShell() {
     if (!document.querySelector('expand-stroke-popup')) {
         document.body.appendChild(document.createElement('expand-stroke-popup'));
     }
-    const expandBtn = document.querySelector('#btn_action_expand');
-    if (expandBtn) {
-        expandBtn.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const popup = document.querySelector('expand-stroke-popup');
-            if (popup) {
-                popup.show(expandBtn);
-            }
-        });
-    }
+    // Right-click context menu for expand stroke is temporarily disabled.
+    // const expandBtn = document.querySelector('#btn_action_expand');
+    // if (expandBtn) {
+    //     expandBtn.addEventListener('contextmenu', (e) => {
+    //         e.preventDefault();
+    //         const popup = document.querySelector('expand-stroke-popup');
+    //         if (popup) {
+    //             popup.show(expandBtn);
+    //         }
+    //     });
+    // }
     document.getElementById("btn_action_insert_node")?.addEventListener("click", () => CanvasDispatcher.requestInsertNode());
     document.getElementById("btn_action_delete_node")?.addEventListener("click", () => CanvasDispatcher.requestDeleteNode());
     document.getElementById("btn_action_join_node")?.addEventListener("click", () => CanvasDispatcher.requestJoinNode());

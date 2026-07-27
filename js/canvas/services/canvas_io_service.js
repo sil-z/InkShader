@@ -42,8 +42,7 @@ export class CanvasIOService {
             guidelines: (c.guidelines || []).filter(g => !g._temp).map(g => ({
                 id: g.id, x: g.x, y: g.y, angle: g.angle
             })),
-            font_settings: c.fontSettings || {},
-            expand_stroke_round_cap: c.expandStrokeRoundCap
+            font_settings: c.fontSettings || {}
         }, extraState);
     }
     triggerLoad() {

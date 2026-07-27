@@ -525,7 +525,6 @@ export class CanvasRendererService {
      * Used as the node layer cache; drawn via single blit each frame.
      */
     _captureNodeLayerCache() {
-        const t0 = performance.now();
         const c = this.canvas;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();
         if (width <= 0 || height <= 0) return;
@@ -577,8 +576,6 @@ export class CanvasRendererService {
         const curveIdsArr = ix2?.selectedCurveIds ? [...ix2.selectedCurveIds].sort() : [];
         cache.selectedCurveIdsKey = JSON.stringify(curveIdsArr);
         this._nodeLayerCache = cache;
-        const t1 = performance.now();
-        if (t1 - t0 > 10) console.warn(`[PERF] _captureNodeLayerCache: ${(t1-t0).toFixed(1)}ms sel=${cache.selCount} ${width}x${height} dpr=${dpr}`);
     }
 
     /**

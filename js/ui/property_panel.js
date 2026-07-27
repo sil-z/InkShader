@@ -992,6 +992,7 @@ export class PropertyPanel extends HTMLElement {
                         <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.expand_round_cap', 'Round Cap')}</label><input type="checkbox" id="path_expand_round_cap"></div>
                         <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"${multiAttr}></div>
                         <div class="ppp-row ppp-single-path">
                             <label>${t('prop.path_direction', 'Path Direction')}</label>
@@ -1018,6 +1019,7 @@ export class PropertyPanel extends HTMLElement {
                         <div class="ppp-row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
                         <div class="ppp-row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
                         <div class="ppp-row"><label>${t('prop.skel', 'Skeleton')}</label><input type="checkbox" id="path_show_skel"></div>
+                        <div class="ppp-row"><label>${t('prop.expand_round_cap', 'Round Cap')}</label><input type="checkbox" id="path_expand_round_cap"></div>
                     </div>
                 </div>`;
         }
@@ -1100,6 +1102,7 @@ export class PropertyPanel extends HTMLElement {
             patch('path_closed', this.getCommonValue(selectedCurves, 'closed'));
             patch('path_smart_stroke', this.getCommonValue(selectedCurves, 'smart_stroke'));
             patch('path_show_skel', this.getCommonValue(selectedCurves, 'show_skeleton'));
+            patch('path_expand_round_cap', this.getCommonValue(selectedCurves, '_expandRoundCap'));
             const isSinglePath = selectedCurves.length === 1 && (item || selectedIds.length > 0);
             const firstCurve = selectedCurves[0];
 
@@ -1291,7 +1294,7 @@ export class PropertyPanel extends HTMLElement {
         let selectedIds = [...this.interaction.selectedTreeIds];
 
         if (id.startsWith('path_')) {
-            const propMap = { 'path_stroke': 'stroke_width', 'path_closed': 'closed', 'path_smart_stroke': 'smart_stroke', 'path_show_skel': 'show_skeleton' };
+            const propMap = { 'path_stroke': 'stroke_width', 'path_closed': 'closed', 'path_smart_stroke': 'smart_stroke', 'path_show_skel': 'show_skeleton', 'path_expand_round_cap': 'expand_round_cap' };
             const prop = propMap[id];
             if (!prop) return;
             if (id === 'path_stroke' && !isValidNumber(numVal, { min: 0 })) {

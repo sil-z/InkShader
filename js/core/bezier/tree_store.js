@@ -426,6 +426,14 @@ export class TreeStore {
                 changed = true;
             }
 
+            if (Object.prototype.hasOwnProperty.call(props, 'expand_round_cap')) {
+                const val = !!props.expand_round_cap;
+                if (curve._expandRoundCap !== val) {
+                    curve._expandRoundCap = val;
+                    changed = true;
+                }
+            }
+
             if (changed) {
                 curve.cached_boolean_geometry = null;
                 curve._lastHash = null;

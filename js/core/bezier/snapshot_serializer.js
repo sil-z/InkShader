@@ -168,7 +168,7 @@ export class SnapshotSerializer {
             })),
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
-            "expand_stroke_round_cap": editorState.expand_stroke_round_cap ?? false,
+
             "family_name": fontSettings.family || "InkShader_Default_Font",
             "project_name": fontSettings.project_name || "",
             "basic_spacing": fontSettings.basic_spacing ?? 1000,
@@ -231,6 +231,7 @@ export class SnapshotSerializer {
                             "smart_stroke": curve.smart_stroke,
                             "smart_stroke_clockwise": curve.smart_stroke_clockwise !== false,
                             "show_skeleton": curve.show_skeleton,
+                            "expand_round_cap": curve._expandRoundCap ?? false,
                             "visible": curve.visible !== false,
                             "locked": curve.locked === true,
                             "vertices": serializeVertices(curve)

@@ -37,20 +37,8 @@ function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
-    if (snapshotObj.expand_stroke_round_cap !== undefined) {
-        canvas.expandStrokeRoundCap = !!snapshotObj.expand_stroke_round_cap;
-        // Propagate to all smart-stroke curves so the rendering reads the correct flag
-        const cm = canvas.curve_manager;
-        if (cm?.curveStore?.curveById) {
-            cm.curveStore.curveById.forEach((curve) => {
-                if (curve.smart_stroke && curve.stroke_width > 0) {
-                    curve._expandRoundCap = canvas.expandStrokeRoundCap;
-                    curve._lastHash = null;
-                    curve._booleanContentHash = null;
-                }
-            });
-        }
-    }
+    // expand_stroke_round_cap is now per-curve (expanded_round_cap in path data).
+    // The global file-level field is no longer read.
 }
 
 function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
@@ -1016,8 +1004,7 @@ export class CanvasCommands {
             let originalSmart = curve.smart_stroke;
             curve.smart_stroke = true;
             cs.updateSmartStrokeStatus(curve);
-            // Propagate the canvas round-cap toggle to each curve
-            curve._expandRoundCap = canvas.expandStrokeRoundCap === true;
+            // _expandRoundCap is now read from the curve's own per-curve property
             curve.updateBooleanCache();
 
             if (!Array.isArray(curve.cached_boolean_geometry) || curve.cached_boolean_geometry.length === 0) {
@@ -1209,6 +1196,8 @@ export class CanvasCommands {
         if (markers.length < 2) return false;
 
         const cm = this.curve_manager;
+        /** Curves whose geometry was modified — invalidate boolean caches after the loop. */
+        const modifiedCurves = new Set();
         // Filter to endpoint nodes only
         const endMarkers = [];
         for (const m of markers) {
@@ -1246,8 +1235,15 @@ export class CanvasCommands {
                     if (n1.control2) { n1.control2.x += dx; n1.control2.y += dy; }
                     cm.deleteSingleNode(m2);
                     c1.closed = true;
+                    modifiedCurves.add(c1);
                     changed = true;
                 }
+                continue;
+            }
+
+            // Different curves: validate both curves are in the same glyph before merging.
+            if (c1.groupId !== c2.groupId) {
+                console.warn("[Join] All selected endpoint nodes must belong to curves in the same Group.");
                 continue;
             }
 
@@ -1351,6 +1347,7 @@ export class CanvasCommands {
 
             // Remove the now-empty source curve
             cm.remove_curve(sourceCurve.id);
+            modifiedCurves.add(targetCurve);
             changed = true;
         }
 
@@ -1360,6 +1357,16 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        // Invalidate curve-level boolean caches for all modified curves so the renderer
+        // does not draw stale geometry (ensureBooleanCache fast-path and _booleanPath2D).
+        for (const curve of modifiedCurves) {
+            curve._lastHash = null;
+            curve._booleanContentHash = null;
+            curve._booleanPath2D = null;
+            curve._boundsCache = null;
+            curve._matrixBoundsCache = null;
+        }
+        this.curve_manager._geometryEpoch = (this.curve_manager._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         this.curve_manager.rebuildSpatialGrid();
@@ -1368,15 +1375,15 @@ export class CanvasCommands {
     }
 
     /**
-     * Disconnect every segment whose two endpoint nodes are selected.
+     * Break path at each selected node.
      *
-     * Segment membership is snapshotted before mutation. Repeatedly splitting the live
-     * chain makes every other selected node become an endpoint and skips it, which was
-     * the source of the "alternating segments" bug for contiguous selections.
+     * Each selected node is split in two (original + position duplicate) so the
+     * chain is disconnected at that point, producing one open curve per component.
+     * Closed paths become open; open paths with k selected nodes become k+1 curves.
      */
     breakPathAtSelectedNodes() {
         const markers = resolveMarkersFromCanvas(commandCanvas(this));
-        if (markers.length < 2) return false;
+        if (markers.length < 1) return false;
 
         const cm = this.curve_manager;
         const selectedIds = new Set(markers.map((m) => m?.id ?? m));
@@ -1386,74 +1393,36 @@ export class CanvasCommands {
             if (curve) curves.add(curve);
         }
         let changed = false;
+        /** Curves whose geometry was modified — invalidate boolean caches after the loop. */
+        const modifiedCurves = new Set();
+
+        /** Duplicate a node — new marker at the same position with the same control handles. */
+        const duplicateNode = (src) => {
+            const marker = generateMarker("circle");
+            const dup = new CurveNode(marker, src.type, src.x, src.y, null, null, marker.id);
+            dup.curve = src.curve;
+            dup.control_mode = src.control_mode;
+            dup.synmove_mode = src.synmove_mode;
+            dup.smooth = src.smooth;
+            cm.domMap.set(marker, dup);
+            if (src.control1) {
+                const c1m = generateMarker("circle");
+                const c1 = new CurveNode(c1m, null, src.control1.x, src.control1.y, dup, null, c1m.id);
+                c1.curve = dup.curve;
+                cm.domMap.set(c1m, c1);
+                dup.control1 = c1;
+            }
+            if (src.control2) {
+                const c2m = generateMarker("circle");
+                const c2 = new CurveNode(c2m, null, src.control2.x, src.control2.y, dup, null, c2m.id);
+                c2.curve = dup.curve;
+                cm.domMap.set(c2m, c2);
+                dup.control2 = c2;
+            }
+            return dup;
+        };
 
         for (const curve of curves) {
-            const nodes = [];
-            let node = curve.startNode;
-            while (node) {
-                nodes.push(node);
-                if (node === curve.endNode) break;
-                node = node.nextOnCurve;
-            }
-            if (nodes.length < 2) continue;
-
-            // Edge i connects nodes[i] to nodes[(i + 1) % count].
-            const edgeCount = curve.closed ? nodes.length : nodes.length - 1;
-            const cuts = new Set();
-            for (let i = 0; i < edgeCount; i++) {
-                const from = nodes[i];
-                const to = nodes[(i + 1) % nodes.length];
-                if (
-                    selectedIds.has(from.main_node?.id ?? from.main_node) &&
-                    selectedIds.has(to.main_node?.id ?? to.main_node)
-                ) {
-                    cuts.add(i);
-                }
-            }
-            if (cuts.size === 0) continue;
-
-            // Handles pointing into a removed segment no longer have geometry to control.
-            for (const edgeIndex of cuts) {
-                const from = nodes[edgeIndex];
-                const to = nodes[(edgeIndex + 1) % nodes.length];
-                if (from.control1) {
-                    cm.domMap.delete(from.control1.main_node);
-                    curve.domMap.delete(from.control1.main_node);
-                    from.control1 = null;
-                }
-                if (to.control2) {
-                    cm.domMap.delete(to.control2.main_node);
-                    curve.domMap.delete(to.control2.main_node);
-                    to.control2 = null;
-                }
-            }
-
-            // Build connected components from the immutable edge snapshot.
-            const components = [];
-            if (curve.closed) {
-                const firstCut = cuts.values().next().value;
-                let component = [];
-                for (let step = 0; step < nodes.length; step++) {
-                    const index = (firstCut + 1 + step) % nodes.length;
-                    component.push(nodes[index]);
-                    if (cuts.has(index)) {
-                        components.push(component);
-                        component = [];
-                    }
-                }
-            } else {
-                let component = [nodes[0]];
-                for (let i = 0; i < nodes.length - 1; i++) {
-                    if (cuts.has(i)) {
-                        components.push(component);
-                        component = [];
-                    }
-                    component.push(nodes[i + 1]);
-                }
-                components.push(component);
-            }
-
-            const groupId = curve.groupId;
             const copyCurveProperties = (target) => {
                 target.closed = false;
                 target.stroke_width = curve.stroke_width;
@@ -1463,21 +1432,170 @@ export class CanvasCommands {
                 target.visible = curve.visible !== false;
                 target.locked = curve.locked === true;
             };
-            curve.domMap.clear();
 
-            for (let componentIndex = 0; componentIndex < components.length; componentIndex++) {
-                const component = components[componentIndex];
-                if (component.length === 0) continue;
-                const target = componentIndex === 0 ? curve : cm.create_temp_curve();
+            // 1. Collect nodes in chain order
+            const nodes = [];
+            let n = curve.startNode;
+            while (n) {
+                nodes.push(n);
+                if (n === curve.endNode) break;
+                n = n.nextOnCurve;
+            }
+            if (nodes.length === 0) continue;
+
+            // 2. Find break indices (selected nodes)
+            const breakIndices = [];
+            for (let i = 0; i < nodes.length; i++) {
+                if (selectedIds.has(nodes[i].main_node?.id ?? nodes[i].main_node)) {
+                    breakIndices.push(i);
+                }
+            }
+            if (breakIndices.length === 0) continue;
+
+            const groupId = curve.groupId;
+            const isClosed = curve.closed;
+            const originalStartNode = curve.startNode;
+
+            // 3. For closed curves: rotate the node list so a break point becomes index 0.
+            //    This lets us process the ring as an open chain with consistent split logic.
+            let orderedNodes = nodes;
+            if (isClosed) {
+                const pivot = breakIndices[0];
+                orderedNodes = nodes.slice(pivot).concat(nodes.slice(0, pivot));
+                // Recompute break indices for the rotated list
+                breakIndices.length = 0;
+                for (let i = 0; i < orderedNodes.length; i++) {
+                    if (selectedIds.has(orderedNodes[i].main_node?.id ?? orderedNodes[i].main_node)) {
+                        breakIndices.push(i);
+                    }
+                }
+                // For a closed curve, every node is a break point — bail out
+                // (each node becomes its own single-node curve, which behaves identically
+                //  to deleting all segments; that is a user education concern, not a bug).
+            }
+
+            // 4. Create duplicates for each break point.
+            //    The original break node becomes the END of its left component.
+            //    The duplicate becomes the START of the right component.
+            const brkDup = new Map(); // index → duplicate node
+            for (const bi of breakIndices) {
+                if (bi >= orderedNodes.length) continue;
+                brkDup.set(bi, duplicateNode(orderedNodes[bi]));
+            }
+
+            // 5. Re-link: break the chain at each break point.
+            for (const bi of breakIndices) {
+                if (bi >= orderedNodes.length) continue;
+                const orig = orderedNodes[bi];
+
+                // Disconnect the original node's outgoing link (it becomes an endpoint).
+                orig.nextOnCurve = null;
+
+                if (brkDup.has(bi)) {
+                    const dup = brkDup.get(bi);
+                    if (bi + 1 < orderedNodes.length) {
+                        const nextOrig = orderedNodes[bi + 1];
+                        dup.nextOnCurve = nextOrig;
+                        nextOrig.lastOnCurve = dup;
+                    } else {
+                        // Last break point in a closed chain: wrap around
+                        // The duplicate connects to the first node (orderedNodes[0])
+                        dup.nextOnCurve = orderedNodes[0];
+                        orderedNodes[0].lastOnCurve = dup;
+                    }
+
+                    // Reset last_touched so overlapping break nodes have equal priority
+                    // in hit testing. Otherwise the original (pre-break selection) always
+                    // wins, making the duplicate unreachable through body-click.
+                    orig.last_touched = 0;
+
+                    // Clean up endpoint handles:
+                    // orig (now an endpoint) loses its outgoing handle (control1);
+                    // dup (now a startpoint) loses its incoming handle (control2).
+                    // Note: control_mode is NOT changed here — the nodes keep their
+                    // original mode so they render as circles (not endpoint diamonds),
+                    // because the split creates two overlapping circle nodes whose
+                    // combined handles (control1 from dup + control2 from orig) are
+                    // both visible and represent the full original pair of handles.
+                    if (orig.control1) {
+                        curve.domMap.delete(orig.control1.main_node);
+                        cm.domMap.delete(orig.control1.main_node);
+                        orig.control1 = null;
+                    }
+                    if (dup.control2) {
+                        curve.domMap.delete(dup.control2.main_node);
+                        cm.domMap.delete(dup.control2.main_node);
+                        dup.control2 = null;
+                    }
+                }
+            }
+
+            // 6. Build components by walking from each start point.
+            //    Start points: for the first component, use the curve's original startNode.
+            //    For subsequent components, use the duplicate of each break point.
+            const componentStarts = [];
+            if (!isClosed) {
+                componentStarts.push(originalStartNode);
+            }
+            for (const bi of breakIndices) {
+                if (brkDup.has(bi)) {
+                    componentStarts.push(brkDup.get(bi));
+                }
+            }
+
+            // For closed curves, remove the original startNode if it's not a break point
+            // because we rotated to start at a break. But for simplicity, let the walk
+            // determine what's reachable.
+
+            // Walk from each start point and collect reachable nodes until nextOnCurve is null.
+            // Track visited nodes to avoid duplicates.
+            const visited = new Set();
+            const components = [];
+            for (const start of componentStarts) {
+                if (visited.has(start)) continue;
+                const chain = [];
+                let walk = start;
+                while (walk && !visited.has(walk)) {
+                    visited.add(walk);
+                    chain.push(walk);
+                    if (!walk.nextOnCurve) break;
+                    walk = walk.nextOnCurve;
+                }
+                if (chain.length > 0) components.push(chain);
+            }
+
+            // Orphan detection: any non-break node in the original chain not reached
+            // by a component walk gets its own singleton component. This protects
+            // against stale nextOnCurve links from closed chains that leave nodes
+            // unreachable when multiple break points split the ring.
+            // Break-point nodes (orig) are always reachable as component endpoints
+            // (they have nextOnCurve = null), so visited.has() filters them correctly.
+            for (const node of orderedNodes) {
+                if (!visited.has(node)) {
+                    node.nextOnCurve = null;
+                    node.lastOnCurve = null;
+                    components.push([node]);
+                    visited.add(node);
+                }
+            }
+
+            for (let ci = 0; ci < components.length; ci++) {
+                const chain = components[ci];
+                if (chain.length === 0) continue;
+
+                const target = ci === 0 ? curve : cm.create_temp_curve();
                 copyCurveProperties(target);
-                target.startNode = component[0];
-                target.endNode = component[component.length - 1];
+                target.startNode = chain[0];
+                target.endNode = chain[chain.length - 1];
                 target.domMap.clear();
 
-                for (let i = 0; i < component.length; i++) {
-                    const current = component[i];
-                    current.lastOnCurve = i > 0 ? component[i - 1] : null;
-                    current.nextOnCurve = i + 1 < component.length ? component[i + 1] : null;
+                // Fix internal chain links (break may have left stale nextOnCurve on
+                // non-break nodes, e.g. when a neighbor was duplicated). Rebuild the
+                // linked list from the component ordering.
+                for (let i = 0; i < chain.length; i++) {
+                    const current = chain[i];
+                    current.lastOnCurve = i > 0 ? chain[i - 1] : null;
+                    current.nextOnCurve = i + 1 < chain.length ? chain[i + 1] : null;
                     current.curve = target;
                     target.domMap.set(current.main_node, current);
                     if (current.control1) {
@@ -1490,7 +1608,8 @@ export class CanvasCommands {
                     }
                 }
                 target._invalidateBounds?.();
-                if (componentIndex > 0) cm.addPath(target, groupId);
+                if (ci > 0) cm.addPath(target, groupId);
+                modifiedCurves.add(target);
             }
             changed = true;
         }
@@ -1501,6 +1620,15 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        // Invalidate curve-level boolean caches for all modified curves so the renderer
+        // does not draw stale geometry (ensureBooleanCache fast-path and _booleanPath2D).
+        for (const curve of modifiedCurves) {
+            curve._lastHash = null;
+            curve._booleanContentHash = null;
+            curve._booleanPath2D = null;
+            curve._boundsCache = null;
+            curve._matrixBoundsCache = null;
+        }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
@@ -1522,6 +1650,8 @@ export class CanvasCommands {
         if (markers.length < 2) return false;
 
         const cm = this.curve_manager;
+        /** Curves whose geometry was modified — invalidate boolean caches after the loop. */
+        const modifiedCurves = new Set();
         // Filter to endpoint nodes only
         const endMarkers = [];
         for (const m of markers) {
@@ -1548,8 +1678,15 @@ export class CanvasCommands {
                 if ((n1 === c1.startNode && n2 === c1.endNode) ||
                     (n2 === c1.startNode && n1 === c1.endNode)) {
                     c1.closed = true;
+                    modifiedCurves.add(c1);
                     changed = true;
                 }
+                continue;
+            }
+
+            // Different curves: validate both curves are in the same glyph before connecting.
+            if (c1.groupId !== c2.groupId) {
+                console.warn("[AddSegment] All selected endpoint nodes must belong to curves in the same Group.");
                 continue;
             }
 
@@ -1614,6 +1751,7 @@ export class CanvasCommands {
 
             c2.endNode = null;
             cm.remove_curve(c2.id);
+            modifiedCurves.add(c1);
             changed = true;
         }
 
@@ -1623,6 +1761,15 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        // Invalidate curve-level boolean caches for all modified curves so the renderer
+        // does not draw stale geometry (ensureBooleanCache fast-path and _booleanPath2D).
+        for (const curve of modifiedCurves) {
+            curve._lastHash = null;
+            curve._booleanContentHash = null;
+            curve._booleanPath2D = null;
+            curve._boundsCache = null;
+            curve._matrixBoundsCache = null;
+        }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
@@ -1652,6 +1799,8 @@ export class CanvasCommands {
 
         const cm = this.curve_manager;
         let changed = false;
+        /** Curves whose geometry was modified — invalidate boolean caches after the loop. */
+        const modifiedCurves = new Set();
 
         // Helper: extract an orphan node into its own single-node curve so it
         // remains visible, selectable, and its properties are preserved exactly.
@@ -1732,6 +1881,7 @@ export class CanvasCommands {
                 curve.endNode = walk;
                 curve.closed = false;
                 adoptOrphan(leadNode, curve.groupId);
+                modifiedCurves.add(curve);
                 changed = true;
                 continue;
             }
@@ -1743,6 +1893,7 @@ export class CanvasCommands {
                 leadNode.nextOnCurve = null;
                 curve.startNode = trailNode;
                 adoptOrphan(leadNode, curve.groupId);
+                modifiedCurves.add(curve);
                 changed = true;
                 continue;
             }
@@ -1754,6 +1905,7 @@ export class CanvasCommands {
                 trailNode.lastOnCurve = null;
                 curve.endNode = leadNode;
                 adoptOrphan(trailNode, curve.groupId);
+                modifiedCurves.add(curve);
                 changed = true;
                 continue;
             }
@@ -1785,6 +1937,7 @@ export class CanvasCommands {
             rightCurve.endNode = originalEndNode;
 
             cm.addPath(rightCurve, curve.groupId);
+            modifiedCurves.add(curve);
             changed = true;
         }
 
@@ -1794,6 +1947,15 @@ export class CanvasCommands {
             type: EDITOR_ACTIONS.CHANGE_NODE_SELECTION,
             payload: { strategy: "clear" }
         });
+        // Invalidate curve-level boolean caches for all modified curves so the renderer
+        // does not draw stale geometry (ensureBooleanCache fast-path and _booleanPath2D).
+        for (const curve of modifiedCurves) {
+            curve._lastHash = null;
+            curve._booleanContentHash = null;
+            curve._booleanPath2D = null;
+            curve._boundsCache = null;
+            curve._matrixBoundsCache = null;
+        }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         cm.notifyModelUpdate();
         this.notifyPropertiesUpdate();

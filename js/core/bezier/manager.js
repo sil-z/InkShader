@@ -886,6 +886,20 @@ export class CurveManager {
                         seqOffsetX,
                         groupId,
                     });
+                    // DEBUG: track overlapping nodes for break-point analysis
+                    if (this._gridDbgCount === undefined) this._gridDbgCount = 0;
+                    this._gridDbgCount++;
+                    const dbgX = Math.round(wx * 10) / 10;
+                    const dbgY = Math.round(wy * 10) / 10;
+                    if (dbgX > -50 && dbgX < 50 && dbgY > -50 && dbgY < 50) {
+                        this._lastGridEntries ??= [];
+                        this._lastGridEntries.push({
+                            nid: String(current.main_node?.id ?? current.main_node).slice(-8),
+                            x: dbgX, y: dbgY,
+                            curveStart: String(cd.curve?.startNode?.main_node?.id ?? '').slice(-8),
+                            curveEnd: String(cd.curve?.endNode?.main_node?.id ?? '').slice(-8)
+                        });
+                    }
                     current = current.nextOnCurve;
                 }
                 // Curve AABB for object hit-test (SELECT), independent of node density.

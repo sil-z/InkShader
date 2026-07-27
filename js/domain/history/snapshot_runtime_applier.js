@@ -307,19 +307,7 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
         case "editor_guideline_lock":
             canvas.guideline_lock = !!value;
             return true;
-        case "expand_stroke_round_cap":
-            canvas.expandStrokeRoundCap = !!value;
-            // Propagate to all smart-stroke curves so the rendering reads the correct flag
-            if (cm?.curveStore?.curveById) {
-                cm.curveStore.curveById.forEach((curve) => {
-                    if (curve.smart_stroke && curve.stroke_width > 0) {
-                        curve._expandRoundCap = !!value;
-                        curve._lastHash = null;
-                        curve._booleanContentHash = null;
-                    }
-                });
-            }
-            return true;
+        // expand_stroke_round_cap removed — now per-curve (expand_round_cap in path data).
         default:
             if (FONT_SNAPSHOT_KEYS.has(key)) {
                 const snapshotObj = canvas.currentStateObj?.snapshotObj || {};
@@ -465,19 +453,7 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
-    if (snapshotObj.expand_stroke_round_cap !== undefined) {
-        canvas.expandStrokeRoundCap = !!snapshotObj.expand_stroke_round_cap;
-        const cm2 = canvas.curve_manager;
-        if (cm2?.curveStore?.curveById) {
-            cm2.curveStore.curveById.forEach((curve) => {
-                if (curve.smart_stroke && curve.stroke_width > 0) {
-                    curve._expandRoundCap = canvas.expandStrokeRoundCap;
-                    curve._lastHash = null;
-                    curve._booleanContentHash = null;
-                }
-            });
-        }
-    }
+    // expand_stroke_round_cap removed — now per-curve (expand_round_cap in path data).
     canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
     return true;
 }

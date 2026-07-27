@@ -337,7 +337,6 @@ export class EditorStore {
             this._pendingBefore = null;
             this._pendingAfter = null;
             this._pendingResult = null;
-            const _e0 = performance.now();
             this.emit(CANVAS_EVENTS.STATE_CHANGED, {
                 action: {
                     type: action.type,
@@ -351,10 +350,6 @@ export class EditorStore {
                 result: resultVal,
                 timestamp: Date.now()
             });
-            const _e1 = performance.now();
-            if (_e1 - _e0 > 10) {
-                console.warn(`[PERF] _emitStateChanged: ${(_e1-_e0).toFixed(1)}ms action=${action?.type}`);
-            }
         });
     }
 
