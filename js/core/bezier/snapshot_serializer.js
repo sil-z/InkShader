@@ -240,11 +240,19 @@ export class SnapshotSerializer {
                 } else if (child.type === 'group') {
                     if (child.isRef) {
                         let targetGroup = this._treeStore.treeItems.get(child.refId);
+                        const t = child.transform;
                         children.push({
                             "type": "component",
                             "name": child.name,
                             "component_id": targetGroup ? targetGroup.name : child.refId,
-                            "transform": [1, 0, 0, 1, child.transform.e, child.transform.f],
+                            "transform": [
+                                t && Number.isFinite(t.a) ? t.a : 1,
+                                t && Number.isFinite(t.b) ? t.b : 0,
+                                t && Number.isFinite(t.c) ? t.c : 0,
+                                t && Number.isFinite(t.d) ? t.d : 1,
+                                t && Number.isFinite(t.e) ? t.e : 0,
+                                t && Number.isFinite(t.f) ? t.f : 0
+                            ],
                             "visible": child.visible !== false,
                             "locked": child.locked === true
                         });

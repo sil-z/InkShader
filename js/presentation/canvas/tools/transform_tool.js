@@ -106,26 +106,19 @@ export class TransformTool {
         }
 
         for (let ref of resolveRefsFromSnapshot(ix, cm)) {
-            if (action === 'drag' || ref.type === 'image') {
-                let seqIdx = c.utils.getSeqIdxForGroupId(ref.type === 'image' ? (ref.parentId || cm.getRootGroupId(ref.id)) : cm.getRootGroupId(ref.id));
-                let seqOff = seqIdx !== -1 ? cm.getSeqOffset(seqIdx) : 0;
-                c.transform_snapshot_refs.push({ ref: ref, startMatrix: new DOMMatrix(ref.transform), seqOff });
-            } else {
-                let seqIdx = c.utils.getSeqIdxForGroupId(cm.getRootGroupId(ref.id));
-                let seqOff = seqIdx !== -1 ? cm.getSeqOffset(seqIdx) : 0;
-                let masterCurves = cm.getCurvesForGroup(ref.refId);
-                const refMatrix = ref.transform ? new DOMMatrix(ref.transform) : new DOMMatrix();
-                for (let cd of masterCurves) {
-                    const localMatrix = cd.matrix ? new DOMMatrix(cd.matrix) : new DOMMatrix();
-                    const localToRef = new DOMMatrix(refMatrix).multiply(localMatrix);
-                    const localToWorld = new DOMMatrix().translate(seqOff, 0).multiply(localToRef);
-                    let worldToLocal = null;
-                    try { worldToLocal = localToWorld.inverse(); } catch (_) { continue; }
-                    pushCurveContext(cd.curve, {
-                        seqOff, localToWorld, worldToLocal, previewRefId: cd.refId ?? ref.id
-                    });
-                }
-            }
+            // All refs (glyph + image) go through snapshotRefs — matrix path.
+            // This ensures scale/rotate on refs modifies the transform matrix
+            // rather than source curves, matching OpenType composite semantics.
+            let parentId = ref.type === 'image'
+                ? (ref.parentId || cm.getRootGroupId(ref.id))
+                : cm.getRootGroupId(ref.id);
+            let seqIdx = c.utils.getSeqIdxForGroupId(parentId);
+            let seqOff = seqIdx !== -1 ? cm.getSeqOffset(seqIdx) : 0;
+            c.transform_snapshot_refs.push({
+                ref: ref,
+                startMatrix: new DOMMatrix(ref.transform || new DOMMatrix()),
+                seqOff
+            });
         }
 
         for (let info of curveContexts) {
@@ -217,6 +210,9 @@ export class TransformTool {
                 params = TransformEngine.calculateShearParams(action, pivot, c.transform_start_world, { x: worldX, y: worldY }, bounds || c.transform_start_bounds);
             } else {
                 params = TransformEngine.calculateScaleParams(action, pivot, c.transform_start_world, { x: worldX, y: worldY }, (isShiftPressed || isCtrlPressed));
+                // Clamp scale to prevent degenerate matrices (zero → invisible, extreme → NaN)
+                if (Number.isFinite(params.sx)) params.sx = Math.max(0.01, Math.min(params.sx, 100));
+                if (Number.isFinite(params.sy)) params.sy = Math.max(0.01, Math.min(params.sy, 100));
             }
 
             c.curve_manager.applyTransformPreview({

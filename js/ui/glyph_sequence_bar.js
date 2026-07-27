@@ -41,7 +41,8 @@ export class GlyphSequenceBar extends HTMLElement {
         this._textSig = "";
         this._activeSig = "";
         this._offSig = "";
-        this._vpSig = "";
+        this._vpOffSig = 0;
+        this._vpScaleSig = 1;
         this._lastWidth = 0;
         this._previewCanvas = document.createElement("canvas");
         this._previewCanvas.width = 120;
@@ -82,13 +83,24 @@ export class GlyphSequenceBar extends HTMLElement {
         const onRender = () => {
             const c = this._canvas;
             if (!c) return;
-            const offKey = `${c.offset?.x ?? 0},${c.scale}`;
-            if (offKey !== this._offSig) {
-                this._offSig = offKey;
-                // Full re-render to re-evaluate collapse/expand — the rendered
-                // width of each glyph changes with scale, so items that fit or
-                // overlap at one zoom level may not at another.
+            const ox = c.offset?.x ?? 0;
+            const sc = c.scale;
+            this._offSig = `${ox},${sc}`;
+            // Scale change: full re-render to re-evaluate collapse/expand —
+            // glyph widths at different zoom levels may fit in or overflow
+            // their slots differently.
+            if (sc !== this._vpScaleSig) {
+                this._vpScaleSig = sc;
+                this._vpOffSig = ox;
                 this._render();
+                return;
+            }
+            // Offset change (pan/drag): lightweight position update, no DOM
+            // rebuild. Full _render() causes visible button flickering when
+            // DevTools triggers software compositing.
+            if (ox !== this._vpOffSig) {
+                this._vpOffSig = ox;
+                this._updatePositions();
                 return;
             }
             // Re-evaluate collapse/expand when container width changes
@@ -108,6 +120,8 @@ export class GlyphSequenceBar extends HTMLElement {
             this._textSig = this.text;
             this._activeSig = JSON.stringify(st.activeSequenceIndices);
             this._offSig = st.offset ? `${st.offset.x},${st.scale}` : "";
+            this._vpScaleSig = st.scale ?? 1;
+            this._vpOffSig = st.offset?.x ?? 0;
             requestAnimationFrame(() => this._render());
         });
     }

@@ -119,7 +119,7 @@ export class PropertyPanel extends HTMLElement {
             });
 
             const realtimeIds = [
-                'ref_tx', 'ref_ty',
+                'ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty',
                 'sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h',
                 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_out_x', 'prop_out_y', 'prop_in_a', 'prop_out_a',
                 'path_stroke'
@@ -338,8 +338,15 @@ export class PropertyPanel extends HTMLElement {
     }
 
     decomposeMatrix(m) {
-        if (!m || typeof m !== "object") return { tx: 0, ty: 0 };
-        return { tx: m.e ?? 0, ty: m.f ?? 0 };
+        if (!m || typeof m !== "object") return { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+        return {
+            a: m.a ?? 1,
+            b: m.b ?? 0,
+            c: m.c ?? 0,
+            d: m.d ?? 1,
+            tx: m.e ?? 0,
+            ty: m.f ?? 0
+        };
     }
 
     getSeqIdxForGroupId(groupId) {
@@ -372,13 +379,13 @@ export class PropertyPanel extends HTMLElement {
                 const curve = item?.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
                 return curve ? { id: sid, value: curve.stroke_width } : null;
             }).filter(Boolean);
-        } else if (['ref_tx', 'ref_ty'].includes(id)) {
+        } else if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty'].includes(id)) {
             const item = EditorModel.getTreeItem(selectedIds[0]);
             const transform = item?.isRef ? EditorModel.getRefTransform(item) : null;
             snapshot.kind = 'refTransform';
             snapshot.id = item?.id ?? null;
-            snapshot.tx = transform?.e ?? 0;
-            snapshot.ty = transform?.f ?? 0;
+            const t = transform || new DOMMatrix();
+            snapshot.matrix = { a: t.a ?? 1, b: t.b ?? 0, c: t.c ?? 0, d: t.d ?? 1, tx: t.e ?? 0, ty: t.f ?? 0 };
         } else if (['sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h'].includes(id)) {
             const bounds = this.getSelectionBounds();
             snapshot.kind = 'bounds';
@@ -437,9 +444,14 @@ export class PropertyPanel extends HTMLElement {
             if (updates.length > 0) {
                 CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: false });
             }
-        } else if (snapshot.kind === 'refTransform' && snapshot.id) {
+        } else if (snapshot.kind === 'refTransform' && snapshot.id && snapshot.matrix) {
+            const m = snapshot.matrix;
             CanvasDispatcher.requestSetSingleObjectProperties(
-                [{ id: snapshot.id, props: { ref_tx: snapshot.tx, ref_ty: snapshot.ty } }],
+                [{ id: snapshot.id, props: {
+                    ref_matrix_a: m.a, ref_matrix_b: m.b,
+                    ref_matrix_c: m.c, ref_matrix_d: m.d,
+                    ref_tx: m.tx, ref_ty: m.ty
+                } }],
                 { recordHistory: false }
             );
         } else if (snapshot.kind === 'bounds' && Number.isFinite(snapshot.valueForProp)) {
@@ -464,7 +476,7 @@ export class PropertyPanel extends HTMLElement {
         const id = target.id;
         if (['ref_name', 'g_name', 'c_name'].includes(id)) return isValidTreeName(trimmedInputValue(target));
         if (id === 'path_stroke' || id === 'g_advance') return isValidNumber(numberFromInput(target), { min: 0 });
-        if (['ref_tx', 'ref_ty', 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
+        if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty', 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
             return isValidNumber(numberFromInput(target));
         }
         if (['sel_prop_x', 'sel_prop_y'].includes(id)) return isValidNumber(numberFromInput(target));
@@ -564,6 +576,16 @@ export class PropertyPanel extends HTMLElement {
             if (html) sections.grp = html;
         }
 
+        if (hasRef) {
+            const refHtml = this._buildRefProps(t);
+            const holder = document.createElement('div');
+            holder.innerHTML = refHtml;
+            [...holder.children].forEach(child => {
+                const sectionKey = child.getAttribute('data-section');
+                if (sectionKey) sections[sectionKey] = child.outerHTML;
+            });
+        }
+
         const sectionKeys = Object.keys(sections);
         if (sectionKeys.length === 0 && !hasRef) {
             // If only the path section exists and we're keeping it, don't clear
@@ -659,13 +681,6 @@ export class PropertyPanel extends HTMLElement {
             }
         });
 
-        if (hasRef) {
-            const html = this._buildRefProps(t);
-            const holder = document.createElement('div');
-            holder.innerHTML = html;
-            while (holder.firstChild) frag.appendChild(holder.firstChild);
-        }
-
         this.container.classList.remove("is_empty");
         const st = this.scrollTop;
         this.container.replaceChildren(frag);
@@ -675,7 +690,7 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _ensureSectionOrder(availableKeys) {
-        const allKeys = ['npp', 'bbox', 'ppp', 'grp'];
+        const allKeys = ['npp', 'bbox', 'ppp', 'grp', 'ref', 'ref_details'];
         const existing = this._sectionOrder.filter(k => allKeys.includes(k));
         allKeys.forEach(k => {
             if (!existing.includes(k)) existing.push(k);
@@ -748,6 +763,7 @@ export class PropertyPanel extends HTMLElement {
         if (sectionId === 'bbox') return document.querySelector('bounding-box-popup');
         if (sectionId === 'ppp') return document.querySelector('path-property-popup');
         if (sectionId === 'grp') return document.querySelector('group-settings-popup');
+        if (sectionId === 'ref' || sectionId === 'ref_details') return document.querySelector('group-settings-popup');
         return null;
     }
 
@@ -805,6 +821,27 @@ export class PropertyPanel extends HTMLElement {
             popup._groupId = this.interaction.activeGroupId;
             popup._setDocked(false);
             popup._patchValues();
+} else if (sectionId === 'ref' || sectionId === 'ref_details') {
+            // Don't call render() — keep the inline section in the DOM and
+            // float the popup on top. The popup shows ref fields immediately.
+            const refId = this.interaction.selectedTreeIds[0];
+            popup._groupId = refId || this.interaction.activeGroupId;
+            popup._docked = false;
+            popup._extractedRefId = refId || null;
+            popup._refDetailsMode = sectionId === 'ref_details';
+            const titleEl = popup.querySelector('#grp_drag_handle');
+            const stdFields = popup.querySelector('#grp_standard_fields');
+            const refFields = popup.querySelector('#grp_ref_fields');
+            if (stdFields) stdFields.style.display = 'none';
+            if (refFields) refFields.style.display = '';
+            if (popup._refDetailsMode) {
+                if (titleEl) titleEl.textContent = 'Reference Details';
+                const rows = refFields?.querySelectorAll('.npp-row');
+                if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = 'none';
+            } else {
+                if (titleEl) titleEl.textContent = 'Transform (Ref)';
+            }
+            popup._patchValues();
         }
 
         // Position the popup so the cursor is at the same relative position
@@ -822,7 +859,10 @@ export class PropertyPanel extends HTMLElement {
         popup.style.left = Math.max(0, Math.min(parseFloat(popup.style.left), window.innerWidth - initPw)) + 'px';
         popup.style.top = Math.max(0, Math.min(parseFloat(popup.style.top), window.innerHeight - initPh)) + 'px';
         // Persist position so it survives page refresh
-        if (typeof popup._savePosition === 'function') popup._savePosition();
+        if (typeof popup._savePosition === 'function' &&
+            sectionId !== 'ref' && sectionId !== 'ref_details') {
+            popup._savePosition();
+        }
         // The offset captures the actual cursor-to-popup-left-edge distance after clamping
         const offX = startX - parseFloat(popup.style.left);
         const offY = startY - parseFloat(popup.style.top);
@@ -877,15 +917,21 @@ export class PropertyPanel extends HTMLElement {
         } else if (sectionId === 'grp') {
             popup._docked = true;
             this._grpDocked = true;
+        } else if (sectionId === 'ref' || sectionId === 'ref_details') {
+            popup._docked = true;
+            popup._extractedRefId = null;
+            popup._refDetailsMode = false;
         }
         // Sync popup's localStorage so a page refresh preserves the docked state
-        try {
-            const key = sectionId === 'npp' ? 'npp_docked'
-                      : sectionId === 'bbox' ? 'bbox_docked'
-                      : sectionId === 'grp' ? 'grp_docked'
-                      : 'ppp_docked';
-            localStorage.setItem(key, '1');
-        } catch (_) {}
+        if (sectionId !== 'ref' && sectionId !== 'ref_details') {
+            try {
+                const key = sectionId === 'npp' ? 'npp_docked'
+                          : sectionId === 'bbox' ? 'bbox_docked'
+                          : sectionId === 'grp' ? 'grp_docked'
+                          : 'ppp_docked';
+                localStorage.setItem(key, '1');
+            } catch (_) {}
+        }
         this.lastSignature = '';
         this._saveSectionDockState();
         this.render();
@@ -1028,16 +1074,19 @@ export class PropertyPanel extends HTMLElement {
 
     _buildRefProps(t) {
         return `
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.trans_ref', 'Transform (Ref)')}</div>
-                <div class="property_single_row">
-                    <label>${t('prop.trans', 'Trans')}</label>
-                    <div class="prop_inputs"><input type="number" id="ref_tx" placeholder="X"><input type="number" id="ref_ty" placeholder="Y"></div>
+            <div data-section="ref">
+                <div class="property_group_title npp-drag-handle">${t('prop.trans_ref', 'Transform (Ref)')}</div>
+                <div class="npp-fields">
+                    <div class="npp-row"><label>${t('prop.scale', 'Scale')}</label><div class="npp-input-group"><span class="npp-axis">a</span><input type="number" step="any" id="ref_matrix_a"><span class="npp-axis">b</span><input type="number" step="any" id="ref_matrix_b"></div></div>
+                    <div class="npp-row"><label>${t('prop.shear', 'Shear')}</label><div class="npp-input-group"><span class="npp-axis">c</span><input type="number" step="any" id="ref_matrix_c"><span class="npp-axis">d</span><input type="number" step="any" id="ref_matrix_d"></div></div>
+                    <div class="npp-row"><label>${t('prop.offset', 'Offset')}</label><div class="npp-input-group"><span class="npp-axis">tx</span><input type="number" step="any" id="ref_tx"><span class="npp-axis">ty</span><input type="number" step="any" id="ref_ty"></div></div>
                 </div>
             </div>
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.ref_details', 'Reference Details')}</div>
-                <div class="property_single_row"><label>${t('prop.name', 'Name')}</label><input type="text" id="ref_name"></div>
+            <div data-section="ref_details">
+                <div class="property_group_title npp-drag-handle">${t('prop.ref_details', 'Reference Details')}</div>
+                <div class="npp-fields">
+                    <div class="npp-row"><label>${t('prop.name', 'Name')}</label><input type="text" id="ref_name"></div>
+                </div>
             </div>`;
     }
 
@@ -1218,6 +1267,10 @@ export class PropertyPanel extends HTMLElement {
                 if (transform) {
                     const decomp = this.decomposeMatrix(transform);
                     patch('ref_name', item.name);
+                    patch('ref_matrix_a', decomp.a.toFixed(4));
+                    patch('ref_matrix_b', decomp.b.toFixed(4));
+                    patch('ref_matrix_c', decomp.c.toFixed(4));
+                    patch('ref_matrix_d', decomp.d.toFixed(4));
                     patch('ref_tx', decomp.tx.toFixed(1));
                     patch('ref_ty', decomp.ty.toFixed(1));
                 }
@@ -1358,20 +1411,26 @@ export class PropertyPanel extends HTMLElement {
             return;
         }
 
-        if (['ref_tx', 'ref_ty'].includes(id)) {
+        if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty'].includes(id)) {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
             if (item && item.isRef) {
-                const txInput = this.container.querySelector('#ref_tx');
-                const tyInput = this.container.querySelector('#ref_ty');
-                let tx = numberFromInput(txInput);
-                let ty = numberFromInput(tyInput);
-                if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+                const readField = (fieldId) => {
+                    const el = this.container.querySelector('#' + fieldId);
+                    return el ? numberFromInput(el) : NaN;
+                };
+                const a = readField('ref_matrix_a');
+                const b = readField('ref_matrix_b');
+                const c = readField('ref_matrix_c');
+                const d = readField('ref_matrix_d');
+                const tx = readField('ref_tx');
+                const ty = readField('ref_ty');
+                if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || !Number.isFinite(d) || !Number.isFinite(tx) || !Number.isFinite(ty)) {
                     if (e.type === 'change') this._restoreInputSnapshot(target);
                     return;
                 }
                 CanvasDispatcher.requestSetSingleObjectProperties(
-                    [{ id: selId, props: { ref_tx: tx, ref_ty: ty } }],
+                    [{ id: selId, props: { ref_matrix_a: a, ref_matrix_b: b, ref_matrix_c: c, ref_matrix_d: d, ref_tx: tx, ref_ty: ty } }],
                     { recordHistory: e.type === 'change' }
                 );
             }

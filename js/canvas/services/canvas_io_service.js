@@ -355,12 +355,13 @@ ${fi.join('\n')}
                 continue;
             }
 
+            // Ligature glyphs (multi-char charCode) have no unicode value in GLIF.
+            // Their substitution is defined via features.fea.
+            const isLigature = item.charCode != null && Array.from(String(item.charCode)).length > 1;
             let unicodeTag = '';
-            if (item.charCode != null) {
-                const charStr = String(item.charCode);
-                unicodeTag = Array.from(charStr).map(ch =>
-                    `<unicode hex="${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}"/>`
-                ).join('\n      ');
+            if (item.charCode != null && !isLigature) {
+                const ch = String(item.charCode).charAt(0);
+                unicodeTag = `<unicode hex="${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}"/>`;
             }
             const recorder = new GlifRecorder(c.canvas_size_height);
             buildGlyphOutline(recorder, item.id, null);
@@ -377,6 +378,38 @@ ${fi.join('\n')}
         glyphsFolder.file("contents.plist", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">\n<dict>\n${contentsDict}</dict>\n</plist>`);
+
+        // ── Build ligature rules and write features.fea ──
+        // Build reverse lookup: single-char charCode → glyph name
+        const charToGlyph = {};
+        for (const cid of (c.curve_manager.rootChildren || [])) {
+            const gi = c.curve_manager.treeItems.get(cid);
+            if (gi && !gi.isRef && gi.charCode != null && String(gi.charCode).length === 1) {
+                charToGlyph[String(gi.charCode)] = gi.name;
+            }
+        }
+        const ligatureRules = [];
+        for (const cid of (c.curve_manager.rootChildren || [])) {
+            const gi = c.curve_manager.treeItems.get(cid);
+            if (gi && !gi.isRef && gi.charCode != null) {
+                const chars = Array.from(String(gi.charCode));
+                if (chars.length > 1) {
+                    const input = chars.map(ch => charToGlyph[ch]).filter(Boolean);
+                    if (input.length === chars.length) {
+                        ligatureRules.push(`    sub ${input.join(' ')} by ${gi.name};`);
+                    }
+                }
+            }
+        }
+        let feaContent = '# InkShader OpenType Feature File\n';
+        if (ligatureRules.length > 0) {
+            feaContent += '\nfeature liga {\n    lookup liga {\n';
+            feaContent += ligatureRules.join('\n');
+            feaContent += '\n    } liga;\n} liga;\n';
+        }
+        // features.fea goes at UFO root (sibling of glyphs/, fontinfo.plist)
+        zip.file("features.fea", feaContent);
+
         zip.generateAsync({ type: "blob" }).then((content) => {
             const url = c.env.createObjectURL(content);
             const a = c.env.createDOMElement("a");

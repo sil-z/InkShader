@@ -106,11 +106,13 @@ export function getTreeItemVisibilityState(item) {
     return { isVis, isLocked };
 }
 
-/** Ref group transform (snapshot as plain object; falls back to CM) */
+/** Ref group transform — prefers live CM item over snapshot (snapshot may be stale during interactive preview) */
 export function getRefTransform(itemOrId) {
     const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
-    const item = typeof itemOrId === "object" && itemOrId ? itemOrId : getTreeItem(id);
-    if (item?.transform) return item.transform;
+    // Always prefer the live item — it has the most current transform
+    // (including during interactive transform previews). The tree snapshot
+    // cache is only invalidated via notifyTreeUpdate, so snapshot transforms
+    // may be stale during non-drag scale/rotate/shear previews.
     const live = id ? curveManager()?.treeItems.get(id) : null;
     if (live?.transform) {
         return {
@@ -122,6 +124,9 @@ export function getRefTransform(itemOrId) {
             f: live.transform.f
         };
     }
+    // Fallback to snapshot item
+    const item = typeof itemOrId === "object" && itemOrId ? itemOrId : getTreeItem(id);
+    if (item?.transform) return item.transform;
     return null;
 }
 

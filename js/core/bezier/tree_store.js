@@ -445,16 +445,30 @@ export class TreeStore {
         }
 
         if (item.type === 'group' && item.isRef) {
+            const hasA = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_a');
+            const hasB = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_b');
+            const hasC = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_c');
+            const hasD = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_d');
             const hasTx = Object.prototype.hasOwnProperty.call(props, 'ref_tx');
             const hasTy = Object.prototype.hasOwnProperty.call(props, 'ref_ty');
-            if (!hasTx && !hasTy) return false;
+            if (!hasA && !hasB && !hasC && !hasD && !hasTx && !hasTy) return false;
 
+            const oldA = item.transform?.a ?? 1;
+            const oldB = item.transform?.b ?? 0;
+            const oldC = item.transform?.c ?? 0;
+            const oldD = item.transform?.d ?? 1;
             const oldTx = item.transform?.e || 0;
             const oldTy = item.transform?.f || 0;
+            const newA = hasA ? Number(props.ref_matrix_a) : oldA;
+            const newB = hasB ? Number(props.ref_matrix_b) : oldB;
+            const newC = hasC ? Number(props.ref_matrix_c) : oldC;
+            const newD = hasD ? Number(props.ref_matrix_d) : oldD;
             const newTx = hasTx ? Number(props.ref_tx) : oldTx;
             const newTy = hasTy ? Number(props.ref_ty) : oldTy;
-            if (Number.isFinite(newTx) && Number.isFinite(newTy) && (newTx !== oldTx || newTy !== oldTy)) {
-                item.transform = new DOMMatrix().translate(newTx, newTy);
+            if (Number.isFinite(newA) && Number.isFinite(newB) && Number.isFinite(newC) && Number.isFinite(newD) &&
+                Number.isFinite(newTx) && Number.isFinite(newTy) &&
+                (newA !== oldA || newB !== oldB || newC !== oldC || newD !== oldD || newTx !== oldTx || newTy !== oldTy)) {
+                item.transform = new DOMMatrix([newA, newB, newC, newD, newTx, newTy]);
                 changed = true;
             }
             return changed;
@@ -556,9 +570,7 @@ export class TreeStore {
 
         for (const snap of snapshotRefs) {
             if (!snap || !snap.ref || !snap.startMatrix) continue;
-            if (snap.ref.type !== 'image') continue;
             const seqOff = Number(snap.seqOff || 0);
-
             let m = new DOMMatrix();
             const isRotateAction = action === 'rot' || action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br';
             const isShearAction = action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr';
@@ -575,6 +587,7 @@ export class TreeStore {
             const globalStart = new DOMMatrix().translate(seqOff, 0).multiply(snap.startMatrix);
             const globalEnd = m.multiply(globalStart);
             snap.ref.transform = new DOMMatrix().translate(-seqOff, 0).multiply(globalEnd);
+            if (snap.ref.id) this.invalidateGroupCache(snap.ref.id);
             changed = true;
         }
 

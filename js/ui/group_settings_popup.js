@@ -18,10 +18,16 @@ export const GRP_DOCKED = 'grp:docked';
 
 const POPUP_HTML = `
 <div class="property_group_title npp-drag-handle" id="grp_drag_handle" data-i18n="prop.group_settings">Group Settings</div>
-<div class="npp-fields">
+<div class="npp-fields" id="grp_standard_fields">
     <div class="npp-row"><label>Name</label><input type="text" id="grp_name"></div>
     <div class="npp-row"><label>Char</label><input type="text" id="grp_char"></div>
     <div class="npp-row"><label>Advance</label><input type="number" id="grp_advance"></div>
+</div>
+<div class="npp-fields" id="grp_ref_fields" style="display:none">
+    <div class="npp-row"><label>Name</label><input type="text" id="grp_ref_name" readonly></div>
+    <div class="npp-row"><label>Scale</label><div class="npp-input-group"><span class="npp-axis">a</span><input type="number" step="any" id="grp_ref_a"><span class="npp-axis">b</span><input type="number" step="any" id="grp_ref_b"></div></div>
+    <div class="npp-row"><label>Shear</label><div class="npp-input-group"><span class="npp-axis">c</span><input type="number" step="any" id="grp_ref_c"><span class="npp-axis">d</span><input type="number" step="any" id="grp_ref_d"></div></div>
+    <div class="npp-row"><label>Offset</label><div class="npp-input-group"><span class="npp-axis">tx</span><input type="number" step="any" id="grp_ref_tx"><span class="npp-axis">ty</span><input type="number" step="any" id="grp_ref_ty"></div></div>
 </div>`;
 
 const POS_KEY = 'grp_pos';
@@ -120,11 +126,66 @@ export class GroupSettingsPopup extends HTMLElement {
     _handleStoreStateChanged(e) {
         const nextState = e?.detail?.afterState;
         if (!nextState || typeof nextState !== 'object') {
+            if (this._extractedRefId) return;
             this._hide();
             return;
         }
 
-        // Get active group from state
+        this.interaction.applyEventDetail(e?.detail);
+
+        if (this._extractedRefId) {
+            // Pinned to a ref extraction. activeGroupId points to the ref's
+            // parent group, not the ref itself — so look at selectedTreeIds
+            // to find the actually selected ref item.
+            const selIds = this.interaction.selectedTreeIds || [];
+            const selRef = selIds.find(id => {
+                const it = EditorModel.getTreeItem(id);
+                return it?.type === 'group' && it.isRef;
+            });
+            if (selRef) {
+                // Follow selection to the current ref item
+                this._extractedRefId = selRef;
+                this._groupId = selRef;
+            } else {
+                // No ref selected — stay pinned to the original item
+                this._groupId = this._extractedRefId;
+            }
+
+            const item = EditorModel.getTreeItem(this._groupId);
+            if (!item || item.type !== 'group' || !item.isRef) {
+                this._extractedRefId = null;
+                this._hide();
+                return;
+            }
+
+            const stdFields = this.container.querySelector('#grp_standard_fields');
+            const refFields = this.container.querySelector('#grp_ref_fields');
+            const titleEl = this.container.querySelector('#grp_drag_handle');
+            if (stdFields) stdFields.style.display = 'none';
+            if (refFields) refFields.style.display = '';
+            if (this._refDetailsMode) {
+                if (titleEl) titleEl.textContent = 'Reference Details';
+                const rows = refFields?.querySelectorAll('.npp-row');
+                if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = 'none';
+            } else {
+                if (titleEl) titleEl.textContent = 'Transform (Ref)';
+                // Ensure matrix rows visible (might be hidden from prev ref_details extraction)
+                const rows = refFields?.querySelectorAll('.npp-row');
+                if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
+            }
+
+            if (this._docked) {
+                this._hide();
+                appEventBus.emit(GRP_DOCKED, { groupId: this._groupId });
+                return;
+            }
+
+            if (!this._focusedInput) this._patchValues();
+            this._show();
+            return;
+        }
+
+        // Normal flow (not pinned to ref) — follow activeGroupId
         const activeGroupId = nextState.activeGroupId || this.interaction.activeGroupId;
         if (!activeGroupId) {
             this._hide();
@@ -132,13 +193,31 @@ export class GroupSettingsPopup extends HTMLElement {
         }
 
         const item = EditorModel.getTreeItem(activeGroupId);
-        if (!item || item.type !== 'group' || item.isRef) {
+        if (!item || item.type !== 'group') {
             this._hide();
             return;
         }
 
         this._groupId = activeGroupId;
-        this.interaction.applyEventDetail(e?.detail);
+
+        // Show appropriate field section based on item type
+        const stdFields = this.container.querySelector('#grp_standard_fields');
+        const refFields = this.container.querySelector('#grp_ref_fields');
+        const titleEl = this.container.querySelector('#grp_drag_handle');
+        if (stdFields && refFields) {
+            if (item.isRef) {
+                stdFields.style.display = 'none';
+                refFields.style.display = '';
+                if (titleEl) titleEl.textContent = 'Transform (Ref)';
+                // Ensure matrix rows visible (might be hidden from prev ref_details extraction)
+                const rows = refFields.querySelectorAll('.npp-row');
+                for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
+            } else {
+                stdFields.style.display = '';
+                refFields.style.display = 'none';
+                if (titleEl) titleEl.textContent = 'Group Settings';
+            }
+        }
 
         if (this._docked) {
             this._hide();
@@ -163,6 +242,16 @@ export class GroupSettingsPopup extends HTMLElement {
         patch('grp_name', item.name);
         patch('grp_char', item.charCode || '');
         patch('grp_advance', item.advance !== undefined ? item.advance : 1000);
+        if (item.isRef) {
+            patch('grp_ref_name', item.name);
+            const t = item.transform;
+            patch('grp_ref_a', t && Number.isFinite(t.a) ? t.a : 1);
+            patch('grp_ref_b', t && Number.isFinite(t.b) ? t.b : 0);
+            patch('grp_ref_c', t && Number.isFinite(t.c) ? t.c : 0);
+            patch('grp_ref_d', t && Number.isFinite(t.d) ? t.d : 1);
+            patch('grp_ref_tx', t && Number.isFinite(t.e) ? t.e : 0);
+            patch('grp_ref_ty', t && Number.isFinite(t.f) ? t.f : 0);
+        }
     }
 
     _dispatchChange(target, recordHistory) {
@@ -204,6 +293,24 @@ export class GroupSettingsPopup extends HTMLElement {
             }
             return;
         }
+
+        // Ref matrix fields
+        const refFieldMap = { 'grp_ref_a': 'ref_matrix_a', 'grp_ref_b': 'ref_matrix_b',
+            'grp_ref_c': 'ref_matrix_c', 'grp_ref_d': 'ref_matrix_d',
+            'grp_ref_tx': 'ref_tx', 'grp_ref_ty': 'ref_ty' };
+        const propName = refFieldMap[id];
+        if (propName) {
+            const numVal = numberFromInput(target);
+            if (Number.isFinite(numVal)) {
+                CanvasDispatcher.requestSetSingleObjectProperties(
+                    [{ id: this._groupId, props: { [propName]: numVal } }],
+                    { recordHistory }
+                );
+            } else if (recordHistory) {
+                this._restoreInput(target);
+            }
+            return;
+        }
     }
 
     _commitChange(target) {
@@ -212,12 +319,19 @@ export class GroupSettingsPopup extends HTMLElement {
 
     _captureInputSnapshot(target) {
         const item = this._groupId ? EditorModel.getTreeItem(this._groupId) : null;
+        const t = item?.isRef && item.transform ? item.transform : null;
         this._inputSnapshot = {
             id: target.id,
             value: target.id === 'grp_name' ? item?.name ?? target.value
                 : target.id === 'grp_char' ? item?.charCode ?? ''
                     : target.id === 'grp_advance' ? item?.advance ?? numberFromInput(target)
-                        : target.value
+                        : target.id === 'grp_ref_a' ? (t?.a ?? 1)
+                            : target.id === 'grp_ref_b' ? (t?.b ?? 0)
+                                : target.id === 'grp_ref_c' ? (t?.c ?? 0)
+                                    : target.id === 'grp_ref_d' ? (t?.d ?? 1)
+                                        : target.id === 'grp_ref_tx' ? (t?.e ?? 0)
+                                            : target.id === 'grp_ref_ty' ? (t?.f ?? 0)
+                                                : target.value
         };
     }
 
