@@ -1598,27 +1598,8 @@ export class CanvasRendererService {
                     drawShearHandle(minSX, midSY, false); drawShearHandle(maxSX, midSY, false);
                 }
 
-                // Draw center pivot (rotate_shear mode only — scale uses opposite-handle pivot)
-                if (c.transform_mode === 'rotate_shear') {
-                    const pivotScreen = c.utils._getTransformPivotScreen(c, bounds);
-                    if (pivotScreen) {
-                        const px = pivotScreen.x, py = pivotScreen.y;
-                        c.ctx.fillStyle = p.select_handle_fill;
-                        c.ctx.strokeStyle = p.select_handle_stroke;
-                        c.ctx.lineWidth = 1.5;
-                        // Crosshair lines
-                        const cr = 8;
-                        c.ctx.beginPath();
-                        c.ctx.moveTo(px - cr, py); c.ctx.lineTo(px + cr, py);
-                        c.ctx.moveTo(px, py - cr); c.ctx.lineTo(px, py + cr);
-                        c.ctx.stroke();
-                        // Outer circle
-                        c.ctx.beginPath();
-                        c.ctx.arc(px, py, 3.5, 0, Math.PI * 2);
-                        c.ctx.fill();
-                        c.ctx.stroke();
-                    }
-                }
+                // Center pivot indicator removed — rotation always uses geometric center
+                // (no user-draggable pivot handle)
                 c.ctx.restore();
             }
         }

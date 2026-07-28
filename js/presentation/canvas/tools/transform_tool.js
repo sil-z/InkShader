@@ -12,8 +12,10 @@ import {
  *
  * Supported transforms:
  * - Drag move: translate selected paths/refs in any direction
- * - Scale (8 handles: tl/tr/bl/br/tc/bc/ml/mr): scale around pivot point, optional proportional (Shift)
- * - Rotate (rot handle): rotate around pivot point, Ctrl locks to 5deg increments
+ * - Scale (8 handles: tl/tr/bl/br/tc/bc/ml/mr): scale around selection geometric center, optional proportional (Shift)
+ * - Rotate (rot handle): rotate around selection geometric center, Ctrl locks to 5deg increments
+ *
+ * Pivot: always uses selection geometric center. No user-draggable pivot handle.
  *
  * Flow: startTransform -> handleMouseMoveTransform* (live preview) -> changeSelectedObjectsTransform (finalize history)
  */
@@ -21,22 +23,6 @@ export class TransformTool {
     constructor(canvas, interactionController) {
         this.canvas = canvas;
         this.ic = interactionController;
-    }
-
-    /**
-     * Resolve the effective pivot point for rotation/shear transforms.
-     * Uses custom pivot if set, otherwise falls back to bounds center.
-     */
-    _resolvePivot(c, bounds) {
-        if (c.transform_center_pivot) {
-            const cx = (bounds.minX + bounds.maxX) / 2;
-            const cy = (bounds.minY + bounds.maxY) / 2;
-            return { x: cx + c.transform_center_pivot.dx, y: cy + c.transform_center_pivot.dy };
-        }
-        if (bounds) {
-            return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
-        }
-        return null;
     }
 
     startTransform(action, mouseX, mouseY, clientX, clientY) {
@@ -51,32 +37,12 @@ export class TransformTool {
         let startWorldY = (mouseY - offsetY) / c.scale;
         c.transform_start_world = { x: startWorldX, y: startWorldY };
 
-        // Pivot drag: just record state, no snapshot needed
-        if (action === 'pivot') {
-            c.transform_start_bounds = null;
-            c.transform_snapshot = null;
-            c.transform_snapshot_refs = null;
-            c.transform_pivot = null;
-            return;
-        }
-
         let bounds = c.utils.getSelectionBounds();
         c.transform_start_bounds = bounds ? { ...bounds } : null;
-        if (action !== 'drag' && bounds) {
-            if (action === 'tl') c.transform_pivot = { x: bounds.maxX, y: bounds.maxY };
-            else if (action === 'tr') c.transform_pivot = { x: bounds.minX, y: bounds.maxY };
-            else if (action === 'bl') c.transform_pivot = { x: bounds.maxX, y: bounds.minY };
-            else if (action === 'br') c.transform_pivot = { x: bounds.minX, y: bounds.minY };
-            else if (action === 'tc') c.transform_pivot = { x: (bounds.minX + bounds.maxX) / 2, y: bounds.maxY };
-            else if (action === 'bc') c.transform_pivot = { x: (bounds.minX + bounds.maxX) / 2, y: bounds.minY };
-            else if (action === 'ml') c.transform_pivot = { x: bounds.maxX, y: (bounds.minY + bounds.maxY) / 2 };
-            else if (action === 'mr') c.transform_pivot = { x: bounds.minX, y: (bounds.minY + bounds.maxY) / 2 };
-            // Rotate handles (rotate_shear mode) and shear handles use custom pivot
-            else if (action === 'rot_tl' || action === 'rot_tr' || action === 'rot_bl' || action === 'rot_br' ||
-                     action === 'shear_tc' || action === 'shear_bc' || action === 'shear_ml' || action === 'shear_mr') {
-                c.transform_pivot = this._resolvePivot(c, bounds);
-            }
-        } else { c.transform_pivot = null; }
+        // Always use geometric center of selection bounds as pivot (no user-draggable pivot)
+        c.transform_pivot = (action !== 'drag' && bounds)
+            ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }
+            : null;
 
         c.transform_snapshot_refs = []; c.transform_snapshot = [];
         const cm = c.curve_manager;
@@ -169,18 +135,6 @@ export class TransformTool {
         let worldY = (mouseY - offsetY) / c.scale;
         let action = c.transform_action;
         let pivot = c.transform_pivot;
-
-        // Pivot drag: move the custom pivot point (store as offset from bounds center)
-        if (action === 'pivot') {
-            const bounds = c.utils.getSelectionBounds();
-            if (bounds) {
-                const cx = (bounds.minX + bounds.maxX) / 2;
-                const cy = (bounds.minY + bounds.maxY) / 2;
-                c.transform_center_pivot = { dx: worldX - cx, dy: worldY - cy };
-            }
-            c.is_dirty = true;
-            return;
-        }
 
         if (action === 'drag') {
             const anchor = c.transform_anchor_client || c.transform_start_screen;
@@ -330,19 +284,6 @@ export class TransformTool {
             c.is_dirty = true;
         }
         c.pending_mode_toggle = false;
-
-        // Pivot drag: no history commit, just update state
-        if (action === 'pivot') {
-            c.current_state = 'IDLE';
-            c.transform_action = null;
-            c.transform_snapshot = null;
-            c.transform_snapshot_refs = null;
-            c.transform_start_bounds = null;
-            c.transform_anchor_client = null;
-            c.clearInteractiveStrokePreview?.();
-            c.is_dirty = true;
-            return;
-        }
 
         c.current_state = 'IDLE'; c.transform_action = null;
         c.transform_snapshot = null; c.transform_snapshot_refs = null;

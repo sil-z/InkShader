@@ -21,11 +21,6 @@ export class SelectTool extends BaseTool {
         const ix = c.getInteractionSnapshot();
 
         if (handleHit) {
-            // If pivot is clicked (no drag detected yet), start pivot drag
-            if (handleHit === 'pivot') {
-                this.ic.transformTool.startTransform('pivot', mouseX, mouseY, clientX, clientY);
-                return;
-            }
             this.ic.transformTool.startTransform(handleHit, mouseX, mouseY, clientX, clientY);
             return;
         }

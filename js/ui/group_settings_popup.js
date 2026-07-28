@@ -25,9 +25,10 @@ const POPUP_HTML = `
 </div>
 <div class="npp-fields" id="grp_ref_fields" style="display:none">
     <div class="npp-row"><label>Name</label><input type="text" id="grp_ref_name" readonly></div>
-    <div class="npp-row"><label>Scale</label><div class="npp-input-group"><span class="npp-axis">a</span><input type="number" step="any" id="grp_ref_a"><span class="npp-axis">b</span><input type="number" step="any" id="grp_ref_b"></div></div>
-    <div class="npp-row"><label>Shear</label><div class="npp-input-group"><span class="npp-axis">c</span><input type="number" step="any" id="grp_ref_c"><span class="npp-axis">d</span><input type="number" step="any" id="grp_ref_d"></div></div>
-    <div class="npp-row"><label>Offset</label><div class="npp-input-group"><span class="npp-axis">tx</span><input type="number" step="any" id="grp_ref_tx"><span class="npp-axis">ty</span><input type="number" step="any" id="grp_ref_ty"></div></div>
+    <div class="npp-row"><label>Position</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="grp_ref_pos_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="grp_ref_pos_y"></div></div>
+    <div class="npp-row"><label>Scale</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.001" id="grp_ref_scale_x"><span class="npp-axis">Y</span><input type="number" step="0.001" id="grp_ref_scale_y"></div></div>
+    <div class="npp-row"><label>Rotation</label><div class="npp-input-group"><span class="npp-axis">°</span><input type="number" step="0.1" id="grp_ref_rotation"></div></div>
+    <div class="npp-row"><label>Shear</label><div class="npp-input-group"><span class="npp-axis">V</span><input type="number" step="0.001" id="grp_ref_shear"></div></div>
 </div>`;
 
 const POS_KEY = 'grp_pos';
@@ -168,8 +169,8 @@ export class GroupSettingsPopup extends HTMLElement {
                 const rows = refFields?.querySelectorAll('.npp-row');
                 if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = 'none';
             } else {
-                if (titleEl) titleEl.textContent = 'Transform (Ref)';
-                // Ensure matrix rows visible (might be hidden from prev ref_details extraction)
+                if (titleEl) titleEl.textContent = 'Transform';
+                // Ensure ref fields visible (might be hidden from prev ref_details extraction)
                 const rows = refFields?.querySelectorAll('.npp-row');
                 if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
             }
@@ -208,7 +209,7 @@ export class GroupSettingsPopup extends HTMLElement {
             if (item.isRef) {
                 stdFields.style.display = 'none';
                 refFields.style.display = '';
-                if (titleEl) titleEl.textContent = 'Transform (Ref)';
+                if (titleEl) titleEl.textContent = 'Transform';
                 // Ensure matrix rows visible (might be hidden from prev ref_details extraction)
                 const rows = refFields.querySelectorAll('.npp-row');
                 for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
@@ -245,12 +246,20 @@ export class GroupSettingsPopup extends HTMLElement {
         if (item.isRef) {
             patch('grp_ref_name', item.name);
             const t = item.transform;
-            patch('grp_ref_a', t && Number.isFinite(t.a) ? t.a : 1);
-            patch('grp_ref_b', t && Number.isFinite(t.b) ? t.b : 0);
-            patch('grp_ref_c', t && Number.isFinite(t.c) ? t.c : 0);
-            patch('grp_ref_d', t && Number.isFinite(t.d) ? t.d : 1);
-            patch('grp_ref_tx', t && Number.isFinite(t.e) ? t.e : 0);
-            patch('grp_ref_ty', t && Number.isFinite(t.f) ? t.f : 0);
+            // Decompose matrix into Position, Scale, Rotation, Shear
+            // M = T(tx,ty) * R(theta) * [sx, shear; 0, sy]
+            const a = t?.a ?? 1, b = t?.b ?? 0, c = t?.c ?? 0, d = t?.d ?? 1;
+            const scaleX = Math.sqrt(a * a + b * b) || 1;
+            const det = a * d - b * c;
+            const scaleY = scaleX > 1e-10 ? det / scaleX : 1;
+            const shear = scaleX > 1e-10 ? (a * c + b * d) / scaleX : 0;
+            const rot = Math.atan2(b, a) * 180 / Math.PI || 0;
+            patch('grp_ref_pos_x', t && Number.isFinite(t.e) ? t.e : 0);
+            patch('grp_ref_pos_y', t && Number.isFinite(t.f) ? t.f : 0);
+            patch('grp_ref_scale_x', scaleX);
+            patch('grp_ref_scale_y', scaleY);
+            patch('grp_ref_rotation', rot);
+            patch('grp_ref_shear', shear);
         }
     }
 
@@ -294,10 +303,10 @@ export class GroupSettingsPopup extends HTMLElement {
             return;
         }
 
-        // Ref matrix fields
-        const refFieldMap = { 'grp_ref_a': 'ref_matrix_a', 'grp_ref_b': 'ref_matrix_b',
-            'grp_ref_c': 'ref_matrix_c', 'grp_ref_d': 'ref_matrix_d',
-            'grp_ref_tx': 'ref_tx', 'grp_ref_ty': 'ref_ty' };
+        // Ref transform fields — map popup IDs to model prop names
+        const refFieldMap = { 'grp_ref_pos_x': 'ref_pos_x', 'grp_ref_pos_y': 'ref_pos_y',
+            'grp_ref_scale_x': 'ref_scale_x', 'grp_ref_scale_y': 'ref_scale_y',
+            'grp_ref_rotation': 'ref_rotation', 'grp_ref_shear': 'ref_shear' };
         const propName = refFieldMap[id];
         if (propName) {
             const numVal = numberFromInput(target);
@@ -320,18 +329,31 @@ export class GroupSettingsPopup extends HTMLElement {
     _captureInputSnapshot(target) {
         const item = this._groupId ? EditorModel.getTreeItem(this._groupId) : null;
         const t = item?.isRef && item.transform ? item.transform : null;
+        // Decompose ref matrix for snapshot
+        let refDecomp = null;
+        if (t) {
+            const a = t.a ?? 1, b = t.b ?? 0, c = t.c ?? 0, d = t.d ?? 1;
+            const sx = Math.sqrt(a * a + b * b) || 1;
+            refDecomp = {
+                posX: t.e ?? 0, posY: t.f ?? 0,
+                scaleX: sx,
+                scaleY: sx > 1e-10 ? (a * d - b * c) / sx : 1,
+                shear: sx > 1e-10 ? (a * c + b * d) / sx : 0,
+                rotation: Math.atan2(b, a) * 180 / Math.PI || 0
+            };
+        }
         this._inputSnapshot = {
             id: target.id,
             value: target.id === 'grp_name' ? item?.name ?? target.value
                 : target.id === 'grp_char' ? item?.charCode ?? ''
                     : target.id === 'grp_advance' ? item?.advance ?? numberFromInput(target)
-                        : target.id === 'grp_ref_a' ? (t?.a ?? 1)
-                            : target.id === 'grp_ref_b' ? (t?.b ?? 0)
-                                : target.id === 'grp_ref_c' ? (t?.c ?? 0)
-                                    : target.id === 'grp_ref_d' ? (t?.d ?? 1)
-                                        : target.id === 'grp_ref_tx' ? (t?.e ?? 0)
-                                            : target.id === 'grp_ref_ty' ? (t?.f ?? 0)
-                                                : target.value
+                        : target.id === 'grp_ref_pos_x' ? (refDecomp?.posX ?? 0)
+                            : target.id === 'grp_ref_pos_y' ? (refDecomp?.posY ?? 0)
+                                : target.id === 'grp_ref_scale_x' ? (refDecomp?.scaleX ?? 1)
+                                    : target.id === 'grp_ref_scale_y' ? (refDecomp?.scaleY ?? 1)
+                                        : target.id === 'grp_ref_rotation' ? (refDecomp?.rotation ?? 0)
+                                        : target.id === 'grp_ref_shear' ? (refDecomp?.shear ?? 0)
+                                            : target.value
         };
     }
 

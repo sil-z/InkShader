@@ -177,7 +177,6 @@ export class CanvasInputController {
             else if (handleHit === 'rot_tr' || handleHit === 'rot_bl') c.canvasObj.dataset.cursor = 'crosshair';
             else if (handleHit === 'shear_tc' || handleHit === 'shear_bc') c.canvasObj.dataset.cursor = 'ew-resize';
             else if (handleHit === 'shear_ml' || handleHit === 'shear_mr') c.canvasObj.dataset.cursor = 'ns-resize';
-            else if (handleHit === 'pivot') c.canvasObj.dataset.cursor = 'move';
             else if (c._hoveredUserGuideId !== null) {
                 // Guide hover overrides curve/object hit but not handles
             } else if (c._hoveredMetricGuideKey !== null) {

@@ -52,9 +52,10 @@ export class CanvasController {
             case CANVAS_ACTIONS.PASTE_COPIED_OBJECTS: return c.commands.pasteCopiedObjects(payload.targetId || null);
             case CANVAS_ACTIONS.DUPLICATE_SELECTED_OBJECTS: return c.commands.duplicateSelectedObjects(payload.ids || null);
             case CANVAS_ACTIONS.SET_TREE_SELECTION:
+                c.transform_pivot = null;
                 return c.commands.setTreeSelection(payload.ids || [], payload.activeGroupId);
             case CANVAS_ACTIONS.CHANGE_OBJECT_SELECTION:
-                c.transform_center_pivot = null;
+                c.transform_pivot = null;
                 return c.commands.changeObjectSelection(payload.strategy || "replace", payload);
             case CANVAS_ACTIONS.CHANGE_NODE_SELECTION:
                 return c.commands.changeNodeSelection(payload.strategy || "replace", payload);

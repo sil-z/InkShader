@@ -72,11 +72,7 @@ export class CanvasUtilsService {
                 let h = shearHandles[key];
                 if (Math.abs(mouseX - h.x) <= shearSize && Math.abs(mouseY - h.y) <= shearSize) return key;
             }
-            // Pivot hit
-            const pivot = this._getTransformPivotScreen(c, bounds);
-            if (pivot && Math.abs(mouseX - pivot.x) <= pivotRadius && Math.abs(mouseY - pivot.y) <= pivotRadius) {
-                return 'pivot';
-            }
+            // Pivot hit detection removed — no user-draggable pivot
             return null;
         }
 
@@ -94,24 +90,14 @@ export class CanvasUtilsService {
     }
 
     /**
-     * Get the screen position of the transform pivot for hit-testing and rendering.
-     * Returns null if bounds are not available.
+     * Get the screen position of the geometric center for the given bounds.
+     * Always returns the current AABB center (no user-draggable pivot).
      */
     _getTransformPivotScreen(c, bounds) {
         if (!bounds) return null;
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
-        let px, py;
-        if (c.transform_center_pivot) {
-            const cx = (bounds.minX + bounds.maxX) / 2;
-            const cy = (bounds.minY + bounds.maxY) / 2;
-            const absX = cx + c.transform_center_pivot.dx;
-            const absY = cy + c.transform_center_pivot.dy;
-            px = absX * c.scale + offsetX;
-            py = absY * c.scale + offsetY;
-        } else {
-            px = ((bounds.minX + bounds.maxX) / 2) * c.scale + offsetX;
-            py = ((bounds.minY + bounds.maxY) / 2) * c.scale + offsetY;
-        }
+        const px = ((bounds.minX + bounds.maxX) / 2) * c.scale + offsetX;
+        const py = ((bounds.minY + bounds.maxY) / 2) * c.scale + offsetY;
         return { x: px, y: py };
     }
 

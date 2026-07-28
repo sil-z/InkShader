@@ -266,6 +266,42 @@ export class TreeStore {
         return flatData;
     }
 
+    /**
+     * Compute the bounding box center of all curves in a group, in the group's
+     * local coordinate space. Accounts for nested ref transforms within the group.
+     * Returns null if the group has no curves.
+     */
+    _computeSourceCenter(groupId) {
+        const entries = this.getCurvesForGroup(groupId);
+        if (!entries || entries.length === 0) return null;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        for (const entry of entries) {
+            const curve = entry.curve;
+            const m = entry.matrix;
+            if (!curve || !m) continue;
+            const nodes = curve.getSkeletonVertices();
+            if (!nodes || nodes.length === 0) continue;
+            for (const node of nodes) {
+                if (node.x == null || node.y == null) continue;
+                const tx = m.a * node.x + m.c * node.y + m.e;
+                const ty = m.b * node.x + m.d * node.y + m.f;
+                if (tx < minX) minX = tx;
+                if (ty < minY) minY = ty;
+                if (tx > maxX) maxX = tx;
+                if (ty > maxY) maxY = ty;
+            }
+        }
+
+        if (!Number.isFinite(minX)) return null;
+
+        return {
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2
+        };
+    }
+
     invalidateGroupCache(targetId) {
         let visited = new Set();
         const self = this;
@@ -445,30 +481,104 @@ export class TreeStore {
         }
 
         if (item.type === 'group' && item.isRef) {
-            const hasA = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_a');
-            const hasB = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_b');
-            const hasC = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_c');
-            const hasD = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_d');
-            const hasTx = Object.prototype.hasOwnProperty.call(props, 'ref_tx');
-            const hasTy = Object.prototype.hasOwnProperty.call(props, 'ref_ty');
-            if (!hasA && !hasB && !hasC && !hasD && !hasTx && !hasTy) return false;
+            // Support both decomposed and raw matrix prop names for backward compat
+            const hasPosX = Object.prototype.hasOwnProperty.call(props, 'ref_pos_x');
+            const hasPosY = Object.prototype.hasOwnProperty.call(props, 'ref_pos_y');
+            const hasScaleX = Object.prototype.hasOwnProperty.call(props, 'ref_scale_x');
+            const hasScaleY = Object.prototype.hasOwnProperty.call(props, 'ref_scale_y');
+            const hasRotation = Object.prototype.hasOwnProperty.call(props, 'ref_rotation');
+            const hasShear = Object.prototype.hasOwnProperty.call(props, 'ref_shear');
+            const hasRaw = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_a') ||
+                Object.prototype.hasOwnProperty.call(props, 'ref_matrix_b') ||
+                Object.prototype.hasOwnProperty.call(props, 'ref_matrix_c') ||
+                Object.prototype.hasOwnProperty.call(props, 'ref_matrix_d') ||
+                Object.prototype.hasOwnProperty.call(props, 'ref_tx') ||
+                Object.prototype.hasOwnProperty.call(props, 'ref_ty');
+            if (!hasPosX && !hasPosY && !hasScaleX && !hasScaleY && !hasRotation && !hasShear && !hasRaw) return false;
 
-            const oldA = item.transform?.a ?? 1;
-            const oldB = item.transform?.b ?? 0;
-            const oldC = item.transform?.c ?? 0;
-            const oldD = item.transform?.d ?? 1;
-            const oldTx = item.transform?.e || 0;
-            const oldTy = item.transform?.f || 0;
-            const newA = hasA ? Number(props.ref_matrix_a) : oldA;
-            const newB = hasB ? Number(props.ref_matrix_b) : oldB;
-            const newC = hasC ? Number(props.ref_matrix_c) : oldC;
-            const newD = hasD ? Number(props.ref_matrix_d) : oldD;
-            const newTx = hasTx ? Number(props.ref_tx) : oldTx;
-            const newTy = hasTy ? Number(props.ref_ty) : oldTy;
-            if (Number.isFinite(newA) && Number.isFinite(newB) && Number.isFinite(newC) && Number.isFinite(newD) &&
-                Number.isFinite(newTx) && Number.isFinite(newTy) &&
-                (newA !== oldA || newB !== oldB || newC !== oldC || newD !== oldD || newTx !== oldTx || newTy !== oldTy)) {
-                item.transform = new DOMMatrix([newA, newB, newC, newD, newTx, newTy]);
+            if (hasRaw) {
+                // Legacy raw matrix path
+                const oldA = item.transform?.a ?? 1;
+                const oldB = item.transform?.b ?? 0;
+                const oldC = item.transform?.c ?? 0;
+                const oldD = item.transform?.d ?? 1;
+                const oldTx = item.transform?.e || 0;
+                const oldTy = item.transform?.f || 0;
+                const newA = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_a') ? Number(props.ref_matrix_a) : oldA;
+                const newB = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_b') ? Number(props.ref_matrix_b) : oldB;
+                const newC = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_c') ? Number(props.ref_matrix_c) : oldC;
+                const newD = Object.prototype.hasOwnProperty.call(props, 'ref_matrix_d') ? Number(props.ref_matrix_d) : oldD;
+                const newTx = Object.prototype.hasOwnProperty.call(props, 'ref_tx') ? Number(props.ref_tx) : oldTx;
+                const newTy = Object.prototype.hasOwnProperty.call(props, 'ref_ty') ? Number(props.ref_ty) : oldTy;
+                if (Number.isFinite(newA) && Number.isFinite(newB) && Number.isFinite(newC) && Number.isFinite(newD) &&
+                    Number.isFinite(newTx) && Number.isFinite(newTy) &&
+                    (newA !== oldA || newB !== oldB || newC !== oldC || newD !== oldD || newTx !== oldTx || newTy !== oldTy)) {
+                    item.transform = new DOMMatrix([newA, newB, newC, newD, newTx, newTy]);
+                    this.invalidateGroupCache(item.id);
+                    changed = true;
+                }
+                return changed;
+            }
+
+            // Decomposed path: recompose matrix from Position, Scale X/Y, Rotation, Shear
+            // Decomposition: M = T(tx,ty) * R(theta) * [sx, shear; 0, sy]
+            if (!hasPosX && !hasPosY && !hasScaleX && !hasScaleY && !hasRotation && !hasShear) return false;
+
+            const oldM = item.transform || new DOMMatrix();
+            const curA = oldM.a ?? 1, curB = oldM.b ?? 0, curC = oldM.c ?? 0, curD = oldM.d ?? 1;
+            const curScaleX = Math.sqrt(curA * curA + curB * curB) || 1;
+            const curRot = Math.atan2(curB, curA) || 0;
+            const curDet = curA * curD - curB * curC;
+            const curScaleY = curScaleX > 1e-10 ? curDet / curScaleX : 1;
+            const curShear = curScaleX > 1e-10 ? (curA * curC + curB * curD) / curScaleX : 0;
+            const curTx = oldM.e || 0;
+            const curTy = oldM.f || 0;
+
+            const newTx = hasPosX ? Number(props.ref_pos_x) : curTx;
+            const newTy = hasPosY ? Number(props.ref_pos_y) : curTy;
+            const newScaleX = hasScaleX ? Number(props.ref_scale_x) : curScaleX;
+            const newScaleY = hasScaleY ? Number(props.ref_scale_y) : curScaleY;
+            const newRotDeg = hasRotation ? Number(props.ref_rotation) : (curRot * 180 / Math.PI);
+            const newShear = hasShear ? Number(props.ref_shear) : curShear;
+
+            if (!Number.isFinite(newTx) || !Number.isFinite(newTy) ||
+                !Number.isFinite(newScaleX) || !Number.isFinite(newScaleY) ||
+                !Number.isFinite(newRotDeg) || !Number.isFinite(newShear)) return false;
+
+            const rad = newRotDeg * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const newA = newScaleX * cos;
+            const newB = newScaleX * sin;
+            const newC = newShear * cos - newScaleY * sin;
+            const newD = newShear * sin + newScaleY * cos;
+
+            // Pivot-centered editing: when rotation/scale/shear changes, adjust
+            // translation so the ref's own geometric center stays stationary.
+            // M = T(tx,ty) * RS(rotation, scale, shear)
+            // Keep M(center) unchanged by offsetting tx/ty when RS changes.
+            // Use curTx/curTy (actual transform state) as translation base, not
+            // newTx/newTy which may be stale from the DOM (patchValues hasn't run
+            // yet when the next input event fires).
+            const rsChanged = newA !== curA || newB !== curB || newC !== curC || newD !== curD;
+            let finalTx = newTx;
+            let finalTy = newTy;
+            if (rsChanged && item.refId) {
+                const center = this._computeSourceCenter(item.refId);
+                if (center) {
+                    const oldPx = curA * center.x + curC * center.y;
+                    const oldPy = curB * center.x + curD * center.y;
+                    const newPx = newA * center.x + newC * center.y;
+                    const newPy = newB * center.x + newD * center.y;
+                    finalTx = curTx + oldPx - newPx;
+                    finalTy = curTy + oldPy - newPy;
+                }
+            }
+
+            if (newA !== curA || newB !== curB || newC !== curC || newD !== curD ||
+                finalTx !== curTx || finalTy !== curTy) {
+                item.transform = new DOMMatrix([newA, newB, newC, newD, finalTx, finalTy]);
+                this.invalidateGroupCache(item.id);
                 changed = true;
             }
             return changed;

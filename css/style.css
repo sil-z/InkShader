@@ -1577,7 +1577,8 @@ group-settings-popup.visible {
     min-width: 320px;
 }
 .npp-drag-handle {
-    cursor: grab;
+    /* [TEMP] Detach disabled — cursor set to default instead of grab */
+    cursor: default;
     font-size: 11px;
     font-weight: 600;
     color: var(--ui-text-muted);
@@ -1587,7 +1588,7 @@ group-settings-popup.visible {
     user-select: none;
 }
 .npp-drag-handle:active {
-    cursor: grabbing;
+    cursor: default;
 }
 /* popup-specific: round top corners to match popup border-radius */
 node-property-popup .npp-drag-handle,

@@ -54,28 +54,21 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _loadSectionDockState() {
-        try {
-            const saved = localStorage.getItem(PROPS_DOCK_KEY);
-            if (saved) {
-                const data = JSON.parse(saved);
-                if (typeof data.npp === 'boolean') this._nodePropsDocked = data.npp;
-                if (typeof data.ppp === 'boolean') this._pathPropsDocked = data.ppp;
-                if (typeof data.bbox === 'boolean') this._bboxDocked = data.bbox;
-            }
-        } catch (e) { /* ignore */ }
-        // grp docked state lives in its own key (set by the popup)
-        try {
-            const v = localStorage.getItem('grp_docked');
-            if (v === '0') this._grpDocked = false;
-        } catch (e) { /* ignore */ }
+        // [TEMP] Detach functionality disabled — force all sections docked.
+        // Restore original logic when re-enabling detach.
+        this._nodePropsDocked = true;
+        this._pathPropsDocked = true;
+        this._bboxDocked = true;
+        this._grpDocked = true;
     }
 
     _saveSectionDockState() {
+        // [TEMP] Detach disabled — always persist docked state.
         try {
             localStorage.setItem(PROPS_DOCK_KEY, JSON.stringify({
-                npp: this._nodePropsDocked,
-                ppp: this._pathPropsDocked,
-                bbox: this._bboxDocked,
+                npp: true,
+                ppp: true,
+                bbox: true,
             }));
         } catch (e) { /* ignore */ }
     }
@@ -119,7 +112,7 @@ export class PropertyPanel extends HTMLElement {
             });
 
             const realtimeIds = [
-                'ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty',
+                'ref_pos_x', 'ref_pos_y', 'ref_scale_x', 'ref_scale_y', 'ref_rotation', 'ref_shear',
                 'sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h',
                 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_out_x', 'prop_out_y', 'prop_in_a', 'prop_out_a',
                 'path_stroke'
@@ -251,12 +244,13 @@ export class PropertyPanel extends HTMLElement {
                 }
             }
         });
-        this.addGlobalListener(appEventBus, PATH_PROPS_UNDOCKED, () => {
-            this._pathPropsDocked = false;
-            this.lastSignature = "";
-            this._saveSectionDockState();
-            this.render();
-        });
+        // [TEMP] Detach disabled — UNDOCKED handler suppressed.
+        // this.addGlobalListener(appEventBus, PATH_PROPS_UNDOCKED, () => {
+        //     this._pathPropsDocked = false;
+        //     this.lastSignature = "";
+        //     this._saveSectionDockState();
+        //     this.render();
+        // });
         this.addGlobalListener(appEventBus, BBOX_DOCKED, (e) => {
             const was = this._bboxDocked;
             this._bboxDocked = true;
@@ -337,16 +331,45 @@ export class PropertyPanel extends HTMLElement {
         return anchorId ? EditorModel.resolveNodeMarker(anchorId) : null;
     }
 
-    decomposeMatrix(m) {
-        if (!m || typeof m !== "object") return { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    /**
+     * Decompose a DOMMatrix into Position (tx/ty), Rotation, Scale (X/Y), and Shear.
+     * Decomposition: M = T(tx,ty) * R(theta) * [sx, shear; 0, sy]
+     * This is a 4-DOF exact bijection (no data loss for any non-degenerate affine matrix).
+     */
+    decomposeRefMatrix(m) {
+        if (!m || typeof m !== "object") return { scaleX: 1, scaleY: 1, rotation: 0, shear: 0, tx: 0, ty: 0 };
+        const a = m.a ?? 1, b = m.b ?? 0, c = m.c ?? 0, d = m.d ?? 1;
+        const scaleX = Math.sqrt(a * a + b * b);
+        const rotation = Math.atan2(b, a) * 180 / Math.PI;
+        const det = a * d - b * c;
+        const scaleY = scaleX > 1e-10 ? det / scaleX : 1;
+        const shear = scaleX > 1e-10 ? (a * c + b * d) / scaleX : 0;
         return {
-            a: m.a ?? 1,
-            b: m.b ?? 0,
-            c: m.c ?? 0,
-            d: m.d ?? 1,
+            scaleX: Math.abs(scaleX) || 1,
+            scaleY: Math.abs(scaleY) || 1,
+            rotation: rotation || 0,
+            shear: shear || 0,
             tx: m.e ?? 0,
             ty: m.f ?? 0
         };
+    }
+
+    /**
+     * Recompose a DOMMatrix from Position (tx/ty), Scale (X/Y), Rotation, and Shear.
+     * Reconstructs: T(tx,ty) * R(theta) * [sx, shear; 0, sy]
+     */
+    recomposeRefMatrix(scaleX, scaleY, rotationDeg, shear, tx, ty) {
+        const rad = rotationDeg * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return new DOMMatrix([
+            scaleX * cos,          // a
+            scaleX * sin,          // b
+            shear * cos - scaleY * sin,  // c
+            shear * sin + scaleY * cos,  // d
+            tx,                    // e
+            ty                     // f
+        ]);
     }
 
     getSeqIdxForGroupId(groupId) {
@@ -379,13 +402,13 @@ export class PropertyPanel extends HTMLElement {
                 const curve = item?.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
                 return curve ? { id: sid, value: curve.stroke_width } : null;
             }).filter(Boolean);
-        } else if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty'].includes(id)) {
+        } else if (['ref_pos_x', 'ref_pos_y', 'ref_scale_x', 'ref_scale_y', 'ref_rotation', 'ref_shear'].includes(id)) {
             const item = EditorModel.getTreeItem(selectedIds[0]);
             const transform = item?.isRef ? EditorModel.getRefTransform(item) : null;
             snapshot.kind = 'refTransform';
             snapshot.id = item?.id ?? null;
             const t = transform || new DOMMatrix();
-            snapshot.matrix = { a: t.a ?? 1, b: t.b ?? 0, c: t.c ?? 0, d: t.d ?? 1, tx: t.e ?? 0, ty: t.f ?? 0 };
+            snapshot.decomposed = this.decomposeRefMatrix(t);
         } else if (['sel_prop_x', 'sel_prop_y', 'sel_prop_w', 'sel_prop_h'].includes(id)) {
             const bounds = this.getSelectionBounds();
             snapshot.kind = 'bounds';
@@ -444,13 +467,14 @@ export class PropertyPanel extends HTMLElement {
             if (updates.length > 0) {
                 CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: false });
             }
-        } else if (snapshot.kind === 'refTransform' && snapshot.id && snapshot.matrix) {
-            const m = snapshot.matrix;
+        } else if (snapshot.kind === 'refTransform' && snapshot.id && snapshot.decomposed) {
+            const d = snapshot.decomposed;
             CanvasDispatcher.requestSetSingleObjectProperties(
                 [{ id: snapshot.id, props: {
-                    ref_matrix_a: m.a, ref_matrix_b: m.b,
-                    ref_matrix_c: m.c, ref_matrix_d: m.d,
-                    ref_tx: m.tx, ref_ty: m.ty
+                    ref_pos_x: d.tx, ref_pos_y: d.ty,
+                    ref_scale_x: d.scaleX, ref_scale_y: d.scaleY,
+                    ref_rotation: d.rotation,
+                    ref_shear: d.shear
                 } }],
                 { recordHistory: false }
             );
@@ -476,7 +500,7 @@ export class PropertyPanel extends HTMLElement {
         const id = target.id;
         if (['ref_name', 'g_name', 'c_name'].includes(id)) return isValidTreeName(trimmedInputValue(target));
         if (id === 'path_stroke' || id === 'g_advance') return isValidNumber(numberFromInput(target), { min: 0 });
-        if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty', 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
+        if (['ref_pos_x', 'ref_pos_y', 'ref_scale_x', 'ref_scale_y', 'ref_rotation', 'ref_shear', 'prop_x', 'prop_y', 'prop_in_x', 'prop_in_y', 'prop_in_a', 'prop_out_x', 'prop_out_y', 'prop_out_a'].includes(id)) {
             return isValidNumber(numberFromInput(target));
         }
         if (['sel_prop_x', 'sel_prop_y'].includes(id)) return isValidNumber(numberFromInput(target));
@@ -521,6 +545,10 @@ export class PropertyPanel extends HTMLElement {
                 else if (item.type === 'group' && !item.isRef) hasGroup = true;
             }
         }
+
+        // Ref items don't show a Bounding Box section — the composite's bounds
+        // are a derived output (source + transform), not an editable input.
+        if (hasRef) hasBounds = false;
 
         const activeGroupId = this.interaction.activeGroupId;
         // Structure signature: what sections to show (excludes exact nodeCount to
@@ -700,62 +728,8 @@ export class PropertyPanel extends HTMLElement {
     }
 
     _initSectionReorder() {
-        const handles = this.container.querySelectorAll('.npp-drag-handle');
-        if (handles.length < 1) return;
-
-        handles.forEach(handle => {
-            handle.addEventListener('mousedown', (e) => {
-                if (e.button !== 0) return;
-                if (this._dragState) return;
-
-                const section = handle.closest('[data-section]');
-                if (!section) return;
-
-                const sectionId = section.dataset.section;
-                const popup = this._getPopupForSection(sectionId);
-                let extracted = false;
-                // Capture where within the handle the user clicked — this is the
-                // drag anchor offset (like dragging a tab: the click position on
-                // the tab determines the follow-mouse offset).
-                const hr = handle.getBoundingClientRect();
-                const handleOffsetX = e.clientX - hr.left;
-                const handleOffsetY = e.clientY - hr.top;
-                this._dragState = { section, handle, startX: e.clientX, startY: e.clientY };
-
-                const onMove = (ev) => {
-                    if (!this._dragState) return;
-                    if (extracted) return;
-                    const dx = ev.clientX - this._dragState.startX;
-                    const dy = ev.clientY - this._dragState.startY;
-                    const dist = Math.abs(dx) + Math.abs(dy);
-
-                    if (!extracted && dist >= 3) {
-                        extracted = true;
-                        section.classList.add('is-dragging');
-                        if (popup) {
-                            this._extractSectionImpl(sectionId, popup, ev.clientX, ev.clientY, handleOffsetX, handleOffsetY);
-                        }
-                        return;
-                    }
-                };
-
-                const onUp = (ev) => {
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                    this.classList.remove('npp-drop-target');
-                    this._clearReorderPreview();
-                    if (this._dragState?.section) {
-                        this._dragState.section.classList.remove('is-dragging');
-                    }
-                    // _extractSectionImpl's onUp handles dock/undock for the
-                    // extracted popup — skip here to avoid double-handling.
-                    this._dragState = null;
-                };
-
-                document.addEventListener('mousemove', onMove);
-                document.addEventListener('mouseup', onUp);
-            });
-        });
+        // [TEMP] Detach functionality disabled — drag handles are inert.
+        // Restore original logic when re-enabling detach.
     }
 
     _getPopupForSection(sectionId) {
@@ -1075,11 +1049,12 @@ export class PropertyPanel extends HTMLElement {
     _buildRefProps(t) {
         return `
             <div data-section="ref">
-                <div class="property_group_title npp-drag-handle">${t('prop.trans_ref', 'Transform (Ref)')}</div>
+                <div class="property_group_title npp-drag-handle">${t('prop.trans_ref', 'Transform')}</div>
                 <div class="npp-fields">
-                    <div class="npp-row"><label>${t('prop.scale', 'Scale')}</label><div class="npp-input-group"><span class="npp-axis">a</span><input type="number" step="any" id="ref_matrix_a"><span class="npp-axis">b</span><input type="number" step="any" id="ref_matrix_b"></div></div>
-                    <div class="npp-row"><label>${t('prop.shear', 'Shear')}</label><div class="npp-input-group"><span class="npp-axis">c</span><input type="number" step="any" id="ref_matrix_c"><span class="npp-axis">d</span><input type="number" step="any" id="ref_matrix_d"></div></div>
-                    <div class="npp-row"><label>${t('prop.offset', 'Offset')}</label><div class="npp-input-group"><span class="npp-axis">tx</span><input type="number" step="any" id="ref_tx"><span class="npp-axis">ty</span><input type="number" step="any" id="ref_ty"></div></div>
+                    <div class="npp-row"><label>${t('prop.position', 'Position')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="ref_pos_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="ref_pos_y"></div></div>
+                    <div class="npp-row"><label>${t('prop.scale', 'Scale')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.001" id="ref_scale_x"><span class="npp-axis">Y</span><input type="number" step="0.001" id="ref_scale_y"></div></div>
+                    <div class="npp-row"><label>${t('prop.rotation', 'Rotation')}</label><div class="npp-input-group"><span class="npp-axis">°</span><input type="number" step="0.1" id="ref_rotation"></div></div>
+                    <div class="npp-row"><label>${t('prop.shear', 'Shear')}</label><div class="npp-input-group"><span class="npp-axis">V</span><input type="number" step="0.001" id="ref_shear"></div></div>
                 </div>
             </div>
             <div data-section="ref_details">
@@ -1265,14 +1240,14 @@ export class PropertyPanel extends HTMLElement {
             if (item.type === 'group' && item.isRef) {
                 const transform = EditorModel.getRefTransform(item);
                 if (transform) {
-                    const decomp = this.decomposeMatrix(transform);
+                    const d = this.decomposeRefMatrix(transform);
                     patch('ref_name', item.name);
-                    patch('ref_matrix_a', decomp.a.toFixed(4));
-                    patch('ref_matrix_b', decomp.b.toFixed(4));
-                    patch('ref_matrix_c', decomp.c.toFixed(4));
-                    patch('ref_matrix_d', decomp.d.toFixed(4));
-                    patch('ref_tx', decomp.tx.toFixed(1));
-                    patch('ref_ty', decomp.ty.toFixed(1));
+                    patch('ref_pos_x', d.tx.toFixed(1));
+                    patch('ref_pos_y', d.ty.toFixed(1));
+                    patch('ref_scale_x', d.scaleX.toFixed(4));
+                    patch('ref_scale_y', d.scaleY.toFixed(4));
+                    patch('ref_rotation', d.rotation.toFixed(2));
+                    patch('ref_shear', d.shear.toFixed(4));
                 }
             } else if (item.type === 'group' && !item.isRef && selectedCurves.length === 0) {
                 patch('g_name', item.name);
@@ -1411,7 +1386,7 @@ export class PropertyPanel extends HTMLElement {
             return;
         }
 
-        if (['ref_matrix_a', 'ref_matrix_b', 'ref_matrix_c', 'ref_matrix_d', 'ref_tx', 'ref_ty'].includes(id)) {
+        if (['ref_pos_x', 'ref_pos_y', 'ref_scale_x', 'ref_scale_y', 'ref_rotation', 'ref_shear'].includes(id)) {
             let selId = selectedIds[0];
             let item = EditorModel.getTreeItem(selId);
             if (item && item.isRef) {
@@ -1419,18 +1394,18 @@ export class PropertyPanel extends HTMLElement {
                     const el = this.container.querySelector('#' + fieldId);
                     return el ? numberFromInput(el) : NaN;
                 };
-                const a = readField('ref_matrix_a');
-                const b = readField('ref_matrix_b');
-                const c = readField('ref_matrix_c');
-                const d = readField('ref_matrix_d');
-                const tx = readField('ref_tx');
-                const ty = readField('ref_ty');
-                if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || !Number.isFinite(d) || !Number.isFinite(tx) || !Number.isFinite(ty)) {
+                const posX = readField('ref_pos_x');
+                const posY = readField('ref_pos_y');
+                const scaleX = readField('ref_scale_x');
+                const scaleY = readField('ref_scale_y');
+                const rotation = readField('ref_rotation');
+                const shear = readField('ref_shear');
+                if (!Number.isFinite(posX) || !Number.isFinite(posY) || !Number.isFinite(scaleX) || !Number.isFinite(scaleY) || !Number.isFinite(rotation) || !Number.isFinite(shear)) {
                     if (e.type === 'change') this._restoreInputSnapshot(target);
                     return;
                 }
                 CanvasDispatcher.requestSetSingleObjectProperties(
-                    [{ id: selId, props: { ref_matrix_a: a, ref_matrix_b: b, ref_matrix_c: c, ref_matrix_d: d, ref_tx: tx, ref_ty: ty } }],
+                    [{ id: selId, props: { ref_pos_x: posX, ref_pos_y: posY, ref_scale_x: scaleX, ref_scale_y: scaleY, ref_rotation: rotation, ref_shear: shear } }],
                     { recordHistory: e.type === 'change' }
                 );
             }
