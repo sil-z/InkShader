@@ -378,7 +378,64 @@ ${fi.join('\n')}
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">\n<dict>\n${contentsDict}</dict>\n</plist>`);
 
-        // ── Build ligature rules and write features.fea ──
+        // ── Build groups.plist for kerning classes ──
+        const km = c.curve_manager?.kerningManager;
+        if (km) {
+            const groupsDict = [];
+            // Left kern classes → public.kern1.{name}
+            for (const { name, members } of km.getAllClassesWithMembers('left')) {
+                groupsDict.push(`    <key>public.kern1.${esc(name)}</key>`);
+                groupsDict.push('    <array>');
+                for (const m of members) groupsDict.push(`        <string>${esc(m)}</string>`);
+                groupsDict.push('    </array>');
+            }
+            // Right kern classes → public.kern2.{name}
+            for (const { name, members } of km.getAllClassesWithMembers('right')) {
+                groupsDict.push(`    <key>public.kern2.${esc(name)}</key>`);
+                groupsDict.push('    <array>');
+                for (const m of members) groupsDict.push(`        <string>${esc(m)}</string>`);
+                groupsDict.push('    </array>');
+            }
+            if (groupsDict.length > 0) {
+                ufoFolder.file("groups.plist", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+${groupsDict.join('\n')}
+</dict>
+</plist>`);
+            }
+
+            // ── Build kerning.plist (class references + exception pairs) ──
+            const kernDict = [];
+            // Class-to-class values
+            for (const { leftClass, rightClass, value } of km.getAllClassValues()) {
+                kernDict.push(`    <key>public.kern1.${esc(leftClass)}</key>`);
+                kernDict.push('    <dict>');
+                kernDict.push(`        <key>public.kern2.${esc(rightClass)}</key>`);
+                kernDict.push(`        <integer>${Math.round(value)}</integer>`);
+                kernDict.push('    </dict>');
+            }
+            // Exception pairs (exact glyph names)
+            for (const { left, right, value } of km.getAllPairs()) {
+                kernDict.push(`    <key>${esc(left)}</key>`);
+                kernDict.push('    <dict>');
+                kernDict.push(`        <key>${esc(right)}</key>`);
+                kernDict.push(`        <integer>${Math.round(value)}</integer>`);
+                kernDict.push('    </dict>');
+            }
+            if (kernDict.length > 0) {
+                ufoFolder.file("kerning.plist", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+${kernDict.join('\n')}
+</dict>
+</plist>`);
+            }
+        }
+
+        // ── Build ligature rules and kern class rules for features.fea ──
         // Build reverse lookup: single-char charCode → glyph name
         const charToGlyph = {};
         for (const cid of (c.curve_manager.rootChildren || [])) {
@@ -406,6 +463,9 @@ ${fi.join('\n')}
             feaContent += ligatureRules.join('\n');
             feaContent += '\n    } liga;\n} liga;\n';
         }
+        // Note: kerning data is exported ONLY to groups.plist + kerning.plist.
+        // We do NOT write feature kern rules to features.fea to avoid double-application
+        // (UFO readers apply both kerning.plist and fea kern rules, doubling values).
         ufoFolder.file("features.fea", feaContent);
 
         zip.generateAsync({ type: "blob" }).then((content) => {

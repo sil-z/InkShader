@@ -242,7 +242,7 @@ export class SequenceService {
                 const prevName = this._getGroupNameForToken(this.sequenceTokens[i - 1]);
                 const currName = this._getGroupNameForToken(this.sequenceTokens[i]);
                 if (prevName && currName) {
-                    currentOffset += this._kerningManager.getPair(prevName, currName);
+                    currentOffset += this._kerningManager.getKerning(prevName, currName);
                 }
             }
             this.sequenceOffsets[i] = currentOffset;

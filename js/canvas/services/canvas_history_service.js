@@ -725,6 +725,9 @@ export class CanvasHistoryService {
             c.dragging_node_marker = null;
             c.last_on_curve_node_marker = null;
             c.hovered_node_marker = null;
+            c.hovered_node_refId = null;
+            c.hovered_node_seqIndex = null;
+            c.hovered_node_matrix = null;
             c.hovered_curve_segment = null;
             c.current_curve = null;
             c.new_curve_handle = null;

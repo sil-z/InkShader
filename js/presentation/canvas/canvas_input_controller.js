@@ -111,6 +111,9 @@ export class CanvasInputController {
         if (c.current_state === 'IDLE' && !overCanvas) {
             if (c.hovered_node_marker || c.hovered_curve_segment) {
                 c.hovered_node_marker = null;
+                c.hovered_node_refId = null;
+                c.hovered_node_seqIndex = null;
+                c.hovered_node_matrix = null;
                 c.hovered_curve_segment = null;
                 c.is_dirty = true;
             }
@@ -134,6 +137,11 @@ export class CanvasInputController {
             }
             if (c.hovered_node_marker !== hitMarker) {
                 c.hovered_node_marker = hitMarker;
+                // Store hit-test context (refId, seqIndex, matrix) for correct
+                // viewport transform when the hovered node is inside a ref.
+                c.hovered_node_refId = hitResult?.refId ?? null;
+                c.hovered_node_seqIndex = hitResult?.seqIndex ?? null;
+                c.hovered_node_matrix = hitResult?.matrix ?? null;
                 hoverStateChanged = true;
             }
             {
@@ -608,24 +616,34 @@ export class CanvasInputController {
                 if (c.divider_locked) return;
                 if (tool === 'DRAW' || tool === 'ELLIPSE') return;
                 if (hasInteractiveHit) return;
-                let leftGroupId = divHit.isLeftEdge ? null : divHit.groupId;
+                const isFirstLeftEdge = divHit.isLeftEdge && divHit.seqIndex === 0;
+                const isRightEdge = !!divHit.isRight;
+                let leftGroupId = null;
                 let rightGroupId = null;
                 let seqIndex = divHit.seqIndex;
                 let modifyRight = false;
-                if (divHit.isLeftEdge) {
+                if (isFirstLeftEdge) {
+                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
                     rightGroupId = divHit.groupId;
                     seqIndex = 0;
-                } else {
-                    const leftGroup = c.curve_manager.treeItems.get(leftGroupId);
-                    if (leftGroup && leftGroup.locked) return;
-                    const seqTokens = c.curve_manager.sequenceTokens || [];
-                    for (let si = 0; si < seqTokens.length; si++) {
-                        if (si === divHit.seqIndex + 1) {
-                            const t = seqTokens[si];
-                            rightGroupId = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
-                            break;
-                        }
+                } else if (isRightEdge) {
+                    // Right edge of last glyph — divider at the right edge of the last glyph
+                    leftGroupId = divHit.groupId;
+                    rightGroupId = null;
+                    seqIndex = divHit.seqIndex;
+                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+                    if (!activeGroupId && leftGroupId) {
+                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
                     }
+                } else {
+                    // Left edge of glyph i (i > 0) — divider between glyph i-1 and glyph i
+                    const seqTokens = c.curve_manager.sequenceTokens || [];
+                    const prevToken = seqTokens[divHit.seqIndex - 1];
+                    leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
+                    rightGroupId = divHit.groupId;
+                    seqIndex = divHit.seqIndex - 1;
+                    const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+                    if (leftGroup && leftGroup.locked) return;
                     const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
                     if (rightGroupId && activeGroupId === rightGroupId) {
                         modifyRight = true;
@@ -644,8 +662,10 @@ export class CanvasInputController {
                     rightGroupId: rightGroupId,
                     groupId: rightGroupId || leftGroupId,
                     modifyRight: modifyRight,
-                    isLeftEdge: divHit.isLeftEdge === true,
-                    dividerId: (leftGroupId || rightGroupId) + "-" + seqIndex + (divHit.isLeftEdge ? "-l" : "-r"),
+                    isLeftEdge: isFirstLeftEdge,
+                    dividerId: isRightEdge
+                        ? divHit.groupId + "-" + divHit.seqIndex + "-r"
+                        : divHit.groupId + "-" + divHit.seqIndex + "-l",
                     startScreenX: divHit.screenX,
                     startLeftAdvance: leftGroup ? leftGroup.advance : 0,
                     startRightAdvance: rightGroup ? rightGroup.advance : 1000,
@@ -1284,30 +1304,41 @@ export class CanvasInputController {
                 if (c.divider_locked) return;
                 if (tool === 'DRAW' || tool === 'ELLIPSE') return;
                 if (hasInteractiveHit) return;
-                let leftGroupId = divHit.isLeftEdge ? null : divHit.groupId;
+                const isFirstLeftEdge = divHit.isLeftEdge && divHit.seqIndex === 0;
+                const isRightEdge = !!divHit.isRight;
+                let leftGroupId = null;
                 let rightGroupId = null;
                 let seqIndex = divHit.seqIndex;
                 let rightSeqIndex = -1;
                 let modifyRight = false;
-                if (divHit.isLeftEdge) {
+                if (isFirstLeftEdge) {
+                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
                     rightGroupId = divHit.groupId;
                     rightSeqIndex = 0;
                     const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
                     if (rightGroupId && activeGroupId === rightGroupId) {
                         modifyRight = true;
                     }
-                } else {
-                    const leftGroup = c.curve_manager.treeItems.get(leftGroupId);
-                    if (leftGroup && leftGroup.locked) return;
-                    const seqTokens = c.curve_manager.sequenceTokens || [];
-                    for (let si = 0; si < seqTokens.length; si++) {
-                        if (si === divHit.seqIndex + 1) {
-                            const t = seqTokens[si];
-                            rightGroupId = t.isChar ? c.curve_manager.getDefaultGroupForChar(t.value) : t.value;
-                            rightSeqIndex = si;
-                            break;
-                        }
+                } else if (isRightEdge) {
+                    // Right edge of last glyph — divider at the right edge of the last glyph
+                    leftGroupId = divHit.groupId;
+                    rightGroupId = null;
+                    rightSeqIndex = -1;
+                    seqIndex = divHit.seqIndex;
+                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+                    if (!activeGroupId && leftGroupId) {
+                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
                     }
+                } else {
+                    // Left edge of glyph i (i > 0) — divider between glyph i-1 and glyph i
+                    const seqTokens = c.curve_manager.sequenceTokens || [];
+                    const prevToken = seqTokens[divHit.seqIndex - 1];
+                    leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
+                    rightGroupId = divHit.groupId;
+                    rightSeqIndex = divHit.seqIndex;
+                    seqIndex = divHit.seqIndex - 1;
+                    const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+                    if (leftGroup && leftGroup.locked) return;
                     const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
                     if (rightGroupId && activeGroupId === rightGroupId) {
                         modifyRight = true;
@@ -1329,7 +1360,10 @@ export class CanvasInputController {
                     rightSeqIndex: rightSeqIndex,
                     startRightSeqOffset: startRightSeqOffset,
                     modifyRight: modifyRight,
-                    dividerId: (leftGroupId || rightGroupId) + "-" + seqIndex + (divHit.isLeftEdge ? "-l" : "-r"),
+                    isLeftEdge: isFirstLeftEdge,
+                    dividerId: isRightEdge
+                        ? divHit.groupId + "-" + divHit.seqIndex + "-r"
+                        : divHit.groupId + "-" + divHit.seqIndex + "-l",
                     startScreenX: divHit.screenX,
                     startLeftAdvance: leftGroup ? leftGroup.advance : 0,
                     startRightAdvance: rightGroup ? rightGroup.advance : 1000,

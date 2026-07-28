@@ -170,6 +170,40 @@
         "propertyNames": { "type": "string" },
         "additionalProperties": { "type": "number" }
       }
+    },
+    "kerning_classes": {
+      "type": "object",
+      "description": "Kerning class definitions: left/right glyph classes with class-to-class kerning values. Classes are referenced by name in kerning.plist (UFO) and features.fea.",
+      "default": null,
+      "properties": {
+        "left": {
+          "type": "object",
+          "description": "Left kern classes: className → array of glyph names",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          }
+        },
+        "right": {
+          "type": "object",
+          "description": "Right kern classes: className → array of glyph names",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          }
+        },
+        "values": {
+          "type": "object",
+          "description": "Class-to-class kerning values: 'leftClass/rightClass' → value in UPM units",
+          "propertyNames": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+          "additionalProperties": { "type": "number" }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

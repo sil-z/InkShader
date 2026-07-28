@@ -124,7 +124,7 @@ function ensureBooleanCache(curve) {
  * For self-intersecting paths (e.g. figure-eight shapes), use boolean cache directly (union of both-side offsets + original fill),
  * instead of pickOuterOffsetPaths (which can only pick one side and would enter the interior on the other).
  */
-function emitSkeletonReferencePath(ctx, curve, mapPoint) {
+export function emitSkeletonReferencePath(ctx, curve, mapPoint) {
     if (!ctx || !curve?.startNode) return;
     if (curve.smart_stroke && curve.stroke_width > 0) {
         ensureBooleanCache(curve);
@@ -184,7 +184,7 @@ export function drawCurveStroke(
     curve,
     viewport,
     theme = getCanvasTheme(),
-    { renderMode = "stroke", refId = null, strokePreview = false } = {}
+    { renderMode = "stroke", refId = null, strokePreview = false, skipSkeleton = false } = {}
 ) {
     if (!ctx || !curve?.startNode) return;
 
@@ -194,7 +194,7 @@ export function drawCurveStroke(
         canFillSmartStrokeWithPath2D(curve, { strokePreview })
     ) {
         fillSmartStrokePath2D(ctx, curve, viewport, theme.path_fill_color);
-        if (curve.show_skeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
+        if (!skipSkeleton && curve.show_skeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
             ctx.beginPath();
             emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));
             ctx.lineWidth = 1;
@@ -240,7 +240,7 @@ export function drawCurveStroke(
         }
     }
 
-    if (curve.show_skeleton && (renderMode === "stroke" || renderMode === "all")) {
+    if (!skipSkeleton && curve.show_skeleton && (renderMode === "stroke" || renderMode === "all")) {
         ctx.beginPath();
         if (strokePreview && curve.smart_stroke && curve.stroke_width > 0) {
             // During drag, skip boolean cache (too expensive) and render the

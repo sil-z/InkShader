@@ -90,9 +90,10 @@ export class SnapshotSerializer {
         this._sequenceService.updateSequenceParsing();
         this._sequenceService.syncTreeWithSequence(null, null, null, () => this._treeStore.notifyTreeUpdate());
         this._treeStore.rebuildRefReverseIndex();
-        // Restore kerning pairs
-        if (this._kerningManager && data.kerning) {
-            this._kerningManager.fromJSON(data.kerning);
+        // Restore kerning pairs and classes
+        if (this._kerningManager) {
+            if (data.kerning) this._kerningManager.fromJSON(data.kerning);
+            if (data.kerning_classes) this._kerningManager.classesFromJSON(data.kerning_classes);
         }
     }
     _reconstructGroup(gid, gData, parentId, charCode = null) {
@@ -206,12 +207,14 @@ export class SnapshotSerializer {
             "cap_height": fontSettings.cap_height ?? 700,
             "font_version": fontSettings.version || "1.0",
             "glyphs": {},
-            "kerning": this._kerningManager ? this._kerningManager.toJSON() : {}
+            "kerning": this._kerningManager ? this._kerningManager.toJSON() : {},
+            "kerning_classes": this._kerningManager ? this._kerningManager.classesToJSON() : null
         };
-        // Remove empty kerning object to keep output clean
+        // Remove empty kerning objects to keep output clean
         if (file.kerning && typeof file.kerning === 'object' && Object.keys(file.kerning).length === 0) {
             delete file.kerning;
         }
+        if (!file.kerning_classes) delete file.kerning_classes;
         const serializeVertices = (curve) => {
             const vertices = [];
             let current = curve.startNode;

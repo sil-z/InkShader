@@ -119,9 +119,23 @@ export class NodeTool extends BaseTool {
         c.drag_preview = null;
         {
             const affectedCurveIds = new Set();
+            // Track which specific instance (curveId+refId+seqIdx) the user is dragging,
+            // so the ghost preview draws on the correct instance (direct vs ref).
+            const affectedInstanceKeys = new Map(); // curveId → { refId, seqIdx }
             for (const marker of c.drag_initial_nodes.keys()) {
                 const n = c.curve_manager.find_node_by_curve(marker);
-                if (n && n.curve) affectedCurveIds.add(n.curve.id);
+                if (n && n.curve) {
+                    affectedCurveIds.add(n.curve.id);
+                    // Use the dragging node context (set during mousedown) to identify
+                    // which instance the user is dragging.
+                    if (!affectedInstanceKeys.has(n.curve.id)) {
+                        affectedInstanceKeys.set(n.curve.id, {
+                            refId: c.dragging_node_refId ?? null,
+                            seqIdx: c.dragging_node_seq_idx ?? null,
+                            matrix: c.dragging_node_matrix ?? null
+                        });
+                    }
+                }
             }
             if (affectedCurveIds.size > 0) {
                 const nodePositions = new Map();
@@ -140,7 +154,7 @@ export class NodeTool extends BaseTool {
                         current = current.nextOnCurve;
                     }
                 }
-                c.drag_preview = { curveIds: affectedCurveIds, nodePositions };
+                c.drag_preview = { curveIds: affectedCurveIds, nodePositions, instanceKeys: affectedInstanceKeys };
             }
         }
 

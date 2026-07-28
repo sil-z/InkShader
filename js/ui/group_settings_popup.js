@@ -4,6 +4,12 @@ import { appEventBus } from "../app/event_bus.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+
+/** @returns {import('../core/bezier/kerning_manager.js').KerningManager|null} */
+function getKerningManager() {
+    const c = document.querySelector('main-canvas');
+    return c?.curve_manager?.kerningManager ?? null;
+}
 import {
     installEnterBlurHandler,
     isValidNumber,
@@ -22,6 +28,8 @@ const POPUP_HTML = `
     <div class="npp-row"><label>Name</label><input type="text" id="grp_name"></div>
     <div class="npp-row"><label>Char</label><input type="text" id="grp_char"></div>
     <div class="npp-row"><label>Advance</label><input type="number" id="grp_advance"></div>
+    <div class="npp-row"><label>Left Kern</label><select id="grp_kern_left"><option value="">(none)</option></select></div>
+    <div class="npp-row"><label>Right Kern</label><select id="grp_kern_right"><option value="">(none)</option></select></div>
 </div>
 <div class="npp-fields" id="grp_ref_fields" style="display:none">
     <div class="npp-row"><label>Name</label><input type="text" id="grp_ref_name" readonly></div>
@@ -108,6 +116,10 @@ export class GroupSettingsPopup extends HTMLElement {
         this.container.addEventListener('change', (e) => {
             const id = e.target.id;
             if (!id || !id.startsWith('grp_')) return;
+            if (id === 'grp_kern_left' || id === 'grp_kern_right') {
+                this._handleKernClassChange(e.target);
+                return;
+            }
             this._dispatchChange(e.target, true);
         });
 
@@ -234,6 +246,7 @@ export class GroupSettingsPopup extends HTMLElement {
         if (!this._groupId) return;
         const item = EditorModel.getTreeItem(this._groupId);
         if (!item) return;
+        this._populateKernClassSelects();
         const patch = (id, val) => {
             const el = this.container.querySelector(`#${id}`);
             if (!el) return;
@@ -371,6 +384,61 @@ export class GroupSettingsPopup extends HTMLElement {
             CanvasDispatcher.requestSetGroupAdvance(this._groupId, Number(this._inputSnapshot.value), { recordHistory: false });
         }
         this._patchValues();
+    }
+
+    _handleKernClassChange(target) {
+        if (!this._groupId) return;
+        const item = EditorModel.getTreeItem(this._groupId);
+        if (!item || item.isRef) return;
+        const km = getKerningManager();
+        if (!km) return;
+        const side = target.id === 'grp_kern_left' ? 'left' : 'right';
+        const className = target.value || null;
+        km.assignGlyphToClass(item.name, side, className);
+        // Recalculate sequence offsets
+        const c = document.querySelector('main-canvas');
+        if (c) {
+            c.curve_manager?.calculateSequenceOffsets?.();
+            c.renderer?.invalidateStableSceneCache?.();
+            c.is_dirty = true;
+        }
+    }
+
+    _populateKernClassSelects() {
+        const km = getKerningManager();
+        const item = this._groupId ? EditorModel.getTreeItem(this._groupId) : null;
+        const leftSel = this.container.querySelector('#grp_kern_left');
+        const rightSel = this.container.querySelector('#grp_kern_right');
+        if (!leftSel || !rightSel) return;
+
+        const leftVal = leftSel.value;
+        const rightVal = rightSel.value;
+
+        leftSel.innerHTML = '<option value="">(none)</option>';
+        rightSel.innerHTML = '<option value="">(none)</option>';
+
+        if (km) {
+            for (const cn of km.getAllClasses('left')) {
+                const opt = document.createElement('option');
+                opt.value = cn;
+                opt.textContent = cn;
+                leftSel.appendChild(opt);
+            }
+            for (const cn of km.getAllClasses('right')) {
+                const opt = document.createElement('option');
+                opt.value = cn;
+                opt.textContent = cn;
+                rightSel.appendChild(opt);
+            }
+        }
+
+        // Restore or set current glyph's class
+        if (item && km) {
+            const leftClass = km.getGlyphClass(item.name, 'left');
+            const rightClass = km.getGlyphClass(item.name, 'right');
+            if (leftClass) leftSel.value = leftClass;
+            if (rightClass) rightSel.value = rightClass;
+        }
     }
 
     _show() {

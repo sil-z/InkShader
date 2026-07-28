@@ -9,10 +9,13 @@ import {
     drawCurveStroke,
     isCurveStrokePreview,
     canFillSmartStrokeWithPath2D,
-    fillSmartStrokePath2D
+    fillSmartStrokePath2D,
+    emitSkeletonReferencePath,
+    isCurveClosedRing
 } from "../rendering/curve_renderer.js";
 import { drawCurveNode, drawHoveredHandle } from "../rendering/node_renderer.js";
 import { createViewportTransform } from "../rendering/viewport_transform.js";
+import { emitCubicBezierSegments } from "../../core/bezier/path_emitter.js";
 export class CanvasRendererService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -602,21 +605,30 @@ export class CanvasRendererService {
         const isMainHov = !isCtrl;
         const isC1Hov = !isMainHov && mainNode.control1 && marker === mainNode.control1.main_node;
         const isC2Hov = !isMainHov && !isC1Hov && mainNode.control2 && marker === mainNode.control2.main_node;
-        // Find seqOffsetX for this curve's group.
-        const groupId = curve.groupId;
-        const seqTokens = c.curve_manager.sequenceTokens || [];
+        // Use stored hit-test context for refs (correct seqOffsetX + matrix),
+        // fall back to source-group lookup for direct (non-ref) nodes.
+        const refSeqIndex = c.hovered_node_seqIndex;
+        const refMatrix = c.hovered_node_matrix;
         let seqOffsetX = 0;
-        for (let i = 0; i < seqTokens.length; i++) {
-            const token = seqTokens[i];
-            const gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            if (gid === groupId) { seqOffsetX = c.curve_manager.getSeqOffset(i); break; }
-        }
-        // Find curve data for matrix.
         let cdMatrix = null;
-        const cdl = c.curve_manager.getCurvesForGroup(groupId);
-        if (cdl) {
-            for (const cd of cdl) {
-                if (cd.curve === curve) { cdMatrix = cd.matrix; break; }
+        if (refSeqIndex != null && refMatrix != null) {
+            // Ref context from hit-test: exact position and transform.
+            seqOffsetX = c.curve_manager.getSeqOffset(refSeqIndex);
+            cdMatrix = refMatrix;
+        } else {
+            // Direct node: find seqOffsetX from source group position.
+            const groupId = curve.groupId;
+            const seqTokens = c.curve_manager.sequenceTokens || [];
+            for (let i = 0; i < seqTokens.length; i++) {
+                const token = seqTokens[i];
+                const gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                if (gid === groupId) { seqOffsetX = c.curve_manager.getSeqOffset(i); break; }
+            }
+            const cdl = c.curve_manager.getCurvesForGroup(groupId);
+            if (cdl) {
+                for (const cd of cdl) {
+                    if (cd.curve === curve) { cdMatrix = cd.matrix; break; }
+                }
             }
         }
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
@@ -630,6 +642,11 @@ export class CanvasRendererService {
         if (mainNode.curve) {
             const cId = mainNode.curve.id;
             if (ix.selectedCurveIds?.has(cId)) showHandles = true;
+        }
+        // Ref selection: the source curve's nodes show handles when the ref is selected.
+        if (!showHandles && c.hovered_node_refId) {
+            const refItem = c.curve_manager?.treeItems?.get(c.hovered_node_refId);
+            if (refItem && ix.selectedRefIds?.includes(refItem.id)) showHandles = true;
         }
         if (!showHandles && c.current_curve && mainNode.curve === c.current_curve) showHandles = true;
         if (!showHandles && isSelected) showHandles = true;
@@ -685,18 +702,26 @@ export class CanvasRendererService {
         if (!mainNode) return false;
         const curve = hitNode.curve;
         const groupId = curve.groupId;
-        const seqTokens = c.curve_manager.sequenceTokens || [];
+        // Use stored hit-test context for refs (correct seqOffsetX + matrix).
+        const refSeqIndex = c.hovered_node_seqIndex;
+        const refMatrix = c.hovered_node_matrix;
         let seqOffsetX = 0;
-        for (let i = 0; i < seqTokens.length; i++) {
-            const token = seqTokens[i];
-            const gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-            if (gid === groupId) { seqOffsetX = c.curve_manager.getSeqOffset(i); break; }
-        }
         let cdMatrix = null;
-        const cdl = c.curve_manager.getCurvesForGroup(groupId);
-        if (cdl) {
-            for (const cd of cdl) {
-                if (cd.curve === curve) { cdMatrix = cd.matrix; break; }
+        if (refSeqIndex != null && refMatrix != null) {
+            seqOffsetX = c.curve_manager.getSeqOffset(refSeqIndex);
+            cdMatrix = refMatrix;
+        } else {
+            const seqTokens = c.curve_manager.sequenceTokens || [];
+            for (let i = 0; i < seqTokens.length; i++) {
+                const token = seqTokens[i];
+                const gid = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+                if (gid === groupId) { seqOffsetX = c.curve_manager.getSeqOffset(i); break; }
+            }
+            const cdl = c.curve_manager.getCurvesForGroup(groupId);
+            if (cdl) {
+                for (const cd of cdl) {
+                    if (cd.curve === curve) { cdMatrix = cd.matrix; break; }
+                }
             }
         }
         const { x: offsetX, y: offsetY } = c.utils.getLogicalOffset();
@@ -1141,6 +1166,16 @@ export class CanvasRendererService {
                 const curve = curveStore.curveById.get(curveId);
                 if (curve) addAllNodes(curve);
             }
+            // Ref selection: show handles on source curves' nodes when a ref is selected.
+            for (const refId of (ix.selectedRefIds || [])) {
+                const refItem = c.curve_manager?.treeItems?.get(refId);
+                if (refItem && refItem.isRef && refItem.refId) {
+                    const sourceCurves = c.curve_manager.getCurvesForGroup(refItem.refId);
+                    for (const cd of sourceCurves) {
+                        if (cd.curve) addAllNodes(cd.curve);
+                    }
+                }
+            }
             if (c.current_curve) addAllNodes(c.current_curve);
         }
         const selMarkers = ix.selectedNodeMarkerIds;
@@ -1206,7 +1241,7 @@ export class CanvasRendererService {
                 fillSmartStrokePath2D(c.ctx, item.curve, item.viewport, p.path_fill_color);
             }
 
-            // ── Stroke (per-curve) ──
+            // ── Stroke (per-curve, skip skeleton — drawn in a separate pass below) ──
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
@@ -1217,8 +1252,38 @@ export class CanvasRendererService {
                     drawCurveStroke(c.ctx, cd.curve, viewport, p, {
                         renderMode: "stroke",
                         refId,
-                        strokePreview: isCurveStrokePreview(c, cd.curve.id, refId)
+                        strokePreview: isCurveStrokePreview(c, cd.curve.id, refId),
+                        skipSkeleton: true
                     });
+                }
+            }
+            });
+        }
+
+        // ── PASS 1b: Skeleton lines (on top of all fills/strokes) ──
+        // Skeleton must always be visible above path fills. Drawing it in a
+        // separate pass ensures later groups' fills don't cover earlier groups' skeletons.
+        if (!skipPathLayer && !nodesOnly) {
+            forEachPathPass((i, seqOffsetX, curveDataList) => {
+            for (const cd of curveDataList) {
+                if (!cd.effectiveVis) continue;
+                if (cd.curve?.startNode) {
+                    if (!isCurveInstanceVisible(cd.curve, i, cd.refId ?? null)) continue;
+                    if (!skipViewportBoundsCheck && !this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
+                    if (!cd.curve.show_skeleton) continue;
+                    const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+                    const sp = isCurveStrokePreview(c, cd.curve.id, cd.refId ?? null);
+                    const ctx = c.ctx;
+                    ctx.beginPath();
+                    if (sp && cd.curve.smart_stroke && cd.curve.stroke_width > 0) {
+                        emitCubicBezierSegments(ctx, cd.curve.getSkeletonBezierSegments(),
+                            createViewportTransform(viewport), { close: isCurveClosedRing(cd.curve) });
+                    } else {
+                        emitSkeletonReferencePath(ctx, cd.curve, createViewportTransform(viewport));
+                    }
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = p.path_stroke_color;
+                    ctx.stroke();
                 }
             }
             });
@@ -1387,6 +1452,7 @@ export class CanvasRendererService {
             c.ctx.save();
             const seqTokens2 = seqTokens;
             const dragCtxMap = new Map();
+            const instanceKeys = c.drag_preview.instanceKeys;
             for (let i = 0; i < seqTokens2.length; i++) {
                 const seqOffX2 = c.curve_manager.getSeqOffset(i);
                 const token2 = seqTokens2[i];
@@ -1400,10 +1466,24 @@ export class CanvasRendererService {
                 const cdl2 = getCurveDataList(gid2);
                 for (const cd of cdl2) {
                     if (!cd.curve?.startNode || !c.drag_preview.curveIds.has(cd.curve.id)) continue;
-                    dragCtxMap.set(cd.curve.id, { seqOffsetX: seqOffX2, matrix: cd.matrix || new DOMMatrix() });
+                    // Use composite key (curveId::refId) so direct and ref instances
+                    // get separate entries — prevents ref overwriting direct's ghost.
+                    const instKey = cd.refId ? `${cd.curve.id}::${cd.refId}` : cd.curve.id;
+                    // Only draw ghost for the instance the user is actually dragging.
+                    const stored = instanceKeys?.get(cd.curve.id);
+                    if (stored) {
+                        const storedRefId = stored.refId ?? null;
+                        const curRefId = cd.refId ?? null;
+                        // Match: both direct (both null) or same ref context.
+                        if (storedRefId !== curRefId) continue;
+                    }
+                    dragCtxMap.set(instKey, { seqOffsetX: seqOffX2, matrix: cd.matrix || new DOMMatrix() });
                 }
             }
-            for (const [curveId, ctx2] of dragCtxMap) {
+            for (const [instKey, ctx2] of dragCtxMap) {
+                // instKey is either curveId (direct) or "curveId::refId" (ref).
+                const curveId = typeof instKey === 'string' && instKey.includes('::')
+                    ? instKey.split('::')[0] : instKey;
                 const cdCurve = c.curve_manager.curveById.get(curveId);
                 if (!cdCurve?.startNode) continue;
                 const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX: ctx2.seqOffsetX, matrix: ctx2.matrix };
@@ -1721,9 +1801,10 @@ export class CanvasRendererService {
                 // Left edge of each glyph = divider line (kerning-adjusted)
                 if (!drawnPositions.has(sx)) {
                     let leftId = gid + "-" + i + "-l";
-                    if (!c.divider_locked && c._hoveredDividerId === leftId && hoveredScreenX === null) {
+                    let leftIsHov = !c.divider_locked && (c._hoveredDividerId === leftId || (c._draggingDivider && c._draggingDivider.dividerId === leftId));
+                    if (leftIsHov && hoveredScreenX === null) {
                         hoveredScreenX = sx;
-                        hoveredLeftGid = null;
+                        hoveredLeftGid = (i > 0) ? (seqTokens[i - 1]?.isChar ? c.curve_manager.getDefaultGroupForChar(seqTokens[i - 1].value) : seqTokens[i - 1]?.value) ?? null : null;
                         hoveredRightGid = gid;
                         hoveredLeftAdvance = null;
                     } else {

@@ -219,6 +219,9 @@ export class CanvasController {
         }
 
         c.hovered_node_marker = null;
+        c.hovered_node_refId = null;
+        c.hovered_node_seqIndex = null;
+        c.hovered_node_matrix = null;
         c.hovered_curve_segment = null;
         c.is_box_selecting = false;
         c.renderer?.endBoxSelectPreview?.();

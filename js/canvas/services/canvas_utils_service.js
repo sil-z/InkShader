@@ -138,6 +138,16 @@ export class CanvasUtilsService {
             const curve = curveStore.curveById.get(curveId);
             if (curve) addAllNodes(curve);
         }
+        // 1b. Ref selection: show handles on source curves' nodes when a ref is selected.
+        for (const refId of (ix.selectedRefIds || [])) {
+            const refItem = c.curve_manager?.treeItems?.get(refId);
+            if (refItem && refItem.isRef && refItem.refId) {
+                const sourceCurves = c.curve_manager.getCurvesForGroup(refItem.refId);
+                for (const cd of sourceCurves) {
+                    if (cd.curve) addAllNodes(cd.curve);
+                }
+            }
+        }
         // 2. Current drawing curve: show handles on all its nodes
         if (c.current_curve) addAllNodes(c.current_curve);
         // 3. Node-selected markers: show handles on individual nodes + neighbors
@@ -692,6 +702,11 @@ export class CanvasUtilsService {
         const { height: logicalH } = c.viewportService.getCanvasUserSpaceSize();
         const topY = 0;
         const bottomY = logicalH;
+        // Find the last active index — only its right edge is a rendered divider line.
+        let lastActiveIdx = -1;
+        for (let i = seqTokens.length - 1; i >= 0; i--) {
+            if (activeIndices.has(i)) { lastActiveIdx = i; break; }
+        }
         let best = null, bestDist = Infinity;
         for (let i = 0; i < seqTokens.length; i++) {
             if (!activeIndices.has(i)) continue;
@@ -705,22 +720,23 @@ export class CanvasUtilsService {
             let withinY = mouseY >= topY - HIT_THRESHOLD && mouseY <= bottomY + HIT_THRESHOLD;
             if (!withinY) continue;
             let dl = Math.abs(mouseX - sx);
-            let dr = Math.abs(mouseX - ex);
             if (dl < HIT_THRESHOLD && dl < bestDist) {
-                if (i > 0) {
-                    let prevToken = seqTokens[i - 1];
-                    let prevGid = prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value;
-                    bestDist = dl;
-                    best = { groupId: prevGid, isRight: true, screenX: sx, seqIndex: i - 1 };
-                } else {
-                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
-                    bestDist = dl;
-                    best = { groupId: gid, screenX: sx, seqIndex: 0, isLeftEdge: true };
-                }
+                // Every glyph's left edge is a rendered divider line (kerning-adjusted).
+                // Use isLeftEdge:true so the divId becomes gid+"-"+i+"-l", matching
+                // the renderer's left-edge check which highlights at sx (the correct
+                // kerning-adjusted position).
+                bestDist = dl;
+                best = { groupId: gid, screenX: sx, seqIndex: i, isLeftEdge: true };
             }
-            if (dr < HIT_THRESHOLD && dr < bestDist) {
-                bestDist = dr;
-                best = { groupId: gid, isRight: true, screenX: ex, seqIndex: i };
+            // Right edge: only the last active glyph's advance end is a rendered divider line.
+            // Non-last glyphs' right edges are not divider positions — matching them would place
+            // the highlight at stale (non-kerning-adjusted) positions.
+            if (i === lastActiveIdx) {
+                let dr = Math.abs(mouseX - ex);
+                if (dr < HIT_THRESHOLD && dr < bestDist) {
+                    bestDist = dr;
+                    best = { groupId: gid, isRight: true, screenX: ex, seqIndex: i };
+                }
             }
         }
         return best;
