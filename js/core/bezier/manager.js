@@ -8,6 +8,7 @@ import { BooleanEngine } from '../boolean.js';
 import { DOMAIN_EVENTS } from '../../domain/events/domain_events.js';
 import { EMPTY_CURVE_MANAGER_HOST_PORT } from '../../domain/ports/curve_manager_host_port.js';
 import { SelectionState } from '../../domain/selection/selection_state.js';
+import { KerningManager } from './kerning_manager.js';
 import { generateMarker } from './utils.js';
 
 /**
@@ -96,6 +97,9 @@ export class CurveManager {
         this.serializer = new SnapshotSerializer(this.curveStore, this.treeStore, this.seqService);
         this.selection = new SelectionState(this);
         this.spatialGrid = new SpatialGrid(10);
+        this.kerningManager = new KerningManager();
+        this.seqService.setKerningManager(this.kerningManager);
+        this.serializer.setKerningManager(this.kerningManager);
     }
 
     // =========================================================================

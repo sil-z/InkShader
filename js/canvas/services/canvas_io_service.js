@@ -208,7 +208,6 @@ ${fi.join('\n')}
         ufoFolder.file("layercontents.plist", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><array><array><string>public.default</string><string>glyphs</string></array></array></plist>`);
-        ufoFolder.file("features.fea", "# OpenType Feature File\n");
         let contentsDict = "";
 
         // GlifRecorder: produces GLIF outline XML (contours + components)
@@ -407,8 +406,7 @@ ${fi.join('\n')}
             feaContent += ligatureRules.join('\n');
             feaContent += '\n    } liga;\n} liga;\n';
         }
-        // features.fea goes at UFO root (sibling of glyphs/, fontinfo.plist)
-        zip.file("features.fea", feaContent);
+        ufoFolder.file("features.fea", feaContent);
 
         zip.generateAsync({ type: "blob" }).then((content) => {
             const url = c.env.createObjectURL(content);

@@ -1596,37 +1596,41 @@ bounding-box-popup .npp-drag-handle,
 group-settings-popup .npp-drag-handle {
     border-radius: 6px 6px 0 0;
 }
-preferences-popup,
-pen-tool-popup,
-ellipse-tool-popup,
-font-popup,
-expand-stroke-popup {
-    position: fixed;
-    z-index: 2000;
-    background: var(--ui-bg-overlay);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
-    min-width: 320px;
-    max-width: 400px;
-    max-height: 80vh;
-    display: none;
-}
-preferences-popup.visible,
-pen-tool-popup.visible,
-ellipse-tool-popup.visible,
-font-popup.visible,
-expand-stroke-popup.visible {
-    display: block;
-}
-preferences-popup,
-expand-stroke-popup,
-font-popup {
-    overflow: hidden;
-}
-font-popup .pen-tool-popup-header {
+ preferences-popup,
+ pen-tool-popup,
+ ellipse-tool-popup,
+ font-popup,
+ expand-stroke-popup,
+ kern-popup {
+     position: fixed;
+     z-index: 2000;
+     background: var(--ui-bg-overlay);
+     backdrop-filter: blur(12px);
+     -webkit-backdrop-filter: blur(12px);
+     border: 1px solid var(--ui-border);
+     border-radius: 8px;
+     box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+     min-width: 320px;
+     max-width: 400px;
+     max-height: 80vh;
+     display: none;
+ }
+ preferences-popup.visible,
+ pen-tool-popup.visible,
+ ellipse-tool-popup.visible,
+ font-popup.visible,
+ expand-stroke-popup.visible,
+ kern-popup.visible {
+     display: block;
+ }
+ preferences-popup,
+ expand-stroke-popup,
+ font-popup,
+ kern-popup {
+     overflow: hidden;
+ }
+font-popup .pen-tool-popup-header,
+kern-popup .kern-popup-header {
     font-size: 11px;
     font-weight: 600;
     color: var(--ui-text-muted);
@@ -1636,7 +1640,8 @@ font-popup .pen-tool-popup-header {
     cursor: default;
 }
 preferences-popup .pen-tool-popup-body,
-font-popup .pen-tool-popup-body {
+font-popup .pen-tool-popup-body,
+kern-popup .pen-tool-popup-body {
     padding: 0;
     overflow-y: auto;
     max-height: 70vh;
@@ -1645,14 +1650,16 @@ font-popup .pen-tool-popup-body {
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar,
 font-popup .pen-tool-popup-body::-webkit-scrollbar,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar {
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar-button,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-button,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button {
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
@@ -1660,43 +1667,49 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-button {
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 font-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner {
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar-corner {
     background: transparent;
 }
-preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
-font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
-pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 10px;
-    transition: background 0.35s ease 0.5s;
-}
-preferences-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
-font-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
-pen-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
-ellipse-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--ui-border-light);
-    transition: background 0.05s ease 0s;
-}
-preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
-font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
-pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover {
-    background: var(--ui-text-muted);
-    transition: background 0.05s ease 0s;
-}
-preferences-popup .pen-tool-popup-body::-webkit-scrollbar-track,
-font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
-pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
-ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track {
-    background: transparent;
-    border: none;
-}
-preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
-font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
-    background: var(--ui-border-light);
-    transition: none;
-}
+ preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
+     background: transparent;
+     border-radius: 10px;
+     transition: background 0.35s ease 0.5s;
+ }
+ preferences-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+ font-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+ pen-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+ ellipse-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
+ kern-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb {
+     background: var(--ui-border-light);
+     transition: background 0.05s ease 0s;
+ }
+ preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover {
+     background: var(--ui-text-muted);
+     transition: background 0.05s ease 0s;
+ }
+ preferences-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ kern-popup .pen-tool-popup-body::-webkit-scrollbar-track {
+     background: transparent;
+     border: none;
+ }
+ preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
+     background: var(--ui-border-light);
+     transition: none;
+ }
 
 preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
@@ -1760,6 +1773,146 @@ font-popup .pen-tool-row input[type="number"]::-webkit-inner-spin-button {
 font-popup .pen-tool-row input[type="number"] {
     -moz-appearance: textfield;
 }
+/* ── Kern popup ── */
+.kern-popup-add-row {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    align-items: center;
+    border-bottom: 1px solid var(--ui-border);
+}
+.kern-popup-add-row select {
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    font-size: 11px;
+    padding: 0 4px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    outline: none;
+}
+.kern-popup-add-row select:focus {
+    border-color: var(--ui-accent);
+}
+.kern-popup-add-row input[type="number"] {
+    width: 60px;
+    height: 24px;
+    font-size: 11px;
+    padding: 0 4px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    text-align: right;
+    outline: none;
+    -moz-appearance: textfield;
+}
+.kern-popup-add-row input[type="number"]::-webkit-outer-spin-button,
+.kern-popup-add-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.kern-popup-add-row input[type="number"]:focus {
+    border-color: var(--ui-accent);
+}
+.kern-add-btn {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+    border: 1px solid var(--ui-accent);
+    border-radius: 3px;
+    background: var(--ui-accent);
+    color: var(--ui-bg-base);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.kern-add-btn:hover {
+    opacity: 0.85;
+}
+.kern-popup-list {
+    padding: 4px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.kern-list-empty {
+    padding: 16px 12px;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    text-align: center;
+}
+.kern-pair-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+}
+.kern-pair-row:hover {
+    background: var(--ui-bg-hover);
+}
+.kern-pair-left,
+.kern-pair-right {
+    flex: 0 0 auto;
+    min-width: 40px;
+    color: var(--ui-text-main);
+}
+.kern-pair-arrow {
+    color: var(--ui-text-muted);
+    flex: 0 0 auto;
+}
+.kern-pair-value {
+    flex: 1;
+    text-align: right;
+    color: var(--ui-text-main);
+    padding-right: 4px;
+}
+.kern-pair-remove {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ui-text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 3px;
+}
+.kern-pair-remove:hover {
+    background: var(--ui-bg-hover);
+    color: var(--ui-text-main);
+}
+
+/* ── Kern popup inline edit ── */
+.kern-pair-value {
+    cursor: pointer;
+}
+.kern-pair-edit-input {
+    width: 60px;
+    height: 20px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    padding: 0 4px;
+    border: 1px solid var(--ui-accent);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    text-align: right;
+    outline: none;
+    box-sizing: border-box;
+    -moz-appearance: textfield;
+}
+.kern-pair-edit-input::-webkit-outer-spin-button,
+.kern-pair-edit-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 pen-tool-popup .npp-row input[type="checkbox"],
 ellipse-tool-popup .npp-row input[type="checkbox"],
 expand-stroke-popup .npp-row input[type="checkbox"] {

@@ -11,6 +11,7 @@ import "./ellipse_tool_popup.js";
 import "./dropdown_menu.js";
 import "./font_popup.js";
 import "./expand_stroke_popup.js";
+import "./kern_popup.js";
 
 export function initializeLayoutShell() {
     const dockContainer = document.querySelector(".dock-container");
@@ -120,6 +121,7 @@ export function initializeLayoutShell() {
     const topMenuItems = document.querySelectorAll(".top .item");
     const btnFile = document.getElementById("menu_file");
     const btnFont = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.font");
+    const btnKern = document.getElementById("menu_kern");
     const btnPreferences = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.prefs");
     const btnHelp = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.help");
 
@@ -129,6 +131,9 @@ export function initializeLayoutShell() {
     if (!document.querySelector('font-popup')) {
         document.body.appendChild(document.createElement('font-popup'));
     }
+    if (!document.querySelector('kern-popup')) {
+        document.body.appendChild(document.createElement('kern-popup'));
+    }
 
     // ── Close any open menu/popup and sync active classes ──
     function closeAnyOpenMenu() {
@@ -136,6 +141,8 @@ export function initializeLayoutShell() {
         if (dd && dd._visible) dd.hide();
         const fp = document.querySelector('font-popup');
         if (fp && fp._visible) fp.hide();
+        const kp = document.querySelector('kern-popup');
+        if (kp && kp._visible) kp.hide();
         const pp = document.querySelector('preferences-popup');
         if (pp && pp._visible) pp.hide();
     }
@@ -313,6 +320,16 @@ export function initializeLayoutShell() {
         };
     }
 
+    // ── Kern popup active class sync ──
+    const kernPopup = document.querySelector('kern-popup');
+    if (kernPopup) {
+        const origKernHide = kernPopup.hide.bind(kernPopup);
+        kernPopup.hide = function() {
+            btnKern?.classList.remove('active');
+            return origKernHide();
+        };
+    }
+
     // ── Font popup ──
     btnFont?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -331,6 +348,25 @@ export function initializeLayoutShell() {
         popup.setCanvas(window.__canvas || null);
         popup.show(btnFont);
         btnFont.classList.add('active');
+    });
+
+    // ── Kern popup ──
+    btnKern?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const popup = document.querySelector('kern-popup');
+        if (!popup) return;
+
+        // Toggle off if already open
+        if (btnKern.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
+
+        popup.setCanvas(window.__canvas || null);
+        popup.show(btnKern);
+        btnKern.classList.add('active');
     });
 
     // ── Preferences popup active class sync ──

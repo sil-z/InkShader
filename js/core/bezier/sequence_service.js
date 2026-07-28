@@ -16,6 +16,9 @@ export class SequenceService {
     defaultGlyphs = new Map();
     sequenceOffsets = [];
 
+    /** @type {import('./kerning_manager.js').KerningManager|null} */
+    _kerningManager = null;
+
     /** @private Cache for incremental syncTreeWithSequence */
     _prevInTextIds = null;   // Set of group IDs that were in sequence text at last sync (null = first call, do full sweep)
     _prevRootIds = null;     // Set of rootChildren IDs at last sync
@@ -219,10 +222,29 @@ export class SequenceService {
         this.activeSequenceIndices = indicesSet;
     }
 
+    /** @param {import('./kerning_manager.js').KerningManager} km */
+    setKerningManager(km) {
+        this._kerningManager = km;
+    }
+
+    _getGroupNameForToken(token) {
+        const gid = token.isChar ? this.getDefaultGroupForChar(token.value) : token.value;
+        const group = gid ? this._treeStore.treeItems.get(gid) : null;
+        return group ? group.name : null;
+    }
+
     calculateSequenceOffsets() {
         this.sequenceOffsets = new Array(this.sequenceTokens.length).fill(0);
         let currentOffset = 0;
         for (let i = 0; i < this.sequenceTokens.length; i++) {
+            // Apply kerning from previous glyph to this one (before placing current glyph)
+            if (i > 0 && this._kerningManager) {
+                const prevName = this._getGroupNameForToken(this.sequenceTokens[i - 1]);
+                const currName = this._getGroupNameForToken(this.sequenceTokens[i]);
+                if (prevName && currName) {
+                    currentOffset += this._kerningManager.getPair(prevName, currName);
+                }
+            }
             this.sequenceOffsets[i] = currentOffset;
             let t = this.sequenceTokens[i];
             let gid = t.isChar ? this.getDefaultGroupForChar(t.value) : t.value;

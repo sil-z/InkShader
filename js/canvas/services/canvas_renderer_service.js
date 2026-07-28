@@ -1726,6 +1726,10 @@ export class CanvasRendererService {
             let hoveredRightGid = null;
             let hoveredLeftAdvance = null;
             let drawnPositions = new Set();
+            let lastActiveIndex = -1;
+            for (let i = seqTokens.length - 1; i >= 0; i--) {
+                if (activeIndices.has(i)) { lastActiveIndex = i; break; }
+            }
             for (let i = 0; i < seqTokens.length; i++) {
                 if (!activeIndices.has(i)) continue;
                 let seqOffsetX = c.curve_manager.getSeqOffset(i);
@@ -1733,8 +1737,8 @@ export class CanvasRendererService {
                 let group = c.curve_manager.treeItems.get(gid); let advance = (group && group.advance !== undefined) ? group.advance : 1000;
                 let sx = seqOffsetX * c.scale + offsetX;
                 let ex = (seqOffsetX + advance) * c.scale + offsetX;
+                // Left edge of each glyph = divider line (kerning-adjusted)
                 if (!drawnPositions.has(sx)) {
-                    // Left-edge hover — leftmost divider of first glyph shows LSB of its only right group
                     let leftId = gid + "-" + i + "-l";
                     if (!c.divider_locked && c._hoveredDividerId === leftId && hoveredScreenX === null) {
                         hoveredScreenX = sx;
@@ -1746,10 +1750,10 @@ export class CanvasRendererService {
                     }
                     drawnPositions.add(sx);
                 }
-                if (drawnPositions.has(ex)) continue;
+                // Right edge hover check: ALL glyphs (so highlight works even when line not drawn)
                 let rightId = gid + "-" + i + "-r";
-                let isHov = !c.divider_locked && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
-                if (isHov) {
+                let rightIsHov = !c.divider_locked && (c._hoveredDividerId === rightId || (c._draggingDivider && c._draggingDivider.dividerId === rightId));
+                if (rightIsHov) {
                     hoveredScreenX = ex;
                     hoveredLeftGid = gid;
                     hoveredLeftAdvance = advance;
@@ -1757,7 +1761,10 @@ export class CanvasRendererService {
                         let nextTok = seqTokens[i + 1];
                         hoveredRightGid = nextTok.isChar ? c.curve_manager.getDefaultGroupForChar(nextTok.value) : nextTok.value;
                     }
-                } else {
+                }
+                // Right edge draw: only for the last active glyph (its advance end)
+                if (i === lastActiveIndex && !rightIsHov) {
+                    if (drawnPositions.has(ex)) continue;
                     c.ctx.moveTo(ex, 0); c.ctx.lineTo(ex, logicalH);
                     drawnPositions.add(ex);
                 }

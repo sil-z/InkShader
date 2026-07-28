@@ -5,7 +5,7 @@ import { appEventBus } from "../app/event_bus.js";
 export const translations = {
     en: {
         "menu.file": "File", "menu.edit": "Edit", "menu.prefs": "Preferences", "menu.help": "Help",
-        "menu.font": "Font",
+        "menu.font": "Font", "menu.kern": "Kern",
         "file.new_project": "New Project",
         "file.load_json": "Load Project (JSON)",
         "file.load_ufo": "Load Project (UFO)",
@@ -78,11 +78,14 @@ export const translations = {
         "font.version": "Version",
 
         "menu.import": "Import",
-        "prop.image_details": "Image Details"
+        "prop.image_details": "Image Details",
+        "kern.title": "Kerning Pairs",
+        "kern.add": "Add",
+        "kern.no_pairs": "No kerning pairs defined."
     },
     zh: {
         "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
-        "menu.font": "字体",
+        "menu.font": "字体", "menu.kern": "字偶距",
         "file.new_project": "新建项目",
         "file.load_json": "加载本地项目 (JSON)",
         "file.load_ufo": "加载本地项目 (UFO)",
@@ -154,7 +157,10 @@ export const translations = {
         "font.version": "字体版本",
 
         "menu.import": "导入",
-        "prop.image_details": "图片详情"
+        "prop.image_details": "图像详情",
+        "kern.title": "字偶距设置",
+        "kern.add": "添加",
+        "kern.no_pairs": "暂无字偶距数据"
     }
 };
 

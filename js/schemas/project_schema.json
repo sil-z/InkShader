@@ -158,6 +158,18 @@
       "description": "All glyph-like groups indexed by group name — names are unique identifiers",
       "propertyNames": { "type": "string" },
       "additionalProperties": { "$ref": "#/$defs/GroupData" }
+    },
+    "kerning": {
+      "type": "object",
+      "description": "Kerning pair table: Map<leftGlyphName, Map<rightGlyphName, number>>. Negative values move glyphs closer. Values are in UPM units.",
+      "default": {},
+      "propertyNames": { "type": "string" },
+      "additionalProperties": {
+        "type": "object",
+        "description": "Right-glyph kerning map for a single left glyph",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": { "type": "number" }
+      }
     }
   },
   "additionalProperties": false,
