@@ -299,9 +299,7 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
             return true;
         case "editor_guidelines":
             if (Array.isArray(value)) {
-                canvas.guidelines = value.map(g => ({ id: g.id, x: g.x, y: g.y, angle: g.angle }));
-                const maxId = canvas.guidelines.reduce((m, g) => Math.max(m, g.id || 0), 0);
-                canvas._nextUserGuideId = maxId + 1;
+                canvas.guidelines = value.map(g => ({ id: canvas._nextUserGuideId++, x: g.x, y: g.y, angle: g.angle, type: g.type }));
             }
             return true;
         case "editor_guideline_lock":
@@ -447,7 +445,9 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     syncTreeHierarchyFromSnapshot(cm, snapshotObj);
     if (Array.isArray(snapshotObj.editor_guidelines)) {
         canvas.guidelines = snapshotObj.editor_guidelines.map(g => ({
-            id: g.id, x: g.x, y: g.y, angle: g.angle
+            id: canvas._nextUserGuideId++,
+            x: g.x, y: g.y, angle: g.angle,
+            type: g.type
         }));
     }
     if (snapshotObj.editor_guideline_lock !== undefined) {

@@ -100,6 +100,7 @@ export const CanvasDispatcher = Object.freeze({
     requestSetGroupAdvance(id, value, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, { id, value, options });
     },
+
     requestRenameTreeItem(id, newName) {
         return requestWithResult(CANVAS_EVENTS.REQUEST_RENAME_TREE_ITEM, { id, newName, result: false });
     },

@@ -120,39 +120,81 @@ export function refreshCurveBooleanCache(curve) {
             });
             const strokePaths = buildPaperPaths(pScope, strokeRec, { resolveCrossings: true });
 
-            // Swallowtail filtering: resolveCrossings splits self-intersecting
-            // offset paths into CompoundPath children with alternating winding.
-            // Remove only children whose bounding box is smaller than the stroke
-            // width in BOTH dimensions — these are tight-curve offset artifacts
-            // (swallowtails).  Keep any child that can span the full stroke width,
-            // indicating a genuine forward-backward offset crossing ("P"‑shape
-            // enclosed area).  Preserved children retain their opposite winding
-            // from resolveCrossings, creating correct holes under fill("nonzero").
-            const swHw = curve.stroke_width / 2;
+            // Swallowtail filtering: resolveCrossings splits the self-
+            // intersecting stroke outline ring into CompoundPath children.
+            // Two-stage classification:
+            //
+            //   Stage 1 — Fill core test:
+            //     The skeleton ± halfWidth corridor is the INVARIABLE fill
+            //     zone (the stroke body).  Any child that CONTAINS a skeleton
+            //     point overlaps this zone and MUST be kept as fill.
+            //
+            //   Stage 2 — Candidate discrimination:
+            //     Children OUTSIDE the fill core are either:
+            //       • Genuine holes — enclosed regions bounded by forward
+            //         & backward offsets, located INSIDE the fill boundary
+            //         (keep — alternating winding from resolveCrossings
+            //          creates the hole under fill("nonzero")).
+            //       • Swallowtails — same-side offset self-intersection
+            //         loops that protrude OUTSIDE the fill boundary (remove).
+            //
+            // This replaces the old bounding-box heuristic (child bounds
+            // vs stroke width) which failed for small forward-backward
+            // crossing holes (misclassified as swallowtails).
+            const skelSegments = curve.getSkeletonBezierSegments();
+            const skeletonSamples = [];
+            for (const seg of skelSegments) {
+                for (const t of [0, 0.15, 0.3, 0.5, 0.7, 0.85, 1]) {
+                    const mt = 1 - t;
+                    const x = mt * mt * mt * seg.p0.x
+                        + 3 * mt * mt * t * seg.p1.x
+                        + 3 * mt * t * t * seg.p2.x
+                        + t * t * t * seg.p3.x;
+                    const y = mt * mt * mt * seg.p0.y
+                        + 3 * mt * mt * t * seg.p1.y
+                        + 3 * mt * t * t * seg.p2.y
+                        + t * t * t * seg.p3.y;
+                    skeletonSamples.push(new pScope.Point(x, y));
+                }
+            }
             for (let i = 0; i < strokePaths.length; i++) {
                 const p = strokePaths[i];
                 if (p instanceof pScope.CompoundPath && p.children.length > 1) {
-                    // Absolute size threshold: a genuine forward-backward crossing
-                    // loop always spans the full stroke width (2×halfWidth) in at
-                    // least one bounding-box dimension.  A tight-curve swallowtail
-                    // artifact is always compact in both dimensions.
-                    const swallowThreshold = swHw * 2; // stroke width
-                    const keep = [];
+                    // Stage 1: identify fill-core children (contain skeleton)
+                    const fillCore = [];
+                    const candidates = [];
                     for (const child of p.children) {
-                        if (!(child instanceof pScope.Path)) { keep.push(child); continue; }
-                        const b = child.bounds;
-                        if (b.width < swallowThreshold && b.height < swallowThreshold) {
-                            child.remove(); // swallowtail
+                        if (!(child instanceof pScope.Path)) { fillCore.push(child); continue; }
+                        const hasSkel = skeletonSamples.length === 0
+                            || skeletonSamples.some(pt => child.contains(pt));
+                        if (hasSkel) {
+                            fillCore.push(child);
                         } else {
-                            keep.push(child);
+                            candidates.push(child);
                         }
                     }
+                    // Stage 2: candidates inside fill boundary = hole, outside = swallowtail
+                    const holes = [];
+                    for (const cand of candidates) {
+                        const center = cand.bounds.center;
+                        const insideFill = fillCore.some(fc => {
+                            try { return fc.contains(center); } catch (_) { return false; }
+                        });
+                        if (insideFill) {
+                            holes.push(cand);
+                        } else {
+                            cand.remove(); // swallowtail
+                        }
+                    }
+                    const keep = [...fillCore, ...holes];
                     if (keep.length === 1) {
                         const clone = keep[0].clone();
                         p.remove();
                         strokePaths[i] = clone;
                     }
                     // else keep CompoundPath with alternating-winding children
+                    // (fillCore children and hole children have opposite winding
+                    //  from resolveCrossings → fill("nonzero") creates holes)
                 }
             }
             allSolidPieces.push(...strokePaths);
@@ -204,11 +246,13 @@ export function refreshCurveBooleanCache(curve) {
 
     // Reorient resolves winding within CompoundPath children: outer paths
     // get clockwise winding, inner (hole) paths get counter-clockwise.
-    // For open smart-stroke paths, the swallowtail filtering above keeps
-    // genuine forward-backward crossing loops as CompoundPath children with
-    // natural alternating winding from resolveCrossings — reorient preserves
-    // this arrangement so fill("nonzero") correctly leaves holes unfilled.
-    if (curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
+    // For open smart-stroke paths, resolveCrossings already sets the correct
+    // alternating winding on CompoundPath children — reorient is unnecessary
+    // and may destroy the alternating winding if Paper.js misidentifies
+    // containment relationships for non-nested children.  For closed paths
+    // the fill-area + stroke-outline unite may merge the CompoundPath into
+    // a single self-intersecting Path, so reorient only for closed paths.
+    if (curve.closed && curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
         try {
             resultPath.reorient(true, curve.smart_stroke_clockwise);
         } catch (e) {

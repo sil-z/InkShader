@@ -20,14 +20,24 @@ import {
     trimmedInputValue
 } from "./input_validation.js";
 
+/** Compute LSB/RSB for a group from its curves + advance (read-only, no stored fields) */
+function getGroupLsbRsb(groupId) {
+    const extents = EditorModel.getGroupCurveExtents(groupId);
+    if (!extents) return { lsb: 0, rsb: 0 };
+    const advance = EditorModel.getGroupAdvance(groupId) ?? 1000;
+    return { lsb: Math.round(extents.minX), rsb: Math.round(advance - extents.maxX) };
+}
+
 export const GRP_DOCKED = 'grp:docked';
 
 const POPUP_HTML = `
-<div class="property_group_title npp-drag-handle" id="grp_drag_handle" data-i18n="prop.group_settings">Group Settings</div>
+<div class="property_group_title npp-drag-handle" id="grp_drag_handle" data-i18n="prop.glyph_settings">Glyph Settings</div>
 <div class="npp-fields" id="grp_standard_fields">
     <div class="npp-row"><label>Name</label><input type="text" id="grp_name"></div>
     <div class="npp-row"><label>Char</label><input type="text" id="grp_char"></div>
     <div class="npp-row"><label>Advance</label><input type="number" id="grp_advance"></div>
+    <div class="npp-row"><label>LSB</label><input type="number" id="grp_lsb"></div>
+    <div class="npp-row"><label>RSB</label><input type="number" id="grp_rsb"></div>
     <div class="npp-row"><label>Left Kern</label><select id="grp_kern_left"><option value="">(none)</option></select></div>
     <div class="npp-row"><label>Right Kern</label><select id="grp_kern_right"><option value="">(none)</option></select></div>
 </div>
@@ -111,6 +121,9 @@ export class GroupSettingsPopup extends HTMLElement {
             if (id === 'grp_advance' && isValidNumber(numberFromInput(e.target), { min: 0 })) {
                 this._dispatchChange(e.target, false);
             }
+            if ((id === 'grp_lsb' || id === 'grp_rsb') && isValidNumber(numberFromInput(e.target), { min: 0 })) {
+                this._dispatchChange(e.target, false);
+            }
         });
 
         this.container.addEventListener('change', (e) => {
@@ -176,16 +189,10 @@ export class GroupSettingsPopup extends HTMLElement {
             const titleEl = this.container.querySelector('#grp_drag_handle');
             if (stdFields) stdFields.style.display = 'none';
             if (refFields) refFields.style.display = '';
-            if (this._refDetailsMode) {
-                if (titleEl) titleEl.textContent = 'Reference Details';
-                const rows = refFields?.querySelectorAll('.npp-row');
-                if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = 'none';
-            } else {
-                if (titleEl) titleEl.textContent = 'Transform';
-                // Ensure ref fields visible (might be hidden from prev ref_details extraction)
-                const rows = refFields?.querySelectorAll('.npp-row');
-                if (rows) for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
-            }
+            if (titleEl) titleEl.textContent = 'Reference Properties';
+            // Ensure all ref rows visible
+            const rows = refFields?.querySelectorAll('.npp-row');
+            if (rows) for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
 
             if (this._docked) {
                 this._hide();
@@ -221,14 +228,14 @@ export class GroupSettingsPopup extends HTMLElement {
             if (item.isRef) {
                 stdFields.style.display = 'none';
                 refFields.style.display = '';
-                if (titleEl) titleEl.textContent = 'Transform';
-                // Ensure matrix rows visible (might be hidden from prev ref_details extraction)
+                if (titleEl) titleEl.textContent = 'Reference Properties';
+                // Ensure all ref rows visible
                 const rows = refFields.querySelectorAll('.npp-row');
-                for (let i = 1; i < rows.length; i++) rows[i].style.display = '';
+                for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
             } else {
                 stdFields.style.display = '';
                 refFields.style.display = 'none';
-                if (titleEl) titleEl.textContent = 'Group Settings';
+                if (titleEl) titleEl.textContent = 'Glyph Settings';
             }
         }
 
@@ -256,6 +263,9 @@ export class GroupSettingsPopup extends HTMLElement {
         patch('grp_name', item.name);
         patch('grp_char', item.charCode || '');
         patch('grp_advance', item.advance !== undefined ? item.advance : 1000);
+        const grpLr = getGroupLsbRsb(this._groupId);
+        patch('grp_lsb', grpLr.lsb);
+        patch('grp_rsb', grpLr.rsb);
         if (item.isRef) {
             patch('grp_ref_name', item.name);
             const t = item.transform;
@@ -316,6 +326,21 @@ export class GroupSettingsPopup extends HTMLElement {
             return;
         }
 
+        if (id === 'grp_lsb' || id === 'grp_rsb') {
+            const numVal = numberFromInput(target);
+            if (isValidNumber(numVal, { min: 0 })) {
+                const item = EditorModel.getTreeItem(this._groupId);
+                const advance = item && item.advance !== undefined ? item.advance : 1000;
+                const grpLr = getGroupLsbRsb(this._groupId);
+                const currentVal = id === 'grp_lsb' ? grpLr.lsb : grpLr.rsb;
+                const newAdv = Math.max(0, advance + (numVal - currentVal));
+                CanvasDispatcher.requestSetGroupAdvance(this._groupId, newAdv, { recordHistory });
+            } else if (recordHistory) {
+                this._restoreInput(target);
+            }
+            return;
+        }
+
         // Ref transform fields — map popup IDs to model prop names
         const refFieldMap = { 'grp_ref_pos_x': 'ref_pos_x', 'grp_ref_pos_y': 'ref_pos_y',
             'grp_ref_scale_x': 'ref_scale_x', 'grp_ref_scale_y': 'ref_scale_y',
@@ -360,7 +385,8 @@ export class GroupSettingsPopup extends HTMLElement {
             value: target.id === 'grp_name' ? item?.name ?? target.value
                 : target.id === 'grp_char' ? item?.charCode ?? ''
                     : target.id === 'grp_advance' ? item?.advance ?? numberFromInput(target)
-                        : target.id === 'grp_ref_pos_x' ? (refDecomp?.posX ?? 0)
+                        : (target.id === 'grp_lsb' || target.id === 'grp_rsb') ? (item?.advance ?? 1000)
+                            : target.id === 'grp_ref_pos_x' ? (refDecomp?.posX ?? 0)
                             : target.id === 'grp_ref_pos_y' ? (refDecomp?.posY ?? 0)
                                 : target.id === 'grp_ref_scale_x' ? (refDecomp?.scaleX ?? 1)
                                     : target.id === 'grp_ref_scale_y' ? (refDecomp?.scaleY ?? 1)
@@ -373,6 +399,7 @@ export class GroupSettingsPopup extends HTMLElement {
     _isValidFinalInput(target) {
         if (target.id === 'grp_name') return isValidTreeName(trimmedInputValue(target));
         if (target.id === 'grp_advance') return isValidNumber(numberFromInput(target), { min: 0 });
+        if (target.id === 'grp_lsb' || target.id === 'grp_rsb') return isValidNumber(numberFromInput(target), { min: 0 });
         return true;
     }
 
@@ -380,7 +407,7 @@ export class GroupSettingsPopup extends HTMLElement {
         const fallback = this._inputSnapshot?.id === target.id ? String(this._inputSnapshot.value ?? '') : '';
         restoreRememberedInputValue(this, target, fallback);
         this._skipCommitTarget = target;
-        if (target.id === 'grp_advance' && this._groupId && Number.isFinite(Number(this._inputSnapshot?.value))) {
+        if (['grp_advance', 'grp_lsb', 'grp_rsb'].includes(target.id) && this._groupId && Number.isFinite(Number(this._inputSnapshot?.value))) {
             CanvasDispatcher.requestSetGroupAdvance(this._groupId, Number(this._inputSnapshot.value), { recordHistory: false });
         }
         this._patchValues();

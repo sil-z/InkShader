@@ -274,6 +274,37 @@ export function getSeqIdxForGroup(groupId, focusedSeqIdx = -1) {
     return layout ? getSeqIdxForGroupId(layout, groupId, focusedSeqIdx) : -1;
 }
 
+/**
+ * Get the bounding box extent (minX, maxX) of all visible curves in a group.
+ * Returns null if group has no curves. Used to compute LSB/RSB dynamically.
+ */
+export function getGroupCurveExtents(groupId) {
+    const cm = curveManager();
+    if (!cm) return null;
+    const cdList = cm.getCurvesForGroup(groupId) || [];
+    let minX = Infinity, maxX = -Infinity;
+    for (const cd of cdList) {
+        if (!cd.effectiveVis || !cd.curve) continue;
+        const bounds = cd.curve.getBounds();
+        if (!bounds) continue;
+        if (bounds.minX < minX) minX = bounds.minX;
+        if (bounds.maxX > maxX) maxX = bounds.maxX;
+    }
+    if (minX === Infinity || maxX === -Infinity) return null;
+    return { minX, maxX };
+}
+
+/**
+ * Get the live advance value for a group directly from CurveManager (bypasses stale tree snapshot).
+ * Used during metric-guide drags where the tree snapshot may lag behind in-place advance mutations.
+ */
+export function getGroupAdvance(groupId) {
+    const cm = curveManager();
+    if (!cm) return null;
+    const item = cm.treeItems.get(groupId);
+    return item?.advance ?? null;
+}
+
 export function getSeqOffsetForGroup(groupId) {
     const layout = resolveSequenceLayout();
     if (!layout) return 0;

@@ -12,6 +12,7 @@ import "./dropdown_menu.js";
 import "./font_popup.js";
 import "./expand_stroke_popup.js";
 import "./kern_popup.js";
+import "./glyph_popup.js";
 
 export function initializeLayoutShell() {
     const dockContainer = document.querySelector(".dock-container");
@@ -121,7 +122,7 @@ export function initializeLayoutShell() {
     const topMenuItems = document.querySelectorAll(".top .item");
     const btnFile = document.getElementById("menu_file");
     const btnFont = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.font");
-    const btnKern = document.getElementById("menu_kern");
+    const btnKern = document.getElementById("menu_kerning");
     const btnPreferences = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.prefs");
     const btnHelp = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.help");
 
@@ -134,6 +135,11 @@ export function initializeLayoutShell() {
     if (!document.querySelector('kern-popup')) {
         document.body.appendChild(document.createElement('kern-popup'));
     }
+    if (!document.querySelector('glyph-popup')) {
+        document.body.appendChild(document.createElement('glyph-popup'));
+    }
+
+    const btnGlyphs = document.getElementById("menu_glyphs");
 
     // ── Close any open menu/popup and sync active classes ──
     function closeAnyOpenMenu() {
@@ -143,6 +149,8 @@ export function initializeLayoutShell() {
         if (fp && fp._visible) fp.hide();
         const kp = document.querySelector('kern-popup');
         if (kp && kp._visible) kp.hide();
+        const gp = document.querySelector('glyph-popup');
+        if (gp && gp._visible) gp.hide();
         const pp = document.querySelector('preferences-popup');
         if (pp && pp._visible) pp.hide();
     }
@@ -330,6 +338,16 @@ export function initializeLayoutShell() {
         };
     }
 
+    // ── Glyphs popup active class sync ──
+    const glyphPopup = document.querySelector('glyph-popup');
+    if (glyphPopup) {
+        const origGlyphHide = glyphPopup.hide.bind(glyphPopup);
+        glyphPopup.hide = function() {
+            btnGlyphs?.classList.remove('active');
+            return origGlyphHide();
+        };
+    }
+
     // ── Font popup ──
     btnFont?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -367,6 +385,24 @@ export function initializeLayoutShell() {
         popup.setCanvas(window.__canvas || null);
         popup.show(btnKern);
         btnKern.classList.add('active');
+    });
+
+    // ── Glyphs popup ──
+    btnGlyphs?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const popup = document.querySelector('glyph-popup');
+        if (!popup) return;
+
+        // Toggle off if already open
+        if (btnGlyphs.classList.contains('active')) {
+            closeAnyOpenMenu();
+            return;
+        }
+
+        closeAnyOpenMenu();
+
+        popup.show(btnGlyphs);
+        btnGlyphs.classList.add('active');
     });
 
     // ── Preferences popup active class sync ──

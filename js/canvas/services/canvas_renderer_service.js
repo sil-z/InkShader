@@ -578,6 +578,7 @@ export class CanvasRendererService {
         // (handle visibility depends on selectedCurveIds).
         const curveIdsArr = ix2?.selectedCurveIds ? [...ix2.selectedCurveIds].sort() : [];
         cache.selectedCurveIdsKey = JSON.stringify(curveIdsArr);
+        cache.selectedRefIdsKey = JSON.stringify([...(ix2?.selectedRefIds || [])].sort());
         this._nodeLayerCache = cache;
     }
 
@@ -782,6 +783,9 @@ export class CanvasRendererService {
         // Invalidate when curve selection changes (handle visibility depends on selectedCurveIds).
         const curIdsArr = curIx?.selectedCurveIds ? [...curIx.selectedCurveIds].sort() : [];
         if (this._nodeLayerCache.selectedCurveIdsKey !== JSON.stringify(curIdsArr)) return false;
+        // Invalidate when ref selection changes (handle visibility depends on selectedRefIds).
+        const curRefIdsArr = curIx?.selectedRefIds ? [...curIx.selectedRefIds].sort() : [];
+        if (this._nodeLayerCache.selectedRefIdsKey !== JSON.stringify(curRefIdsArr)) return false;
         return true;
     }
 
@@ -920,6 +924,7 @@ export class CanvasRendererService {
         const ix = c.getInteractionSnapshot();
         let seqTokens = c.curve_manager.sequenceTokens || [];
         let activeIndices = c.curve_manager.activeSequenceIndices;
+
         const p = getCanvasTheme();
         const getCurveDataList = (groupId) => {
             const list = c.curve_manager.getCurvesForGroup(groupId);
@@ -1176,6 +1181,18 @@ export class CanvasRendererService {
                     }
                 }
             }
+            // Node selection within a ref: show handles on source curves' nodes.
+            // reduceNodeSelection clears selectedRefIds, so we must check _nodeSelectionRefId.
+            const nodeRefId = c.editorStore?.getState?.()?._nodeSelectionRefId ?? null;
+            if (nodeRefId) {
+                const refItem = c.curve_manager?.treeItems?.get(nodeRefId);
+                if (refItem && refItem.isRef && refItem.refId) {
+                    const sourceCurves = c.curve_manager.getCurvesForGroup(refItem.refId);
+                    for (const cd of sourceCurves) {
+                        if (cd.curve) addAllNodes(cd.curve);
+                    }
+                }
+            }
             if (c.current_curve) addAllNodes(c.current_curve);
         }
         const selMarkers = ix.selectedNodeMarkerIds;
@@ -1225,6 +1242,7 @@ export class CanvasRendererService {
                     const strokePreview = isCurveStrokePreview(c, cd.curve.id, refId);
                     if (!shouldBatchFillCurve(cd.curve, { strokePreview })) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
+
                     if (canFillSmartStrokeWithPath2D(cd.curve, { strokePreview })) {
                         path2dFills.push({ curve: cd.curve, viewport });
                         continue;
@@ -1583,7 +1601,8 @@ export class CanvasRendererService {
                     const cosA = Math.cos(a), sinA = Math.sin(a);
                     const extend = 20000;
                     const isTemp = !!g._temp;
-                    const isHovered = !lockActive && !isTemp && c._hoveredUserGuideId === g.id;
+                    const isHovered = !lockActive && !isTemp && c._hoveredUserGuideId != null && c._hoveredUserGuideId === g.id;
+
                     const isDragging = !lockActive && !isTemp && c._draggingUserGuide && c._draggingUserGuide.id === g.id;
                     let strokeColor, fillColor;
                     if (isDragging) {

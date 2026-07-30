@@ -5,7 +5,7 @@ import { appEventBus } from "../app/event_bus.js";
 export const translations = {
     en: {
         "menu.file": "File", "menu.edit": "Edit", "menu.prefs": "Preferences", "menu.help": "Help",
-        "menu.font": "Font", "menu.kern": "Kern",
+        "menu.font": "Font", "menu.kerning": "Kerning", "menu.glyphs": "Glyphs",
         "file.new_project": "New Project",
         "file.load_json": "Load Project (JSON)",
         "file.load_ufo": "Load Project (UFO)",
@@ -60,7 +60,7 @@ export const translations = {
         "prop.path_direction": "Path Direction", "prop.smart_expand_direction": "Smart Expand Direction",
         "prop.toggle_path_direction": "Toggle path direction", "prop.toggle_smart_expand_direction": "Toggle smart expand direction",
         "prop.dir_cw": "Clockwise", "prop.dir_ccw": "Counter-clockwise", "prop.dir_open": "Open",
-        "prop.pen_settings": "Pen Tool Settings", "prop.expand_stroke": "Expand Stroke", "prop.expand_round_cap": "Round Cap", "prop.trans_ref": "Transform", "prop.trans": "Trans", "prop.ref_details": "Reference Details", "prop.group_spacing": "Group Spacing", "prop.advance": "Advance", "prop.group_details": "Group Details", "prop.char": "Char", "prop.mixed": "Mixed", "prop.group_settings": "Group Settings", "prop.position": "Position", "prop.scale": "Scale", "prop.rotation": "Rotation", "prop.shear": "Shear", "prop.offset": "Offset",
+        "prop.pen_settings": "Pen Tool Settings", "prop.expand_stroke": "Expand Stroke", "prop.expand_round_cap": "Round Cap", "prop.ref_properties": "Reference Properties", "prop.group_spacing": "Group Spacing", "prop.advance": "Advance", "prop.group_details": "Group Details", "prop.char": "Char", "prop.mixed": "Mixed",         "prop.glyph_settings": "Glyph Settings", "prop.position": "Position", "prop.scale": "Scale", "prop.rotation": "Rotation", "prop.shear": "Shear", "prop.offset": "Offset",
 
         "tree.menu.delete": "Delete", "tree.menu.copy": "Copy", "tree.menu.copy_ref": "Copy Reference", "tree.menu.paste": "Paste", "tree.menu.duplicate": "Duplicate", "tree.menu.unlink": "Unlink Reference", "tree.menu.go_source": "Go to Reference Source",
 
@@ -79,13 +79,12 @@ export const translations = {
 
         "menu.import": "Import",
         "prop.image_details": "Image Details",
-        "kern.title": "Kerning Pairs",
-        "kern.add": "Add",
+        "kern.title": "Add Kerning", "kern.add": "Add",
         "kern.no_pairs": "No kerning pairs defined."
     },
     zh: {
         "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
-        "menu.font": "字体", "menu.kern": "字偶距",
+        "menu.font": "字体", "menu.kerning": "字偶距", "menu.glyphs": "字形",
         "file.new_project": "新建项目",
         "file.load_json": "加载本地项目 (JSON)",
         "file.load_ufo": "加载本地项目 (UFO)",
@@ -140,7 +139,7 @@ export const translations = {
         "prop.path_direction": "路径方向", "prop.smart_expand_direction": "智能描边方向",
         "prop.toggle_path_direction": "切换路径方向", "prop.toggle_smart_expand_direction": "切换智能描边方向",
         "prop.dir_cw": "顺时针", "prop.dir_ccw": "逆时针", "prop.dir_open": "开放",
-        "prop.pen_settings": "钢笔工具设置", "prop.expand_stroke": "扩展描边", "prop.expand_round_cap": "圆头端点", "prop.trans_ref": "变换", "prop.trans": "平移", "prop.ref_details": "引用详情", "prop.group_spacing": "字距", "prop.advance": "步进宽度", "prop.group_details": "分组详情", "prop.char": "字符映射", "prop.mixed": "混合", "prop.group_settings": "分组设置", "prop.position": "位置", "prop.scale": "缩放", "prop.rotation": "旋转", "prop.shear": "倾斜", "prop.offset": "偏移",
+        "prop.pen_settings": "钢笔工具设置", "prop.expand_stroke": "扩展描边", "prop.expand_round_cap": "圆头端点", "prop.ref_properties": "引用属性", "prop.group_spacing": "字距", "prop.advance": "步进宽度", "prop.group_details": "分组详情", "prop.char": "字符映射", "prop.mixed": "混合",         "prop.glyph_settings": "字形设置", "prop.position": "位置", "prop.scale": "缩放", "prop.rotation": "旋转", "prop.shear": "倾斜", "prop.offset": "偏移",
 
         "tree.menu.delete": "删除", "tree.menu.copy": "复制", "tree.menu.copy_ref": "复制为引用", "tree.menu.paste": "粘贴", "tree.menu.duplicate": "建立副本", "tree.menu.unlink": "取消引用链接", "tree.menu.go_source": "跳转至源对象",
 
@@ -158,8 +157,7 @@ export const translations = {
 
         "menu.import": "导入",
         "prop.image_details": "图像详情",
-        "kern.title": "字偶距设置",
-        "kern.add": "添加",
+        "kern.title": "添加字偶距", "kern.add": "添加",
         "kern.no_pairs": "暂无字偶距数据"
     }
 };

@@ -176,7 +176,7 @@ export class SnapshotSerializer {
         let file = {
             "version": "1.0",
             "editor_guidelines": (editorState.guidelines || []).map(g => ({
-                id: g.id, x: g.x, y: g.y, angle: g.angle
+                id: g.id, x: g.x, y: g.y, angle: g.angle, type: g.type
             })),
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
@@ -309,6 +309,7 @@ export class SnapshotSerializer {
                         "name": item.name,
                         "char_code": item.charCode,
                         "advance": item.advance !== undefined ? item.advance : 1000,
+
                         "locked": item.locked === true,
                         "visible": item.visible !== false,
                         "children": serializeChildren(item)

@@ -663,7 +663,7 @@ export class GlyphSequenceBar extends HTMLElement {
         header.className = "seq-menu-header";
         const title = document.createElement("span");
         title.className = "seq-menu-title";
-        title.textContent = "Add Group";
+        title.textContent = "Add Glyph";
         header.appendChild(title);
         const closeBtn = document.createElement("button");
         closeBtn.className = "seq-menu-close-btn";
@@ -763,7 +763,8 @@ export class GlyphSequenceBar extends HTMLElement {
             }
             this.text = newText;
             this._textSig = newText;
-            const na = new Set(this.activeIndices);
+            const na = new Set();
+            for (const idx of this.activeIndices) na.add(insertAt >= 0 && idx >= insertAt ? idx + 1 : idx);
             na.add(newIdx);
             this.activeIndices = na;
             this._activeSig = JSON.stringify(Array.from(na));
@@ -893,7 +894,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
                 this.text = newText;
                 this._textSig = newText;
-                const na = new Set(this.activeIndices);
+                const na = new Set();
+                for (const idx of this.activeIndices) na.add(insertAt >= 0 && idx >= insertAt ? idx + 1 : idx);
                 na.add(newIdx);
                 this.activeIndices = na;
                 this._activeSig = JSON.stringify(Array.from(na));
@@ -1021,7 +1023,8 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
                 this.text = newText;
                 this._textSig = newText;
-                const na = new Set(this.activeIndices);
+                const na = new Set();
+                for (const idx of this.activeIndices) na.add(insertAt >= 0 && idx >= insertAt ? idx + 1 : idx);
                 na.add(newIdx);
                 this.activeIndices = na;
                 this._activeSig = JSON.stringify(Array.from(na));

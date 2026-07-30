@@ -100,6 +100,7 @@ class MainCanvasBase extends HTMLElement {
         this._hoveredDividerId = null;
         this._hoveredRulerId = null;
         this._hoveredRulerEndpoint = null;
+        this._pendingContextMenuOnControl = false;
         this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
         // Track is_dirty assignments for debugging
         this._dirtyStack = false; let _is_dirty = true;

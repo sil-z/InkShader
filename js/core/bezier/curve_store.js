@@ -179,7 +179,10 @@ export class CurveStore {
             node.control2.y += dy;
         }
 
-        if (node.curve) node.curve._invalidateBounds();
+        if (node.curve) {
+            node.curve._invalidateBounds();
+            node.curve.invalidateBooleanCache();
+        }
         return true;
     }
 
@@ -219,6 +222,7 @@ export class CurveStore {
             if (node.curve && node.curve.groupId) {
                 affectedGroups.add(node.curve.groupId);
                 node.curve._invalidateBounds();
+                node.curve.invalidateBooleanCache();
             }
         }
 
@@ -324,7 +328,10 @@ export class CurveStore {
         }
 
         let curve = this.find_curve_by_dom(marker);
-        if (curve) curve._invalidateBounds();
+        if (curve) {
+            curve._invalidateBounds();
+            curve.invalidateBooleanCache();
+        }
         return { curve };
     }
 
@@ -395,6 +402,7 @@ export class CurveStore {
         }
 
         curve._invalidateBounds();
+        curve.invalidateBooleanCache();
         return true;
     }
 

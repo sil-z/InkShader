@@ -31,7 +31,9 @@ function snapshotNumber(snapshot, key, fallback, defaultValue) {
 function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
     if (Array.isArray(snapshotObj.editor_guidelines)) {
         canvas.guidelines = snapshotObj.editor_guidelines.map(g => ({
-            id: g.id, x: g.x, y: g.y, angle: g.angle
+            id: canvas._nextUserGuideId++,
+            x: g.x, y: g.y, angle: g.angle,
+            type: g.type
         }));
     }
     if (snapshotObj.editor_guideline_lock !== undefined) {

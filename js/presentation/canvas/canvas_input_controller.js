@@ -348,6 +348,20 @@ export class CanvasInputController {
                             if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
                             if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
                         }
+                        // Invalidate curve bounds + boolean caches so getBounds() and boolean rendering use
+                        // current node positions (boolean cache was built at pre-shift positions).
+                        for (const o of div._rightNodeOrigins) {
+                            if (o.node.curve) o.node.curve._invalidateBounds();
+                        }
+                        {
+                            const invalidated = new Set();
+                            for (const o of div._rightNodeOrigins) {
+                                if (o.node.curve && !invalidated.has(o.node.curve)) {
+                                    invalidated.add(o.node.curve);
+                                    o.node.curve.invalidateBooleanCache();
+                                }
+                            }
+                        }
                         c.offset.x = div.startOffsetX + dx;
                         c.curve_manager.calculateSequenceOffsets();
                     } else {
@@ -382,13 +396,27 @@ export class CanvasInputController {
                             }
                         }
                     }
-                    for (const o of div._rightNodeOrigins) {
-                        o.node.x = o.x - deltaAdv;
-                        if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
-                        if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
-                    }
-                    c.offset.x = div.startOffsetX + dx;
-                    c.curve_manager.calculateSequenceOffsets();
+                        for (const o of div._rightNodeOrigins) {
+                            o.node.x = o.x - deltaAdv;
+                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
+                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
+                        }
+                        // Invalidate curve bounds + boolean caches so getBounds() and boolean rendering use
+                        // current node positions (boolean cache was built at pre-shift positions).
+                        for (const o of div._rightNodeOrigins) {
+                            if (o.node.curve) o.node.curve._invalidateBounds();
+                        }
+                        {
+                            const invalidated = new Set();
+                            for (const o of div._rightNodeOrigins) {
+                                if (o.node.curve && !invalidated.has(o.node.curve)) {
+                                    invalidated.add(o.node.curve);
+                                    o.node.curve.invalidateBooleanCache();
+                                }
+                            }
+                        }
+                        c.offset.x = div.startOffsetX + dx;
+                        c.curve_manager.calculateSequenceOffsets();
                 } else if (rightGroup) {
                     // Right-only group (includes leftmost divider if isLeftEdge wasn't caught above)
                     if (div.modifyRight) {
@@ -492,8 +520,9 @@ export class CanvasInputController {
                     if (!isDrawingTool) c.canvasObj.dataset.cursor = 'default';
                 } else {
                     const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
-                    const newId = hit ? hit.guide.id : null;
+                    const newId = hit ? (hit.guide.id ?? null) : null;
                     if (c._hoveredUserGuideId !== newId) {
+
                         c._hoveredUserGuideId = newId;
                         if (!isDrawingTool) c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                         c.is_dirty = true;
@@ -707,7 +736,59 @@ export class CanvasInputController {
                     e.stopPropagation();
                     c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
                     c.is_dirty = true;
+                    return;
                 }
+            }
+            // NODE tool control handle right-click: handled by delete-on-right-click in handleMouseUp.
+            // Skip the canvas context menu to prevent both delete + menu from triggering.
+            if (c._pendingContextMenuOnControl) {
+                c._pendingContextMenuOnControl = false;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // General canvas context menu (Delete/Copy/Duplicate)
+            e.preventDefault();
+            e.stopPropagation();
+            const selIds = c.editorStore?.getState()?.selectedTreeIds;
+            if (selIds && selIds.length > 0) {
+                const oldMenu = document.getElementById('canvas_context_menu');
+                if (oldMenu) oldMenu.remove();
+                const menu = document.createElement('div');
+                menu.id = 'canvas_context_menu';
+                menu.className = 'tree_menu';
+                menu.style.left = e.clientX + 'px';
+                menu.style.top = e.clientY + 'px';
+                const t = (k, def) => window.I18n ? window.I18n.t(k) : def;
+                const createItem = (label, shortcut, action) => {
+                    const div = document.createElement('div');
+                    div.className = 'tree_menu_item';
+                    div.textContent = label;
+                    if (shortcut) {
+                        const sc = document.createElement('span');
+                        sc.className = 'shortcut';
+                        sc.textContent = shortcut;
+                        div.appendChild(document.createTextNode(' '));
+                        div.appendChild(sc);
+                    }
+                    div.addEventListener('click', () => {
+                        menu.remove();
+                        if (action === 'delete') CanvasDispatcher.requestDeleteSelectedObjects();
+                        else if (action === 'copy') CanvasDispatcher.requestCopySelectedObjects();
+                        else if (action === 'paste') CanvasDispatcher.requestEditorAction('paste', c.getInteractionSnapshot?.()?.activeGroupId ?? null);
+                        else if (action === 'duplicate') CanvasDispatcher.requestDuplicateSelectedObjects();
+                    });
+                    return div;
+                };
+                menu.appendChild(createItem(t('tree.menu.delete', 'Delete'), 'Del', 'delete'));
+                menu.appendChild(createItem(t('tree.menu.copy', 'Copy'), 'Ctrl+C', 'copy'));
+                menu.appendChild(createItem(t('tree.menu.paste', 'Paste'), 'Ctrl+V', 'paste'));
+                menu.appendChild(createItem(t('tree.menu.duplicate', 'Duplicate'), 'Ctrl+D', 'duplicate'));
+                document.body.appendChild(menu);
+                document.addEventListener('mousedown', (ev) => {
+                    const m = document.getElementById('canvas_context_menu');
+                    if (m && !m.contains(ev.target)) m.remove();
+                }, { once: true });
             }
         });
             c.addGlobalListener('window', "mouseup", c.handleMouseUp);
@@ -866,6 +947,7 @@ export class CanvasInputController {
                 else if (tool === 'ELLIPSE') ic.handleEllipseMouseDown(mouseX, mouseY, worldX, worldY, e.ctrlKey);
             }
             else if (e.button === 2) {
+                c._pendingContextMenuOnControl = false;
                 if (tool === "DRAW") {
                     if (c.current_curve?.startNode) {
                         if (c.drawToolSettings?.closed) c.current_curve.closed = true;
@@ -884,6 +966,7 @@ export class CanvasInputController {
                         c._pendingDeleteControlMarker = hitMarker;
                         c._pendingDeleteMouseX = mouseX;
                         c._pendingDeleteMouseY = mouseY;
+                        c._pendingContextMenuOnControl = true;
                     }
                 }
                 c.is_dirty = true;
@@ -919,6 +1002,7 @@ export class CanvasInputController {
             const worldY = (pointer.y - offsetY) / c.scale;
             c._draggingUserGuide = {
                 id: c._nextUserGuideId++,
+                type: type,
                 x: worldX,
                 y: worldY,
                 angle: type === "v" ? 90 : 0,
@@ -1058,7 +1142,6 @@ export class CanvasInputController {
             const oldVal = c.fontSettings ? c.fontSettings[mg.key] : undefined;
             if (c.fontSettings && oldVal !== clamped) {
                 c.fontSettings[mg.key] = clamped;
-                console.log('[DRAG] key=%s oldVal=%s clamped=%s startValue=%s deltaValue=%s', mg.key, oldVal, clamped, mg.startValue, deltaValue);
                 c.is_dirty = true;
             }
         });
@@ -1072,7 +1155,13 @@ export class CanvasInputController {
             c._draggingUserGuide = null;
             c.current_state = 'IDLE';
             if (!dragStarted) {
-                if (!wasNew && origX != null) { guide.x = origX; guide.y = origY; }
+                // New guide was pushed on mousedown but never actually dragged.
+                // Remove the orphan — user just clicked and released on the ruler.
+                if (wasNew) {
+                    c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
+                } else if (origX != null) {
+                    guide.x = origX; guide.y = origY;
+                }
                 c.is_dirty = true;
                 return;
             }
@@ -1080,8 +1169,9 @@ export class CanvasInputController {
             if (pa) {
                 const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
                 if (toRuler) {
+                    // Remove guide from array (whether new or existing).
+                    c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                     if (!wasNew) {
-                        c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                         CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                     }
                     c.is_dirty = true;
@@ -1089,7 +1179,9 @@ export class CanvasInputController {
                 }
             }
             if (wasNew) {
-                c.guidelines.push(guide);
+                // Guide was already pushed to c.guidelines in startUserGuideDrag (mousedown).
+                // Do NOT push again — that creates a duplicate entry causing all guides
+                // to highlight on hover (both copies share the same id).
                 CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
             } else {
                 CanvasDispatcher.requestHistoryCommit("moveUserGuideline", { id: guide.id });
@@ -1111,9 +1203,21 @@ export class CanvasInputController {
                         rightGroup.is_modified = true;
                         c.curve_manager.invalidateGroupCache(div.rightGroupId);
                     }
+                    // Invalidate curve bounds cache so getBounds() / LSB/RSB / hit-testing use correct positions
+                    if (div.rightGroupId) {
+                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
+                        for (const cd of curves) {
+                            if (cd.curve) cd.curve._invalidateBounds();
+                        }
+                    }
                     if (leftGroup || rightGroup) {
                         c.curve_manager.calculateSequenceOffsets();
                     }
+                    // Rebuild spatial grid after node position mutation during drag
+                    const dirtyIds = new Set();
+                    if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
+                    if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
+                    c.curve_manager.rebuildSpatialGrid(dirtyIds);
                     delete div._rightNodeOrigins;
                     CanvasDispatcher.requestHistoryCommit("dividerDragRight", { groupId: div.rightGroupId });
                 } else {
@@ -1134,6 +1238,11 @@ export class CanvasInputController {
                         leftGroup.advance = div.startLeftAdvance;
                         CanvasDispatcher.requestSetGroupAdvance(div.leftGroupId, currentAdv, { recordHistory: true });
                     }
+                    // Rebuild spatial grid so seqOffsetX in grid entries matches new sequence offsets
+                    const dirtyIds = new Set();
+                    if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
+                    if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
+                    c.curve_manager.rebuildSpatialGrid(dirtyIds);
                 }
             } else if (leftGroup && rightGroup) {
                 // Click without drag: restore originals
@@ -1142,8 +1251,15 @@ export class CanvasInputController {
                 rightGroup.advance = div.startRightAdvance;
                 rightGroup.is_modified = true;
                 c.curve_manager.calculateSequenceOffsets();
+                const dirtyIds = new Set();
+                if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
+                if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
+                c.curve_manager.rebuildSpatialGrid(dirtyIds);
             }
-            c.is_dirty = true;
+            // Bump geometry epoch to invalidate all rendering caches
+            // (stable scene, node layer) after node position / advance
+            // mutation during divider drag.
+            c.bumpGeometryEpoch();
         };
         c.addGlobalListener('window', "mouseup", (e) => {
             if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
@@ -1177,7 +1293,6 @@ export class CanvasInputController {
                 const hit = c.utils.hitTestUserGuides(pointer.x, pointer.y);
                 const newId = hit ? hit.guide.id : null;
                 if (c._hoveredUserGuideId !== newId) {
-                    console.log('[GUIDE] hover changed:', c._hoveredUserGuideId, '->', newId);
                     c._hoveredUserGuideId = newId;
                     if (!isDrawingTool) c.canvasObj.dataset.cursor = hit ? (hit.guide.type === 'v' ? 'ew-resize' : 'ns-resize') : "default";
                     c.is_dirty = true;
@@ -1269,7 +1384,6 @@ export class CanvasInputController {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
-            console.log('[DIVIDER] GLOBAL mousedown', pointer.x, pointer.y);
             // Node/curve hits take priority over guideline/divider drag
             const tool = c.getActiveTool();
             const hitMarker = c.utils.hitTestNode(pointer.x, pointer.y)?.marker ?? null;
@@ -1405,7 +1519,59 @@ export class CanvasInputController {
                     e.stopPropagation();
                     c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
                     c.is_dirty = true;
+                    return;
                 }
+            }
+            // NODE tool control handle right-click: handled by delete-on-right-click in handleMouseUp.
+            // Skip the canvas context menu to prevent both delete + menu from triggering.
+            if (c._pendingContextMenuOnControl) {
+                c._pendingContextMenuOnControl = false;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // General canvas context menu (Delete/Copy/Duplicate)
+            e.preventDefault();
+            e.stopPropagation();
+            const selIds = c.editorStore?.getState()?.selectedTreeIds;
+            if (selIds && selIds.length > 0) {
+                const oldMenu = document.getElementById('canvas_context_menu');
+                if (oldMenu) oldMenu.remove();
+                const menu = document.createElement('div');
+                menu.id = 'canvas_context_menu';
+                menu.className = 'tree_menu';
+                menu.style.left = e.clientX + 'px';
+                menu.style.top = e.clientY + 'px';
+                const t = (k, def) => window.I18n ? window.I18n.t(k) : def;
+                const createItem = (label, shortcut, action) => {
+                    const div = document.createElement('div');
+                    div.className = 'tree_menu_item';
+                    div.textContent = label;
+                    if (shortcut) {
+                        const sc = document.createElement('span');
+                        sc.className = 'shortcut';
+                        sc.textContent = shortcut;
+                        div.appendChild(document.createTextNode(' '));
+                        div.appendChild(sc);
+                    }
+                    div.addEventListener('click', () => {
+                        menu.remove();
+                        if (action === 'delete') CanvasDispatcher.requestDeleteSelectedObjects();
+                        else if (action === 'copy') CanvasDispatcher.requestCopySelectedObjects();
+                        else if (action === 'paste') CanvasDispatcher.requestEditorAction('paste', c.getInteractionSnapshot?.()?.activeGroupId ?? null);
+                        else if (action === 'duplicate') CanvasDispatcher.requestDuplicateSelectedObjects();
+                    });
+                    return div;
+                };
+                menu.appendChild(createItem(t('tree.menu.delete', 'Delete'), 'Del', 'delete'));
+                menu.appendChild(createItem(t('tree.menu.copy', 'Copy'), 'Ctrl+C', 'copy'));
+                menu.appendChild(createItem(t('tree.menu.paste', 'Paste'), 'Ctrl+V', 'paste'));
+                menu.appendChild(createItem(t('tree.menu.duplicate', 'Duplicate'), 'Ctrl+D', 'duplicate'));
+                document.body.appendChild(menu);
+                document.addEventListener('mousedown', (ev) => {
+                    const m = document.getElementById('canvas_context_menu');
+                    if (m && !m.contains(ev.target)) m.remove();
+                }, { once: true });
             }
         });
         const readDialogNumber = (input, { min = -Infinity } = {}) => {

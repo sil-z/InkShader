@@ -81,14 +81,9 @@ export class NodeTool extends BaseTool {
             }
             c.new_selected_temp = parentMarker;
         } else if (!isAlreadySelected) {
-            // Handle hit on unselected node: redirect to parent body drag.
-            // Otherwise adjustControlNode moves only the handle, leaving the
-            // node body at the break position — the "handle doesn't follow" bug.
-            this.requestNodeSelection("replace", [parentMarker], refId);
-            c.dragging_node_marker = parentMarker;
-            c.new_selected_temp = parentMarker;
-            dragged_n = parentMainNode;
-            isMainNode = true;
+            // Control handle on unselected node: keep it as a handle drag.
+            // Do NOT redirect to main body drag — that would move the whole
+            // node when the user only wants to adjust the control handle.
         }
 
         c.drag_initial_mouse = { x: mouseX, y: mouseY };

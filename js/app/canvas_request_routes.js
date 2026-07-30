@@ -47,6 +47,7 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_CHANGE_SELECTED_OBJECTS_BOUNDS, action: CANVAS_ACTIONS.CHANGE_SELECTED_OBJECTS_BOUNDS, mapPayload: (d) => ({ prop: d?.prop, value: d?.value, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_RENAME_TREE_ITEM, action: CANVAS_ACTIONS.RENAME_TREE_ITEM, mapPayload: (d) => ({ id: d?.id, newName: d?.newName }), assignResult: true },
     { event: CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, action: CANVAS_ACTIONS.SET_GROUP_ADVANCE, mapPayload: (d) => ({ id: d?.id, value: d?.value, options: d?.options || {} }) },
+
     { event: CANVAS_EVENTS.REQUEST_UPDATE_NODE_PROPERTY, action: CANVAS_ACTIONS.UPDATE_NODE_PROPERTY, mapPayload: (d) => ({ marker: d?.marker, propId: d?.propId, value: d?.value, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_SET_PEN_PROPERTIES, action: CANVAS_ACTIONS.SET_PEN_PROPERTIES, mapPayload: (d) => ({ updates: d?.updates || {}, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_SET_ELLIPSE_PROPERTIES, action: CANVAS_ACTIONS.SET_ELLIPSE_PROPERTIES, mapPayload: (d) => ({ updates: d?.updates || {}, options: d?.options || {} }) },

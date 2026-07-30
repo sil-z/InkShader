@@ -914,10 +914,10 @@ export class CurveManager {
                     const strokePad = cd.curve.smart_stroke ? Math.max(2, sw) : Math.max(0, sw / 2);
                     this.spatialGrid.addCurve(
                         cd.curve.id,
-                        bounds.minX + seqOffsetX,
-                        bounds.minY,
-                        bounds.maxX + seqOffsetX,
-                        bounds.maxY,
+                        bounds.minX + seqOffsetX - strokePad,
+                        bounds.minY - strokePad,
+                        bounds.maxX + seqOffsetX + strokePad,
+                        bounds.maxY + strokePad,
                         {
                             curve: cd.curve,
                             refId: cd.refId || null,
@@ -925,7 +925,7 @@ export class CurveManager {
                             matrix: cd.matrix,
                             seqOffsetX,
                             groupId,
-                            pad: strokePad + 2
+                            pad: 2
                         }
                     );
                 }

@@ -4,14 +4,11 @@ import {
 } from "../../app/editor_interaction_state.js";
 import { computeSelectionBounds, createSequenceLayoutFromCurveManager, getSeqIdxForGroupId } from "../../app/selection_geometry.js";
 import {
-    curveGeneratesFillArea,
-    canFillSmartStrokeWithPath2D
+    curveGeneratesFillArea
 } from "../rendering/curve_renderer.js";
 import { createViewportTransform } from "../rendering/viewport_transform.js";
 import {
-    emitCubicBezierSegments,
-    emitBooleanSubpaths,
-    booleanViewportDOMMatrix
+    emitCubicBezierSegments
 } from "../../core/bezier/path_emitter.js";
 export class CanvasUtilsService {
     constructor(canvas) {
@@ -409,18 +406,21 @@ export class CanvasUtilsService {
                     }
                 });
             }
-        } else {
-            for (let i = seqTokens.length - 1; i >= 0; i--) {
-                if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
-                let seqOffsetX = c.curve_manager.getSeqOffset(i);
-                let token = seqTokens[i];
-                let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
-                let group = c.curve_manager.treeItems.get(groupId);
-                if (!group) continue;
-                let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
-                for (let j = curveDataList.length - 1; j >= 0; j--) {
-                    testCurveList.push({ i, seqOffsetX, cd: curveDataList[j] });
-                }
+        }
+        // Full scan: test ALL active curves, not just grid candidates.
+        // Grid AABBs can be too small around curve endpoints, so the grid may
+        // miss curves near their start/end. The full scan guarantees every
+        // visible curve is tested regardless of grid completeness.
+        for (let i = seqTokens.length - 1; i >= 0; i--) {
+            if (!c.curve_manager.activeSequenceIndices.has(i)) continue;
+            let seqOffsetX = c.curve_manager.getSeqOffset(i);
+            let token = seqTokens[i];
+            let groupId = token.isChar ? c.curve_manager.getDefaultGroupForChar(token.value) : token.value;
+            let group = c.curve_manager.treeItems.get(groupId);
+            if (!group) continue;
+            let curveDataList = c.curve_manager.getCurvesForGroup(groupId);
+            for (let j = curveDataList.length - 1; j >= 0; j--) {
+                testCurveList.push({ i, seqOffsetX, cd: curveDataList[j] });
             }
         }
 
@@ -465,8 +465,11 @@ export class CanvasUtilsService {
                     };
                 };
                 if (tool === "SELECT") {
-                    // Object hit must match rendered geometry (S011a): smart-expand → boolean
-                    // outline / fill; otherwise skeleton fill + stroke width.
+                    // Hit test: skeleton fill (closed shapes) + thick skeleton stroke.
+                    // NO Paper.js boolean cache — expanded stroke precision is unnecessary
+                    // for low-accuracy hit testing; skeleton + padded lineWidth covers both
+                    // normal stroke and smart-expanded outline, and avoids Paper.js shared
+                    // project state contamination between curves.
                     let isHit = false;
                     const worldViewport = {
                         scale: 1,
@@ -476,50 +479,20 @@ export class CanvasUtilsService {
                         matrix
                     };
                     const mapWorld = createViewportTransform(worldViewport);
-                    const smartBand = curve.smart_stroke && curve.stroke_width > 0;
-                    if (smartBand) {
-                        if (canFillSmartStrokeWithPath2D(curve, { strokePreview: false }) && curve._booleanPath2D) {
-                            const m = booleanViewportDOMMatrix(worldViewport);
-                            c.ctx.save();
-                            c.ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
-                            isHit = c.ctx.isPointInPath(
-                                curve._booleanPath2D,
-                                worldMouseX,
-                                worldMouseY,
-                                "nonzero"
-                            );
-                            c.ctx.restore();
-                        } else if (Array.isArray(curve.cached_boolean_geometry) && curve.cached_boolean_geometry.length) {
-                            c.ctx.beginPath();
-                            emitBooleanSubpaths(c.ctx, curve.cached_boolean_geometry, mapWorld);
-                            if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
-                        } else {
-                            // Cache miss: force expand once for this candidate (not every curve —
-                            // viewport AABB already skipped most). Still can be heavy on dense paths.
-                            curve.updateBooleanCache?.();
-                            if (Array.isArray(curve.cached_boolean_geometry) && curve.cached_boolean_geometry.length) {
-                                c.ctx.beginPath();
-                                emitBooleanSubpaths(c.ctx, curve.cached_boolean_geometry, mapWorld);
-                                if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
-                            }
-                        }
-                    }
-                    // Skeleton-based padding fallback for both smart-stroke and normal curves.
-                    // Smart-stroke boolean geometry covers only the exact expanded outline —
-                    // without padding even a thin stroke is hard to click. The skeleton
-                    // isPointInStroke test with padded lineWidth provides the same ~14px
-                    // screen-space buffer that normal curves enjoy.
                     if (!isHit) {
                         const segs = curve.getSkeletonBezierSegments();
                         const strokeWorld = Math.max(
                             14 / c.scale,
                             (curve.stroke_width || 0) + 14 / c.scale
                         );
-                        if (!smartBand && curveGeneratesFillArea(curve) && curve.closed && curve.startNode !== curve.endNode) {
+                        // Fill area hit test for closed curves (smart and non-smart)
+                        if (curveGeneratesFillArea(curve) && curve.closed && curve.startNode !== curve.endNode) {
                             c.ctx.beginPath();
                             emitCubicBezierSegments(c.ctx, segs, mapWorld, { close: true });
                             if (c.ctx.isPointInPath(worldMouseX, worldMouseY, "nonzero")) isHit = true;
                         }
+                        // Skeleton thick stroke covers normal stroke AND smart-expanded
+                        // outline (lineWidth includes stroke_width + padding slop).
                         if (!isHit && segs?.length) {
                             c.ctx.beginPath();
                             emitCubicBezierSegments(c.ctx, segs, mapWorld, {
