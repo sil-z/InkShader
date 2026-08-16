@@ -10,6 +10,7 @@ import {
 } from "./input_validation.js";
 
 const POPUP_HTML = `
+<div class="prop_panel_title_wrapper"><span class="panel_title" data-i18n="panel.font">Font</span></div>
 <div class="pen-tool-popup-body">
     <!-- Project -->
     <div class="pen-tool-row">
@@ -190,7 +191,6 @@ const DEFAULT_FONT = {
 export class FontPopup extends HTMLElement {
     constructor() {
         super();
-        this._visible = false;
         this._projectManager = null;
         this._canvas = null;
         this._focusedControl = null;
@@ -229,7 +229,6 @@ export class FontPopup extends HTMLElement {
 
         // Auto-save on focusout: when any input/select/textarea loses focus
         this.addEventListener('focusout', (e) => {
-            if (!this._visible) return;
             const target = e.target;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) {
                 if (!this._validateField(target)) {
@@ -240,7 +239,6 @@ export class FontPopup extends HTMLElement {
             }
         });
         this.addEventListener('change', (e) => {
-            if (!this._visible) return;
             const target = e.target;
             if (!target || target.tagName !== 'SELECT') return;
             this._save({ recordHistory: true });
@@ -249,16 +247,12 @@ export class FontPopup extends HTMLElement {
             if (e.target === this._focusedControl) this._focusedControl = null;
         });
         window.addEventListener(CANVAS_EVENTS.STATE_CHANGED, () => {
-            if (this._visible && !this._focusedControl) {
+            if (this.dataset.panelHidden) return;
+            if (!this._focusedControl) {
                 this._loadSettings();
             }
         });
-        document.addEventListener('mousedown', (e) => {
-            if (!this._visible) return;
-            // Allow menu bar items to handle toggle/switch via their click handlers
-            if (e.target.closest('.top .item')) return;
-            if (!this.contains(e.target)) this.hide();
-        }, true);
+        this._loadSettings();
     }
 
     _loadSettings() {
@@ -379,41 +373,6 @@ export class FontPopup extends HTMLElement {
         return map[id] != null ? String(map[id]) : '';
     }
 
-    show(anchorEl) {
-        this._loadSettings();
-        this.classList.add('visible');
-        this._visible = true;
-
-        // Show scrollbar initially (popup may appear under cursor, so mouseenter may not fire)
-        const body = this.querySelector('.pen-tool-popup-body');
-        if (body) body.classList.add('show-scrollbar');
-
-        requestAnimationFrame(() => {
-            const btnRect = anchorEl.getBoundingClientRect();
-            let left = btnRect.left;
-            let top = btnRect.bottom + 2;
-            const popupRect = this.getBoundingClientRect();
-
-            if (left + popupRect.width > window.innerWidth - 4) {
-                left = window.innerWidth - popupRect.width - 4;
-            }
-            if (top + popupRect.height > window.innerHeight - 4) {
-                top = btnRect.top - popupRect.height - 2;
-            }
-
-            this.style.left = left + 'px';
-            this.style.top = top + 'px';
-        });
     }
-
-    hide() {
-        const active = this.querySelector('input:focus, textarea:focus, select:focus');
-        active?.blur?.();
-        this.classList.remove('visible');
-        this._visible = false;
-        const body = this.querySelector('.pen-tool-popup-body');
-        if (body) body.classList.remove('show-scrollbar');
-    }
-}
 
 customElements.define('font-popup', FontPopup);

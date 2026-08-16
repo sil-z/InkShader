@@ -1,8 +1,10 @@
-// js/ui/glyph_popup.js — Glyph picker popup (Web Component)
+// js/ui/glyph_popup.js — Glyph picker panel (Web Component)
 //
-// Displays the same glyph selection menu as the sequence bar's add menu:
+// Renders the same glyph selection UI as the sequence bar's add menu:
 // header with title, name/code/advance form, ASCII character grid, other groups.
-// Triggered from the top "Glyphs" menu item.
+// Originally a popup triggered from the top "Glyphs" menu item; now a persistent
+// dock panel whose content is rendered inline inside the component element
+// (the old implementation appended a floating .sequence-add-menu to <body>).
 
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { appEventBus } from "../app/event_bus.js";
@@ -53,66 +55,42 @@ function _mkSvg(d) {
 export class GlyphPopup extends HTMLElement {
     constructor() {
         super();
-        this._visible = false;
         this._menu = null;
+        this._refreshOff = null;
         this._previewCanvas = document.createElement("canvas");
         this._previewCanvas.width = 120;
         this._previewCanvas.height = 120;
         this._previewCtx = this._previewCanvas.getContext("2d", { willReadFrequently: true });
-        this._offTree = null;
-        this._cols = 8;
     }
 
     connectedCallback() {
         if (this._domReady) return;
         this._domReady = true;
         this.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        // Title bar (dock drag handle; hidden inside tab groups by CSS).
+        const title = document.createElement("div");
+        title.className = "prop_panel_title_wrapper";
+        const titleSpan = document.createElement("span");
+        titleSpan.className = "panel_title";
+        titleSpan.setAttribute("data-i18n", "panel.glyphs");
+        titleSpan.textContent = "Glyphs";
+        title.appendChild(titleSpan);
+        this.appendChild(title);
+
+        // Persistent inline body (previously a body-appended floating menu).
+        this._menu = document.createElement("div");
+        this._menu.className = "sequence-add-menu";
+        this.appendChild(this._menu);
+        this._buildMenu();
     }
 
-    disconnectedCallback() {
-        this.hide();
-    }
+    // Grid columns are fixed now that the panel fills its dock leaf.
+    static get COLS() { return 8; }
 
-    show(anchorEl) {
-        if (this._visible) {
-            this.hide();
-            return;
-        }
-        this._visible = true;
-
-        const menu = document.createElement("div");
-        menu.className = "sequence-add-menu";
-        this._menu = menu;
-        document.body.appendChild(menu);
-
-        const COLUMN_W = 68;
-        const MENU_PAD = 12;
-        let cols = 8;
-        let menuW = cols * COLUMN_W + MENU_PAD;
-
-        const btnRect = anchorEl.getBoundingClientRect();
-        let left = btnRect.left;
-        if (left + menuW + 10 > window.innerWidth) {
-            left = window.innerWidth - menuW - 10;
-        }
-        if (left < 10) {
-            left = 10;
-            const availW = window.innerWidth - left - 10;
-            cols = Math.max(4, Math.floor((availW - MENU_PAD) / COLUMN_W));
-            menuW = cols * COLUMN_W + MENU_PAD;
-        }
-        const GAP = 24;
-        let top = btnRect.bottom + 4;
-        if (top + 280 > window.innerHeight - GAP) {
-            top = Math.max(GAP, btnRect.top - 280 - GAP);
-        }
-        this._cols = cols;
-        menu.style.width = `${menuW}px`;
-        menu.style.maxHeight = `${Math.max(280, window.innerHeight - top - GAP)}px`;
-        menu.style.left = `${left}px`;
-        menu.style.top = `${top}px`;
-        menu.addEventListener("mouseenter", () => menu.classList.add("show-scrollbar"));
-        menu.addEventListener("mouseleave", () => menu.classList.remove("show-scrollbar"));
+    _buildMenu() {
+        const menu = this._menu;
+        const COLS = GlyphPopup.COLS;
 
         const asciiCharToGroup = new Map();
         const groups = EditorModel.listSequenceMenuGroups();
@@ -135,7 +113,7 @@ export class GlyphPopup extends HTMLElement {
 
         const refreshSections = () => {
             const charGrid = menu.querySelector(".seq-menu-char-grid");
-            if (charGrid) this._refreshCharGrid(charGrid, asciiCharToGroup, cols);
+            if (charGrid) this._refreshCharGrid(charGrid, asciiCharToGroup, COLS);
             let eg = menu.querySelector(".seq-menu-existing-groups");
             if (nonAsciiGroups.length > 0) {
                 if (!eg) {
@@ -149,13 +127,18 @@ export class GlyphPopup extends HTMLElement {
                 }
                 const existingGrid = eg.querySelector(".seq-menu-grid");
                 if (existingGrid) existingGrid.remove();
-                this._renderNoCodeGroups(eg, nonAsciiGroups, cols);
+                this._renderNoCodeGroups(eg, nonAsciiGroups, COLS);
             } else if (eg) {
                 eg.remove();
             }
         };
 
-        this._offTree = appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, (e) => {
+        // Live refresh on tree changes. Registered once and never torn down:
+        // the dock detaches/reattaches the element on layout rebuilds and
+        // connectedCallback early-returns after the first connect. While the
+        // panel is hidden (dock sets data-panel-hidden) the grid is skipped.
+        this._refreshOff = appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, (e) => {
+            if (this.dataset.panelHidden) return;
             if (e?.detail?.action?.type === "TREE_REVISION") {
                 asciiCharToGroup.clear();
                 const fresh = EditorModel.listSequenceMenuGroups();
@@ -180,11 +163,9 @@ export class GlyphPopup extends HTMLElement {
             }
         });
 
-        const closeMenu = (e) => {
-            if (!menu.contains(e.target) && !anchorEl?.contains(e.target)) {
-                this.hide();
-            }
-        };
+        // Scrollbar visibility on hover (same contract as the old popup).
+        menu.addEventListener("mouseenter", () => menu.classList.add("show-scrollbar"));
+        menu.addEventListener("mouseleave", () => menu.classList.remove("show-scrollbar"));
 
         // Header
         const header = document.createElement("div");
@@ -315,7 +296,7 @@ export class GlyphPopup extends HTMLElement {
         charSection.appendChild(charTitle);
         const charGrid = document.createElement("div");
         charGrid.className = "seq-menu-grid seq-menu-char-grid";
-        this._refreshCharGrid(charGrid, asciiCharToGroup, cols);
+        this._refreshCharGrid(charGrid, asciiCharToGroup, COLS);
         charSection.appendChild(charGrid);
         menu.appendChild(charSection);
 
@@ -327,24 +308,9 @@ export class GlyphPopup extends HTMLElement {
             secTitle.className = "seq-menu-section-title";
             secTitle.textContent = "Other Groups";
             sec.appendChild(secTitle);
-            this._renderNoCodeGroups(sec, nonAsciiGroups, cols);
+            this._renderNoCodeGroups(sec, nonAsciiGroups, COLS);
             menu.appendChild(sec);
         }
-
-        setTimeout(() => document.addEventListener("mousedown", closeMenu), 0);
-    }
-
-    hide() {
-        if (this._offTree) {
-            this._offTree();
-            this._offTree = null;
-        }
-        if (this._menu) {
-            this._menu.remove();
-            this._menu = null;
-        }
-        this._visible = false;
-        document.removeEventListener("mousedown", this._closeHandler);
     }
 
     _refreshCharGrid(charGrid, asciiCharToGroup, cols) {
@@ -403,7 +369,6 @@ export class GlyphPopup extends HTMLElement {
                     { text: newText, activeIndices: [newIdx] },
                     { recordHistory: true }
                 );
-                this.hide();
             });
             nameEl.addEventListener("dblclick", (e) => {
                 e.stopPropagation();
@@ -508,7 +473,6 @@ export class GlyphPopup extends HTMLElement {
                     { text: r2.text, activeIndices: [r2.newTokenIndex] },
                     { recordHistory: true }
                 );
-                this.hide();
             });
             grid.appendChild(item);
         }

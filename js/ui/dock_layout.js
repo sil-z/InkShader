@@ -3,8 +3,29 @@ const PANEL_DEFS = {
     objects: { label: "Objects", compSelector: "object-tree" },
     properties: { label: "Properties", compSelector: ".property_panel" },
     console: { label: "Console", compSelector: "logger-panel" },
-    sample: { label: "Sample", compSelector: "sample-text-panel" }
+    sample: { label: "Sample", compSelector: "sample-text-panel" },
+    font: { label: "Font", compSelector: "font-popup" },
+    kerning: { label: "Kerning", compSelector: "kern-popup" },
+    glyphs: { label: "Glyphs", compSelector: "glyph-popup" }
 };
+
+// ── Minimum panel sizes (px) ────────────────────────────────────────────────
+// Shared by the docked split model, the float windows and the resize clamp.
+// A split is only allowed N side-by-side children while every child can still
+// get >= its minimum; anything more folds into tabs (GoldenLayout/VS Code
+// rule). When the current sizes already violate the minimums (crowded/legacy
+// states), the resize clamp refuses to move rather than corrupt sizes.
+const MIN_PANEL_WIDTH = 200;
+const MIN_PANEL_HEIGHT = 100;
+// Per-slot overhead: each H-split slot consumes MIN_PANEL_WIDTH px plus one
+// 1px resizer with a 2.5px hit-area on each side (~6px total).
+const RESIZER_GAP = 6;
+
+/** Max side-by-side slots that fit into an `extentPx`-long split direction. */
+function _maxSlots(extentPx, minPx) {
+    if (!(extentPx > 0)) return 1;
+    return Math.max(1, Math.floor((extentPx + RESIZER_GAP) / (minPx + RESIZER_GAP)));
+}
 
 function createNode(type, data = {}) {
     return { type, ...data };
@@ -28,6 +49,9 @@ export class DockLayout {
         this._floatGroupCounter = 0;
         this._floatZCounter = 1000;
         this._restoring = false;
+        // Optional panels (font/kerning/glyphs): hidden until shown from the
+        // Edit menu. Persisted inside the layout storage blob.
+        this._hiddenPanels = new Set();
     }
 
     initialize(panelIds) {
@@ -38,8 +62,15 @@ export class DockLayout {
         if (this._restoreFromStorage()) {
             // Restored layout may predate newly added panels (e.g. sample) — make sure
             // every requested panel has a leaf in the tree, then persist the upgrade.
+            // User-hidden panels — ANY panel id, not just the optional trio — are NEVER
+            // auto-added: they stay in the hidden set until the Edit menu re-shows them
+            // (Session 24 generalization).
             let changed = false;
             for (const id of panelIds) {
+                if (this._hiddenPanels.has(id)) {
+                    if (this._hasPanelLeaf(id)) { this._removeLeaf(id); changed = true; }
+                    continue;
+                }
                 if (this._hasPanelLeaf(id)) continue;
                 this._addPanelLeaf(id);
                 changed = true;
@@ -50,9 +81,14 @@ export class DockLayout {
             }
             return;
         }
-        const canvasIdx = panelIds.indexOf("canvas");
-        if (canvasIdx >= 0 && panelIds.length > 1) {
-            const otherIds = panelIds.filter(id => id !== "canvas");
+        // Fresh layout: optional panels start hidden; the Edit menu reveals them.
+        for (const id of panelIds) {
+            if (id === "font" || id === "kerning" || id === "glyphs") this._hiddenPanels.add(id);
+        }
+        const visibleIds = panelIds.filter(id => !this._hiddenPanels.has(id));
+        const canvasIdx = visibleIds.indexOf("canvas");
+        if (canvasIdx >= 0 && visibleIds.length > 1) {
+            const otherIds = visibleIds.filter(id => id !== "canvas");
             // H-split: canvas on the left (75%), other panels stacked vertically on the right (25%)
             this.root = createNode("split", {
                 direction: "h",
@@ -69,8 +105,8 @@ export class DockLayout {
         } else {
             this.root = createNode("split", {
                 direction: "v",
-                children: panelIds.map(id => createNode("leaf", { id, component: null })),
-                sizes: panelIds.map(() => 100 / panelIds.length)
+                children: visibleIds.map(id => createNode("leaf", { id, component: null })),
+                sizes: visibleIds.map(() => 100 / visibleIds.length)
             });
         }
         this._buildDOM();
@@ -88,17 +124,187 @@ export class DockLayout {
         return walk(this.root);
     }
 
-    /** Append a leaf for a missing panel (mirrors _unfloatPanel's addNode semantics). */
+    /**
+     * Append a leaf for a missing panel. Placement follows the min-size rule:
+     * side-by-side only where a slot fits, otherwise folds into tabs — see
+     * _addNodeToTree (Session 24).
+     */
     _addPanelLeaf(panelId) {
-        const node = createNode("leaf", { id: panelId });
+        this._addNodeToTree(createNode("leaf", { id: panelId }));
+    }
+
+    /**
+     * Add `node` (a leaf or a tabs group) to the dock tree while honoring the
+     * per-direction minimum size: a split only grows side-by-side when every
+     * child keeps >= its minimum; otherwise the node folds into the nearest
+     * tabs group (or the last child becomes a tabs group with it).
+     * @param {Object} node - tree node to add
+     * @param {string} preferredDir - "h" | "v", used when the root is a single
+     *        leaf/tabs and a new 50/50 split must be created
+     */
+    _addNodeToTree(node, preferredDir = "v") {
         if (!this.root) {
             this.root = node;
-        } else if (this.root.type === "leaf" || this.root.type === "tabs") {
-            this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, node] });
-        } else if (this.root.type === "split") {
-            this.root.children.push(node);
-            this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
+            return;
         }
+        if (this.root.type === "leaf" || this.root.type === "tabs") {
+            const extent = this._containerExtent(preferredDir);
+            const minPx = preferredDir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+            if (extent <= 0 || _maxSlots(extent, minPx) >= 2) {
+                this.root = createNode("split", {
+                    direction: preferredDir, sizes: [50, 50],
+                    children: [this.root, node]
+                });
+                return;
+            }
+            // Not enough room to split the root side-by-side: fold into tabs.
+            if (this.root.type === "tabs") {
+                this._absorbIntoTabs(this.root, node);
+            } else {
+                this.root = createNode("tabs", { activeIndex: 0, children: [this.root] });
+                this._absorbIntoTabs(this.root, node);
+            }
+            return;
+        }
+        this._addNodeToSplit(this.root, node, true);
+    }
+
+    /**
+     * Place `node` inside `splitNode`: a free side-by-side slot first, then any
+     * descendant split with a free slot, then the last child's tab group (or
+     * fold the last leaf into a tabs group with the node).
+     * @returns {boolean} true when placed
+     */
+    _addNodeToSplit(splitNode, node, allowDescendants) {
+        if (this._fitsNewSlot(splitNode)) {
+            splitNode.children.push(node);
+            splitNode.sizes = splitNode.children.map(() => 100 / splitNode.children.length);
+            return true;
+        }
+        if (allowDescendants) {
+            for (let i = 0; i < splitNode.children.length; i++) {
+                const child = splitNode.children[i];
+                if (child.type === "split" && this._addNodeToSplit(child, node, true)) return true;
+            }
+        }
+        // Every slot is full: merge into the last child's tab group, or fold
+        // the last leaf into a tabs group with the new node (auto-tab).
+        const lastIdx = splitNode.children.length - 1;
+        const last = splitNode.children[lastIdx];
+        if (last.type === "tabs") {
+            this._absorbIntoTabs(last, node);
+        } else if (last.type === "leaf") {
+            splitNode.children[lastIdx] = createNode("tabs", { activeIndex: 0, children: [last] });
+            this._absorbIntoTabs(splitNode.children[lastIdx], node);
+        } else {
+            this._addNodeToSplit(last, node, false);
+        }
+        return true;
+    }
+
+    /** Push node's leaves into an existing tabs group (flattens tabs nodes). */
+    _absorbIntoTabs(tabsNode, node) {
+        if (node.type === "tabs") {
+            tabsNode.children.push(...node.children);
+        } else {
+            tabsNode.children.push(node);
+        }
+    }
+
+    /** True when `splitNode` can take one MORE side-by-side child. */
+    _fitsNewSlot(splitNode) {
+        const extent = this._nodeExtentPx(splitNode, splitNode.direction);
+        if (extent <= 0) return true; // container not measurable (hidden/boot) — do not block layout
+        const minPx = splitNode.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+        return _maxSlots(extent, minPx) >= splitNode.children.length + 1;
+    }
+
+    /** Container size along `dir` in px (0 when the dock is not laid out). */
+    _containerExtent(dir) {
+        const r = this.container.getBoundingClientRect();
+        return dir === "h" ? r.width : r.height;
+    }
+
+    /**
+     * Pixel extent of `node` along `dir`, derived from the root tree and the
+     * current percentage sizes. Pure tree walk — valid even mid-mutation,
+     * before the DOM rebuild. `dir` must be the SPLIT DIRECTION of the queried
+     * node (an H-split is constrained by width, a V-split by height).
+     */
+    _nodeExtentPx(node, dir) {
+        const r = this.container.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return 0;
+        let w = r.width, h = r.height;
+        const walk = (n) => {
+            if (n === node) return true;
+            if (n.type === "split") {
+                for (let i = 0; i < n.children.length; i++) {
+                    const child = n.children[i];
+                    const share = (n.sizes && n.sizes[i] != null) ? n.sizes[i] / 100 : 1 / n.children.length;
+                    const sw = w, sh = h;
+                    if (n.direction === "h") w *= share; else h *= share;
+                    if (walk(child)) return true;
+                    w = sw; h = sh;
+                }
+            } else if (n.type === "tabs") {
+                for (const c of n.children) if (walk(c)) return true;
+            }
+            return false;
+        };
+        walk(this.root);
+        return dir === "h" ? w : h;
+    }
+
+    /**
+     * Fold any split whose child count exceeds the side-by-side capacity into
+     * tab groups (min-size rule). Runs on layout restore and view-state
+     * deserialize, where legacy/crowded trees could arrive over capacity —
+     * those would otherwise corrupt sizes on the next splitter drag.
+     * @returns {boolean} true when the tree was modified
+     */
+    _normalizeOverflowingSplits() {
+        if (!this.root || this.root.type !== "split") return false;
+        const r = this.container.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return false;
+        let changed = false;
+        const walk = (node, w, h) => {
+            if (!node || node.type !== "split") return;
+            const dir = node.direction === "h" ? "h" : "v";
+            const minPx = dir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+            const extent = dir === "h" ? w : h;
+            const slots = _maxSlots(extent, minPx);
+            while (node.children.length > slots) {
+                const last = node.children[node.children.length - 1];
+                const prev = node.children[node.children.length - 2];
+                if (!prev || last.type === "split" || prev.type === "split") break;
+                if (prev.type === "tabs") {
+                    this._absorbIntoTabs(prev, last);
+                } else {
+                    const folded = createNode("tabs", {
+                        activeIndex: 0,
+                        children: last.type === "tabs" ? [prev, ...last.children] : [prev, last]
+                    });
+                    node.children[node.children.length - 2] = folded;
+                }
+                node.children.pop();
+                if (node.sizes && node.sizes.length > 0) node.sizes.pop();
+                changed = true;
+            }
+            if (node.sizes && node.sizes.length !== node.children.length) {
+                node.sizes = node.children.map(() => 100 / node.children.length);
+            } else if (node.sizes) {
+                const total = node.sizes.reduce((a, b) => a + b, 0);
+                if (total > 0 && Math.abs(total - 100) > 1e-6) {
+                    node.sizes = node.sizes.map(s => (s / total) * 100);
+                }
+            }
+            node.children.forEach((child, i) => {
+                const share = (node.sizes && node.sizes[i] != null) ? node.sizes[i] / 100 : 1 / node.children.length;
+                walk(child, dir === "h" ? w * share : w, dir === "h" ? h : h * share);
+            });
+        };
+        walk(this.root, r.width, r.height);
+        return changed;
     }
 
     serialize() {
@@ -114,8 +320,15 @@ export class DockLayout {
     }
 
     deserialize(state) {
+        this.root = state;
+        // Session 24: a saved view-state tree may be over-crowded (fold overflow
+        // into tabs) or reference panels the user has hidden (drop those leaves).
+        this._normalizeOverflowingSplits();
+        for (const pid of this._hiddenPanels) {
+            if (this._hasPanelLeaf(pid)) this._removeLeaf(pid);
+        }
         this.container.textContent = "";
-        const el = this._buildNodeDOM(state);
+        const el = this._buildNodeDOM(this.root);
         this.container.appendChild(el);
         this._attachComponentElements();
         this._initDragHandles();
@@ -140,6 +353,7 @@ export class DockLayout {
             const data = {
                 tree: this.serialize(),
                 floats: floatState,
+                hiddenPanels: Array.from(this._hiddenPanels),
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch (e) {
@@ -168,9 +382,20 @@ export class DockLayout {
                     panelId: f.panelId === 'terminal' ? 'console' : f.panelId
                 }));
             }
+            if (Array.isArray(data.hiddenPanels)) {
+                this._hiddenPanels = new Set(data.hiddenPanels);
+            } else {
+                // Migration (Session 23): blobs written before the hiddenPanels
+                // field existed must keep the optional trio hidden by default —
+                // otherwise an old layout would resurrect all three panels.
+                for (const id of ["font", "kerning", "glyphs"]) this._hiddenPanels.add(id);
+            }
             this._restoring = true;
-            // Assign tree root BEFORE building DOM so all tree operations work
+            // Assign tree root BEFORE building DOM so all tree operations work.
+            // Fold any over-crowded split into tabs (Session 24 min-size rule) —
+            // legacy saved layouts may exceed the side-by-side capacity.
             this.root = data.tree;
+            const normalized = this._normalizeOverflowingSplits();
             this._buildDOM();
             if (Array.isArray(data.floats)) {
                 data.floats.forEach((f) => {
@@ -201,6 +426,9 @@ export class DockLayout {
             // Rebuild DOM to remove empty dock leaves left by float restoration
             this._buildDOM();
             this._restoring = false;
+            // Session 24: persist when the restore folded over-crowded splits
+            // into tabs — the corrected tree must survive the reload.
+            if (normalized) this._saveStateToStorage();
             return true;
         } catch (e) {
             this._restoring = false;
@@ -357,7 +585,7 @@ export class DockLayout {
 
         body.appendChild(comp);
 
-        const minW = 200, minH = 100;
+        const minW = MIN_PANEL_WIDTH, minH = MIN_PANEL_HEIGHT;
         const resizeEdges = ["n","s","e","w","ne","nw","se","sw"];
         resizeEdges.forEach(edge => {
             const h = document.createElement("div");
@@ -608,11 +836,10 @@ export class DockLayout {
         }
         if (!this.root) {
             this.root = createNode("leaf", { id: panelId });
-        } else if (this.root.type === "leaf" || this.root.type === "tabs") {
-            this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, createNode("leaf", { id: panelId })] });
-        } else if (this.root.type === "split") {
-            this.root.children.push(createNode("leaf", { id: panelId }));
-            this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
+        } else {
+            // Min-size aware: side-by-side only where a slot fits, else auto-tab
+            // (Session 24).
+            this._addNodeToTree(createNode("leaf", { id: panelId }));
         }
         this._rebuild();
     }
@@ -649,21 +876,13 @@ export class DockLayout {
             this._floatedPanels.delete(pid);
         }
 
-        const addNode = (node) => {
-            if (!this.root) {
-                this.root = node;
-            } else if (this.root.type === "leaf" || this.root.type === "tabs") {
-                this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, node] });
-            } else if (this.root.type === "split") {
-                this.root.children.push(node);
-                this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
-            }
-        };
-
+        // Min-size aware re-dock: a single float becomes a leaf, a group
+        // becomes one tabs node — side-by-side only where slots fit, else the
+        // node folds into existing tabs (Session 24).
         if (panelIds.length === 1) {
-            addNode(createNode("leaf", { id: panelIds[0] }));
+            this._addNodeToTree(createNode("leaf", { id: panelIds[0] }));
         } else {
-            addNode(createNode("tabs", { activeIndex: 0, children: panelIds.map(id => createNode("leaf", { id })) }));
+            this._addNodeToTree(createNode("tabs", { activeIndex: 0, children: panelIds.map(id => createNode("leaf", { id })) }));
         }
         this._rebuild();
     }
@@ -969,10 +1188,21 @@ export class DockLayout {
         const total = direction === "h" ? rect.width : rect.height;
         const startPos = direction === "h" ? e.clientX : e.clientY;
         const parsePct = (el) => parseFloat((el.style.flex || "1 1 50%").split(/\s+/).pop() || "50");
+        // Session 24: read the START sizes from the tree, not the DOM. The
+        // browser re-serializes inline flex-basis percentages lossily (e.g.
+        // "1 1 33.333333333333336%" reads back as "1 1 33.3333%"), so DOM
+        // parsing would start every drag from a truncated world — the clamp
+        // below is exact relative to startPcts, and would otherwise preserve
+        // the truncated sum (99.9999 instead of 100) into the tree and storage.
+        const treeSizes = splitEl._treeNode && splitEl._treeNode.sizes;
+        const startPcts = (treeSizes && treeSizes.length === children.length
+            && treeSizes.every(v => typeof v === "number" && isFinite(v)))
+            ? [...treeSizes]
+            : children.map(parsePct);
         this._resizing = {
             splitEl, direction, children, leftIdx, leftChild, rightChild,
             total, startPos,
-            startPcts: children.map(parsePct)
+            startPcts
         };
         document.body.classList.add(direction === "h" ? 'is-resizing-h' : 'is-resizing-v');
         document.addEventListener("mousemove", this._onResizeMove);
@@ -986,23 +1216,26 @@ export class DockLayout {
         const delta = pos - r.startPos;
         const pct = delta / r.total;
 
-        const minPixel = r.direction === "h" ? 200 : 100;
+        const minPixel = r.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
         const minPct = Math.max(5, (minPixel / r.total) * 100);
         const deltaPct = pct * 100;
         const newPcts = [...r.startPcts];
 
+        // Slack per child must never go negative: a child already below its
+        // minimum contributes 0. (Session 24) A negative capacity previously
+        // made clampedShrink negative — the shrink loop then did nothing but
+        // the sibling still got the negative add, so every mousemove shrank
+        // the right side and the size sum dropped below 100 (persisted on
+        // mouseup). Crowded splits now lock instead of corrupting.
         if (deltaPct < 0) {
             const toShrink = -deltaPct;
             let capacity = 0;
-            for (let i = 0; i <= r.leftIdx; i++) capacity += r.startPcts[i] - minPct;
-            // Clamp to available capacity instead of returning — prevents
-            // "premature lock" when dragging fast past the minimum then
-            // slowly dragging back (which would cause a sudden jump as the
-            // first mouse-move past the threshold applies the full delta).
+            for (let i = 0; i <= r.leftIdx; i++) capacity += Math.max(0, r.startPcts[i] - minPct);
             const clampedShrink = Math.min(toShrink, capacity);
+            if (clampedShrink <= 0) return; // shrink side already at minimum — no drift
             let remaining = clampedShrink;
             for (let i = r.leftIdx; i >= 0 && remaining > 0; i--) {
-                const avail = r.startPcts[i] - minPct;
+                const avail = Math.max(0, r.startPcts[i] - minPct);
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
@@ -1011,11 +1244,12 @@ export class DockLayout {
         } else if (deltaPct > 0) {
             const toShrink = deltaPct;
             let capacity = 0;
-            for (let i = r.leftIdx + 1; i < newPcts.length; i++) capacity += r.startPcts[i] - minPct;
+            for (let i = r.leftIdx + 1; i < newPcts.length; i++) capacity += Math.max(0, r.startPcts[i] - minPct);
             const clampedShrink = Math.min(toShrink, capacity);
+            if (clampedShrink <= 0) return; // grow side already at minimum — no drift
             let remaining = clampedShrink;
             for (let i = r.leftIdx + 1; i < newPcts.length && remaining > 0; i++) {
-                const avail = r.startPcts[i] - minPct;
+                const avail = Math.max(0, r.startPcts[i] - minPct);
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
@@ -1375,39 +1609,22 @@ export class DockLayout {
         const targetInfo = findTarget(this.root, null);
         if (!targetInfo || !targetInfo.parent || targetInfo.parent.type !== "split") {
             this._removeLeaf(draggedId);
-            const splitNode = this._findBestSplitForInsert(draggedId);
-            if (splitNode && splitNode.type === "split") {
-                splitNode.children.push(createNode("leaf", { id: draggedId }));
-                splitNode.sizes = splitNode.children.map(() => 100 / splitNode.children.length);
-            } else if (!this.root) {
-                this.root = createNode("leaf", { id: draggedId });
-            } else if (this.root.type === "leaf") {
-                const newDir = (zone === "left" || zone === "right") ? "h" : "v";
-                this.root = createNode("split", { direction: newDir, sizes: [50, 50], children: (zone === "top" || zone === "left")
-                    ? [createNode("leaf", { id: draggedId }), this.root]
-                    : [this.root, createNode("leaf", { id: draggedId })] });
-            } else if (this.root.type === "tabs") {
-                const newDir = (zone === "left" || zone === "right") ? "h" : "v";
-                this.root = createNode("split", { direction: newDir, sizes: [50, 50], children: (zone === "top" || zone === "left")
-                    ? [createNode("leaf", { id: draggedId }), this.root]
-                    : [this.root, createNode("leaf", { id: draggedId })] });
-            }
+            // Min-size aware (Session 24): descend into any split with a free
+            // slot; if none, fold into an existing tabs group — never exceed
+            // the side-by-side capacity. Zone edge only shapes the preferred
+            // direction when the root is a single leaf/tabs.
+            const preferredDir = (zone === "left" || zone === "right") ? "h" : "v";
+            this._addNodeToTree(createNode("leaf", { id: draggedId }), preferredDir);
             this._rebuild();
             return;
         }
         this._removeLeaf(draggedId);
         const reFound = findTarget(this.root, null);
         if (!reFound || !reFound.parent || reFound.parent.type !== "split") {
-            const splitNode = this._findBestSplitForInsert(draggedId);
-            if (splitNode && splitNode.type === "split") {
-                splitNode.children.push(createNode("leaf", { id: draggedId }));
-                splitNode.sizes = splitNode.children.map(() => 100 / splitNode.children.length);
-            } else if (this.root && this.root.type === "tabs") {
-                const newDir = (zone === "left" || zone === "right") ? "h" : "v";
-                this.root = createNode("split", { direction: newDir, sizes: [50, 50], children: (zone === "top" || zone === "left")
-                    ? [createNode("leaf", { id: draggedId }), this.root]
-                    : [this.root, createNode("leaf", { id: draggedId })] });
-            }
+            // Target disappeared after the move loop or its parent is not a
+            // split — route through the min-size aware placement.
+            const preferredDir = (zone === "left" || zone === "right") ? "h" : "v";
+            this._addNodeToTree(createNode("leaf", { id: draggedId }), preferredDir);
             this._rebuild();
             return;
         }
@@ -1416,19 +1633,39 @@ export class DockLayout {
         const parentDir = parent.direction || parent.dir;
         const isPerpendicular = ((zone === "left" || zone === "right") && parentDir === "v") ||
                                 ((zone === "top" || zone === "bottom") && parentDir === "h");
+        // Session 24 min-size rule: a perpendicular wrap creates a NEW split
+        // with 2 children — its own direction must fit both. A same-direction
+        // insertion grows the parent split — it must fit one more child. When
+        // the capacity is exhausted, the dragged leaf folds into the target
+        // node's tabs group (auto-tab) instead of corrupting sizes.
+        const draggedLeaf = createNode("leaf", { id: draggedId });
+        const foldIntoTabs = () => {
+            if (node.type === "tabs") {
+                node.children.push(draggedLeaf);
+            } else {
+                parent.children[idx] = createNode("tabs", { activeIndex: 0, children: [node, draggedLeaf] });
+            }
+        };
         if (isPerpendicular) {
             const newDir = (zone === "left" || zone === "right") ? "h" : "v";
-            const draggedNode = createNode("leaf", { id: draggedId });
-            const children = (zone === "top" || zone === "left")
-                ? [draggedNode, node]
-                : [node, draggedNode];
-            const newSplit = createNode("split", { direction: newDir, sizes: [50, 50], children });
-            parent.children[idx] = newSplit;
+            const newExtent = this._nodeExtentPx(node, newDir);
+            const minPx = newDir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+            if (newExtent > 0 && _maxSlots(newExtent, minPx) < 2) {
+                foldIntoTabs();
+            } else {
+                const children = (zone === "top" || zone === "left")
+                    ? [draggedLeaf, node]
+                    : [node, draggedLeaf];
+                const newSplit = createNode("split", { direction: newDir, sizes: [50, 50], children });
+                parent.children[idx] = newSplit;
+            }
+        } else if (!this._fitsNewSlot(parent)) {
+            foldIntoTabs();
         } else {
             const insertIdx = (zone === "top" || zone === "left") ? idx : idx + 1;
-            parent.children.splice(insertIdx, 0, createNode("leaf", { id: draggedId }));
+            parent.children.splice(insertIdx, 0, draggedLeaf);
+            parent.sizes = parent.children.map(() => 100 / parent.children.length);
         }
-        parent.sizes = parent.children.map(() => 100 / parent.children.length);
         this._rebuild();
     }
 
@@ -1450,11 +1687,10 @@ export class DockLayout {
         };
         const targetInfo = findParent(this.root, null);
         if (!targetInfo) {
-            const splitNode = this._findBestSplitForInsert(draggedId);
-            if (splitNode && splitNode.type === "split") {
-                splitNode.children.push(createNode("leaf", { id: draggedId }));
-                splitNode.sizes = splitNode.children.map(() => 100 / splitNode.children.length);
-            }
+            // Target not found — min-size aware placement (Session 24):
+            // free split slot first, otherwise fold into an existing tabs
+            // group instead of over-crowding a split.
+            this._addNodeToTree(createNode("leaf", { id: draggedId }));
             this._rebuild();
             return;
         }
@@ -1562,6 +1798,63 @@ export class DockLayout {
     _rebuild() {
         this._buildDOM();
         this._saveStateToStorage();
+    }
+
+    // ── Optional panel visibility (Edit menu show/hide) ──
+
+    isPanelHidden(panelId) {
+        return this._hiddenPanels.has(panelId);
+    }
+
+    /**
+     * Reveal an optional panel: un-hide it, give it a leaf in the dock tree
+     * (if it is not floated already) and activate its tab.
+     * @returns {boolean} true when the panel is now visible.
+     */
+    showPanel(panelId) {
+        if (this._restoring) return false;
+        this._hiddenPanels.delete(panelId);
+        const comp = this._componentRefs?.[panelId];
+        if (comp) delete comp.dataset.panelHidden;
+        // A floated panel is already visible — nothing else to do.
+        if (this._floatedPanels.has(panelId)) {
+            this._saveStateToStorage();
+            return true;
+        }
+        if (!this._hasPanelLeaf(panelId)) this._addPanelLeaf(panelId);
+        this._buildDOM();
+        const leaf = this.container.querySelector(`.dock-leaf[data-panel-id="${panelId}"]`);
+        const tabsEl = leaf?.closest(".dock-tabs");
+        if (tabsEl) {
+            const idx = Array.from(tabsEl.querySelectorAll(".dock-leaf")).findIndex((l) => l.dataset.panelId === panelId);
+            if (idx > -1) this._activateTab(tabsEl, idx);
+        } else {
+            this._saveStateToStorage();
+        }
+        return true;
+    }
+
+    /**
+     * Hide an optional panel: remove its leaf (and/or float window) from the
+     * workspace and mark it hidden. The component element survives detached in
+     * _componentRefs (custom elements keep their state), ready for showPanel().
+     * @returns {boolean} true when the panel is now hidden.
+     */
+    hidePanel(panelId) {
+        if (this._restoring) return false;
+        this._hiddenPanels.add(panelId);
+        const comp = this._componentRefs?.[panelId];
+        if (comp) comp.dataset.panelHidden = "1";
+        if (this._floatedPanels.has(panelId)) {
+            this._removePanelFromFloat(panelId);
+        }
+        if (this._hasPanelLeaf(panelId)) {
+            this._removeLeaf(panelId);
+            this._rebuild();
+        } else {
+            this._saveStateToStorage();
+        }
+        return true;
     }
 }
 

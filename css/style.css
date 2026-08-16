@@ -637,6 +637,9 @@ glyph-sequence-bar {
 .dock-content > .placeholder,
 .dock-content > logger-panel,
 .dock-content > sample-text-panel,
+.dock-content > font-popup,
+.dock-content > kern-popup,
+.dock-content > glyph-popup,
 .dock-content > .canvas-wrap,
 .dock-content .placeholder {
     border: none !important;
@@ -1650,6 +1653,55 @@ kern-popup .pen-tool-popup-body {
     padding: 0;
     overflow-y: auto;
     max-height: 70vh;
+}
+/* ── Font/Kerning/Glyphs as dock panels ──
+   These three components are dock leaves now (hidden by default; revealed from
+   the Edit menu). They live inside .dock-content, so the floating popup chrome
+   above (position:fixed / display:none / backdrop blur / shadow / rounded
+   border) must not apply. The component fills its leaf; only the inner body
+   scrolls. .sequence-add-menu (glyph panel) carries its own position:fixed
+   rule in the Menus section — override that too. */
+.dock-content > font-popup,
+.dock-content > kern-popup,
+.dock-content > glyph-popup {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    z-index: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+}
+.dock-content > font-popup .pen-tool-popup-body,
+.dock-content > kern-popup .pen-tool-popup-body {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+.dock-content > glyph-popup .sequence-add-menu {
+    position: static;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    width: 100%;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow-y: auto;
 }
 /* Scrollbar for tool popups: match other panel scrollbar style */
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar,

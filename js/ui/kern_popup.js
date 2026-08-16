@@ -14,6 +14,7 @@ function esc(s) {
 
 // Inline popup HTML (matched to the same CSS classes as property popups)
 const POPUP_HTML = `
+<div class="prop_panel_title_wrapper"><span class="panel_title" data-i18n="panel.kerning">Kerning</span></div>
 <div class="pen-tool-popup-body kern-popup-body">
   <div class="seq-menu-header">
     <span class="seq-menu-title" data-i18n="kern.title">Add Kerning</span>
@@ -36,7 +37,6 @@ const POPUP_HTML = `
 export class KernPopup extends HTMLElement {
     constructor() {
         super();
-        this._visible = false;
         this._canvas = null;
         this._glyphNames = [];
         this._pairs = [];
@@ -101,27 +101,18 @@ export class KernPopup extends HTMLElement {
             this._startEditValue(valSpan, row.dataset.left, row.dataset.right);
         });
 
-        // Click-away: close when clicking outside (like font_popup.js)
-        this._awayHandler = (e) => {
-            if (!this._visible) return;
-            if (e.target.closest('.top .item')) return;
-            if (!this.contains(e.target)) this.hide();
-        };
-        document.addEventListener('mousedown', this._awayHandler, true);
-
-        // Listen for state changes to refresh the list
-        const offState = appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, () => {
-            if (this._visible) this._scheduleRender();
+        // Listen for state changes to refresh the list. Registered once and
+        // never torn down: the dock detaches/reattaches the element on layout
+        // rebuilds (hide/show/float), and connectedCallback early-returns after
+        // the first connect, so a per-connection cleanup would kill the refresh.
+        appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, () => {
+            if (this.dataset.panelHidden) return;
+            this._scheduleRender();
         });
-        this._cleanup = () => {
-            offState();
-            document.removeEventListener('mousedown', this._awayHandler, true);
-            this._awayHandler = null;
-        };
-    }
 
-    disconnectedCallback() {
-        if (this._cleanup) this._cleanup();
+        // Initial render (previously done in show() on every open).
+        this._populateGlyphSelects();
+        this._renderPairs();
     }
 
     _populateGlyphSelects() {
@@ -304,36 +295,6 @@ export class KernPopup extends HTMLElement {
         }
     }
 
-    show(anchorEl) {
-        this.classList.add('visible');
-        this._visible = true;
-
-        // Full refresh
-        this._populateGlyphSelects();
-        this._renderPairs();
-
-        requestAnimationFrame(() => {
-            const btnRect = anchorEl.getBoundingClientRect();
-            let left = btnRect.left;
-            let top = btnRect.bottom + 2;
-            const popupRect = this.getBoundingClientRect();
-
-            if (left + popupRect.width > window.innerWidth - 4) {
-                left = window.innerWidth - popupRect.width - 4;
-            }
-            if (top + popupRect.height > window.innerHeight - 4) {
-                top = btnRect.top - popupRect.height - 2;
-            }
-
-            this.style.left = left + 'px';
-            this.style.top = top + 'px';
-        });
     }
-
-    hide() {
-        this.classList.remove('visible');
-        this._visible = false;
-    }
-}
 
 customElements.define('kern-popup', KernPopup);

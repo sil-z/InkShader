@@ -21,8 +21,22 @@ export function initializeLayoutShell() {
     const loggerPanel = document.querySelector("logger-panel");
     if (!dockContainer || !objectTree || !propertyPanel) return;
 
+    // Font/Kerning/Glyphs are dock panels now (hidden by default). They MUST
+    // exist on the page BEFORE DockLayout.initialize() runs — initialize
+    // captures their elements into _componentRefs, and the Edit menu's
+    // show/hide moves those exact elements between the dock and the hidden set.
+    if (!document.querySelector('font-popup')) {
+        document.body.appendChild(document.createElement('font-popup'));
+    }
+    if (!document.querySelector('kern-popup')) {
+        document.body.appendChild(document.createElement('kern-popup'));
+    }
+    if (!document.querySelector('glyph-popup')) {
+        document.body.appendChild(document.createElement('glyph-popup'));
+    }
+
     const dock = new DockLayout(dockContainer);
-    dock.initialize(["canvas", "objects", "properties", "console", "sample"]);
+    dock.initialize(["canvas", "objects", "properties", "console", "sample", "font", "kerning", "glyphs"]);
     window.__dock = dock;
 
     if (!document.querySelector('node-property-popup')) {
@@ -121,36 +135,17 @@ export function initializeLayoutShell() {
     // ── Top menu bar ──
     const topMenuItems = document.querySelectorAll(".top .item");
     const btnFile = document.getElementById("menu_file");
-    const btnFont = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.font");
-    const btnKern = document.getElementById("menu_kerning");
     const btnPreferences = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.prefs");
     const btnHelp = Array.from(topMenuItems).find((el) => el.getAttribute("data-i18n") === "menu.help");
 
     if (!document.querySelector('dropdown-menu')) {
         document.body.appendChild(document.createElement('dropdown-menu'));
     }
-    if (!document.querySelector('font-popup')) {
-        document.body.appendChild(document.createElement('font-popup'));
-    }
-    if (!document.querySelector('kern-popup')) {
-        document.body.appendChild(document.createElement('kern-popup'));
-    }
-    if (!document.querySelector('glyph-popup')) {
-        document.body.appendChild(document.createElement('glyph-popup'));
-    }
-
-    const btnGlyphs = document.getElementById("menu_glyphs");
 
     // ── Close any open menu/popup and sync active classes ──
     function closeAnyOpenMenu() {
         const dd = document.querySelector('dropdown-menu');
         if (dd && dd._visible) dd.hide();
-        const fp = document.querySelector('font-popup');
-        if (fp && fp._visible) fp.hide();
-        const kp = document.querySelector('kern-popup');
-        if (kp && kp._visible) kp.hide();
-        const gp = document.querySelector('glyph-popup');
-        if (gp && gp._visible) gp.hide();
         const pp = document.querySelector('preferences-popup');
         if (pp && pp._visible) pp.hide();
     }
@@ -248,6 +243,22 @@ export function initializeLayoutShell() {
             label: (checked ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
             action
         });
+        // Dock panel visibility toggles. The checkmark is read from the dock at
+        // menu-build time (items are rebuilt on every click), so it always
+        // matches the panel's current visibility.
+        const makePanelToggle = (i18nKey, panelId) => {
+            const d = window.__dock;
+            const visible = d ? !d.isPanelHidden(panelId) : true;
+            return {
+                label: (visible ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
+                action: () => {
+                    const dock = window.__dock;
+                    if (!dock) return;
+                    if (dock.isPanelHidden(panelId)) dock.showPanel(panelId);
+                    else dock.hidePanel(panelId);
+                }
+            };
+        };
 
         const items = [
             makeItem('edit.copy', 'Ctrl+C', () => CanvasDispatcher.requestCopySelectedObjects()),
@@ -270,6 +281,19 @@ export function initializeLayoutShell() {
                 if (c) c.snap_coincident_enabled = !c.snap_coincident_enabled;
                 if (c) c.history?.saveCurrentViewState?.();
             }),
+            { separator: true },
+            // Show/Hide for EVERY dock panel (Session 24): the core five
+            // (canvas/objects/properties/console/sample) plus the optional
+            // trio (font/kerning/glyphs — Session 23). All are generic toggles
+            // over the dock's hidden set.
+            makePanelToggle('panel.canvas', 'canvas'),
+            makePanelToggle('panel.objects', 'objects'),
+            makePanelToggle('panel.properties', 'properties'),
+            makePanelToggle('panel.console', 'console'),
+            makePanelToggle('panel.sample', 'sample'),
+            makePanelToggle('panel.font', 'font'),
+            makePanelToggle('panel.kerning', 'kerning'),
+            makePanelToggle('panel.glyphs', 'glyphs'),
             { separator: true },
             {
                 label: I18nManager.t('edit.guides'),
@@ -318,92 +342,10 @@ export function initializeLayoutShell() {
         btnEdit.classList.add('active');
     });
 
-    // ── Font popup active class sync ──
-    const fontPopup = document.querySelector('font-popup');
-    if (fontPopup) {
-        const origFontHide = fontPopup.hide.bind(fontPopup);
-        fontPopup.hide = function() {
-            btnFont?.classList.remove('active');
-            return origFontHide();
-        };
-    }
-
-    // ── Kern popup active class sync ──
-    const kernPopup = document.querySelector('kern-popup');
-    if (kernPopup) {
-        const origKernHide = kernPopup.hide.bind(kernPopup);
-        kernPopup.hide = function() {
-            btnKern?.classList.remove('active');
-            return origKernHide();
-        };
-    }
-
-    // ── Glyphs popup active class sync ──
-    const glyphPopup = document.querySelector('glyph-popup');
-    if (glyphPopup) {
-        const origGlyphHide = glyphPopup.hide.bind(glyphPopup);
-        glyphPopup.hide = function() {
-            btnGlyphs?.classList.remove('active');
-            return origGlyphHide();
-        };
-    }
-
-    // ── Font popup ──
-    btnFont?.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const popup = document.querySelector('font-popup');
-        if (!popup) return;
-
-        // Toggle off if already open
-        if (btnFont.classList.contains('active')) {
-            closeAnyOpenMenu();
-            return;
-        }
-
-        closeAnyOpenMenu();
-
-        popup.setProjectManager(window.__canvas?.projectManager || null);
-        popup.setCanvas(window.__canvas || null);
-        popup.show(btnFont);
-        btnFont.classList.add('active');
-    });
-
-    // ── Kern popup ──
-    btnKern?.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const popup = document.querySelector('kern-popup');
-        if (!popup) return;
-
-        // Toggle off if already open
-        if (btnKern.classList.contains('active')) {
-            closeAnyOpenMenu();
-            return;
-        }
-
-        closeAnyOpenMenu();
-
-        popup.setCanvas(window.__canvas || null);
-        popup.show(btnKern);
-        btnKern.classList.add('active');
-    });
-
-    // ── Glyphs popup ──
-    btnGlyphs?.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const popup = document.querySelector('glyph-popup');
-        if (!popup) return;
-
-        // Toggle off if already open
-        if (btnGlyphs.classList.contains('active')) {
-            closeAnyOpenMenu();
-            return;
-        }
-
-        closeAnyOpenMenu();
-
-        popup.show(btnGlyphs);
-        btnGlyphs.classList.add('active');
-    });
+    // Font/Kerning/Glyphs are dock panels now — shown/hidden via the Edit menu
+    // (the makePanelToggle items above) instead of menu-bar popups. The popup
+    // components resolve the canvas lazily via document.querySelector, so no
+    // setCanvas/setProjectManager wiring is needed here anymore.
 
     // ── Preferences popup active class sync ──
     const prefPopup = document.querySelector('preferences-popup');

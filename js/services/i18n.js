@@ -5,7 +5,9 @@ import { appEventBus } from "../app/event_bus.js";
 export const translations = {
     en: {
         "menu.file": "File", "menu.edit": "Edit", "menu.prefs": "Preferences", "menu.help": "Help",
-        "menu.font": "Font", "menu.kerning": "Kerning", "menu.glyphs": "Glyphs",
+        "panel.canvas": "Canvas", "panel.objects": "Objects", "panel.properties": "Properties",
+        "panel.console": "Console", "panel.sample": "Sample Text",
+        "panel.font": "Font", "panel.kerning": "Kerning", "panel.glyphs": "Glyphs",
         "file.new_project": "New Project",
         "file.load_json": "Load Project (JSON)",
         "file.load_ufo": "Load Project (UFO)",
@@ -89,7 +91,9 @@ export const translations = {
     },
     zh: {
         "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
-        "menu.font": "字体", "menu.kerning": "字偶距", "menu.glyphs": "字形",
+        "panel.canvas": "画布", "panel.objects": "对象", "panel.properties": "属性",
+        "panel.console": "控制台", "panel.sample": "样张",
+        "panel.font": "字体", "panel.kerning": "字偶距", "panel.glyphs": "字形",
         "file.new_project": "新建项目",
         "file.load_json": "加载本地项目 (JSON)",
         "file.load_ufo": "加载本地项目 (UFO)",
