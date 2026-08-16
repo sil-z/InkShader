@@ -35,11 +35,13 @@ export class GlyphSequenceBar extends HTMLElement {
         super();
         this.text = "";
         this.activeIndices = new Set();
+        this.activeGroupId = null;
         this._canvas = null;
         this._track = null;
         this._cleanups = [];
         this._textSig = "";
         this._activeSig = "";
+        this._selSig = "";
         this._offSig = "";
         this._vpOffSig = 0;
         this._vpScaleSig = 1;
@@ -69,14 +71,20 @@ export class GlyphSequenceBar extends HTMLElement {
             const text = s.sequenceText ?? "";
             const activeKey = JSON.stringify(s.activeSequenceIndices);
             const offKey = s.offset ? `${s.offset.x},${s.scale}` : "";
+            // Active-glyph signature: the focused group (activeGroupId) + tree selection.
+            // The sequence bar highlight follows the app's "active group" (selection),
+            // NOT activeSequenceIndices (a bookkeeping set that grows with every add).
+            const selKey = `${s.activeGroupId ?? ""}|${JSON.stringify(s.selectedTreeIds || [])}`;
             // Always re-render for display-affecting actions (lock, vis).
             // For other actions, skip if nothing changed.
             const isDisplayAction = actionType === "TOGGLE_SELECTED_OBJECTS_LOCK" || actionType === "TOGGLE_SELECTED_OBJECTS_DISPLAY";
-            if (!isDisplayAction && actionType !== "TREE_REVISION" && text === this._textSig && activeKey === this._activeSig && offKey === this._offSig) return;
+            if (!isDisplayAction && actionType !== "TREE_REVISION" && text === this._textSig && activeKey === this._activeSig && offKey === this._offSig && selKey === this._selSig) return;
             this._textSig = this.text = text;
             this._activeSig = activeKey;
             this._offSig = offKey;
+            this._selSig = selKey;
             this.activeIndices = new Set(s.activeSequenceIndices || []);
+            this.activeGroupId = s.activeGroupId ?? null;
             this._render();
         };
         this._cleanups.push(appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, onState));
@@ -117,8 +125,10 @@ export class GlyphSequenceBar extends HTMLElement {
         EditorModel.whenEditorStoreReady((st) => {
             this.text = st.sequenceText ?? "";
             this.activeIndices = new Set(st.activeSequenceIndices || []);
+            this.activeGroupId = st.activeGroupId ?? null;
             this._textSig = this.text;
             this._activeSig = JSON.stringify(st.activeSequenceIndices);
+            this._selSig = `${st.activeGroupId ?? ""}|${JSON.stringify(st.selectedTreeIds || [])}`;
             this._offSig = st.offset ? `${st.offset.x},${st.scale}` : "";
             this._vpScaleSig = st.scale ?? 1;
             this._vpOffSig = st.offset?.x ?? 0;
@@ -172,7 +182,9 @@ export class GlyphSequenceBar extends HTMLElement {
         for (let i = 0; i < tokens.length; i++) {
             const tok = tokens[i];
             const gid = tok.isChar ? EditorModel.getDefaultGroupForChar(tok.value) : tok.value;
-            const active = this.activeIndices.has(i);
+            // Active glyph = the app's currently focused group (tree selection),
+            // tracked via activeGroupId. Not activeSequenceIndices.
+            const active = gid != null && gid !== "" && gid === this.activeGroupId;
             const sx = nextX[i];
             const nextSx = i + 1 < tokens.length ? nextX[i + 1] : lastEnd;
             const availW = nextSx - sx;
@@ -325,11 +337,11 @@ export class GlyphSequenceBar extends HTMLElement {
             rowCells.push(this._mkVisBtn(it.gid));
             rowCells.push(this._mkRemoveBtn(it.gid, it.idx));
             const ns = document.createElement("span");
-            ns.className = "seq-bar-name";
+            ns.className = "seq-bar-name" + (it.active ? " active" : "");
             ns.textContent = it.name;
             rowCells.push(ns);
             const cs = document.createElement("span");
-            cs.className = "seq-bar-code" + (it.isMissing ? " seq-bar-code-missing" : "");
+            cs.className = "seq-bar-code" + (it.isMissing ? " seq-bar-code-missing" : "") + (it.active ? " active" : "");
             cs.textContent = it.isMissing ? "" : it.codeStr;
             rowCells.push(cs);
             rowCells.push(this._mkInsertBtn(it.idx));
@@ -350,11 +362,15 @@ export class GlyphSequenceBar extends HTMLElement {
                     if (!gi) continue;
                     const baseIdx = i * 6;
                     const locked = !!gi.locked;
+                    const isActive = items[i].gid != null && items[i].gid === this.activeGroupId;
                     cells[baseIdx].replaceWith(this._mkLockBtn(gid));
                     cells[baseIdx + 1].replaceWith(this._mkVisBtn(gid));
                     for (let j = 0; j < 6; j++) {
                         cells[baseIdx + j].classList.toggle("is-locked", locked);
                     }
+                    // Keep the active-glyph highlight (name/code) in sync
+                    cells[baseIdx + 3].classList.toggle("active", isActive);
+                    cells[baseIdx + 4].classList.toggle("active", isActive);
                 }
             }, 0);
         });

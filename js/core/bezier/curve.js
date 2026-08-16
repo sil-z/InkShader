@@ -380,7 +380,9 @@ export class Curve {
                 p0: { x: a.x, y: a.y },
                 p1: { x: a.control1?.x ?? a.x, y: a.control1?.y ?? a.y },
                 p2: { x: b.control2?.x ?? b.x, y: b.control2?.y ?? b.y },
-                p3: { x: b.x, y: b.y }
+                p3: { x: b.x, y: b.y },
+                node: a,      // on-curve node owning p0 (smooth-type export)
+                endNode: b    // on-curve node owning p3 (smooth-type export)
             });
         };
         let current = this.startNode;

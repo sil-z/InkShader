@@ -262,7 +262,9 @@ export class GroupSettingsPopup extends HTMLElement {
         };
         patch('grp_name', item.name);
         patch('grp_char', item.charCode || '');
-        patch('grp_advance', item.advance !== undefined ? item.advance : 1000);
+        // Live read (treeItems) — the tree snapshot may lag in-place advances (e.g. UPM rescale),
+        // matching the live-read pattern of getGroupLsbRsb below.
+        patch('grp_advance', EditorModel.getGroupAdvance(this._groupId) ?? 1000);
         const grpLr = getGroupLsbRsb(this._groupId);
         patch('grp_lsb', grpLr.lsb);
         patch('grp_rsb', grpLr.rsb);

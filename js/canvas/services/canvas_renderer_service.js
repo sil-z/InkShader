@@ -9,13 +9,12 @@ import {
     drawCurveStroke,
     isCurveStrokePreview,
     canFillSmartStrokeWithPath2D,
-    fillSmartStrokePath2D,
     emitSkeletonReferencePath,
     isCurveClosedRing
 } from "../rendering/curve_renderer.js";
 import { drawCurveNode, drawHoveredHandle } from "../rendering/node_renderer.js";
 import { createViewportTransform } from "../rendering/viewport_transform.js";
-import { emitCubicBezierSegments } from "../../core/bezier/path_emitter.js";
+import { emitCubicBezierSegments, booleanViewportDOMMatrix } from "../../core/bezier/path_emitter.js";
 export class CanvasRendererService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -1229,10 +1228,19 @@ export class CanvasRendererService {
         // skipPathLayer: stable blit already has path pixels (avoid covering guides/chrome).
         if (!skipPathLayer && !nodesOnly) {
             forEachPathPass((i, seqOffsetX, curveDataList) => {
-            // ── Fill (batched per-group; Path2D smart fills drawn individually) ──
-            c.ctx.beginPath();
+            // ── Fill (batched per-group; ALL curves merged into ONE Path2D) ──
+            // Every curve's outline (smart-stroke boolean geometry, expand outputs,
+            // closed rings, preview skeletons) ends up in a single Path2D that is
+            // filled with ONE nonzero fill call. This is REQUIRED for correct
+            // cross-curve winding composition: an opposite-winding curve (e.g. a
+            // reversed-direction expand output) must knock a hole out of the
+            // curves it overlaps. Separate fill() calls cannot compose windings,
+            // so smart strokes must NOT be split off into their own fills.
+            // Cached model-space Path2Ds (smart strokes) are transformed into the
+            // combined path via addPath + viewport matrix, so the boolean geometry
+            // cache is still reused (no per-frame bezier re-emit for those).
+            const combinedPath = new Path2D();
             let hasFill = false;
-            const path2dFills = [];
             for (const cd of curveDataList) {
                 if (!cd.effectiveVis) continue;
                 if (cd.curve?.startNode) {
@@ -1244,20 +1252,18 @@ export class CanvasRendererService {
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
 
                     if (canFillSmartStrokeWithPath2D(cd.curve, { strokePreview })) {
-                        path2dFills.push({ curve: cd.curve, viewport });
+                        combinedPath.addPath(cd.curve._booleanPath2D, booleanViewportDOMMatrix(viewport));
+                        hasFill = true;
                         continue;
                     }
-                    appendCurveFillPath(c.ctx, cd.curve, viewport, {
+                    appendCurveFillPath(combinedPath, cd.curve, viewport, {
                         refId,
                         strokePreview
                     });
                     hasFill = true;
                 }
             }
-            if (hasFill) { c.ctx.fillStyle = p.path_fill_color; c.ctx.fill("nonzero"); }
-            for (const item of path2dFills) {
-                fillSmartStrokePath2D(c.ctx, item.curve, item.viewport, p.path_fill_color);
-            }
+            if (hasFill) { c.ctx.fillStyle = p.path_fill_color; c.ctx.fill(combinedPath, "nonzero"); }
 
             // ── Stroke (per-curve, skip skeleton — drawn in a separate pass below) ──
             for (const cd of curveDataList) {
@@ -1950,6 +1956,12 @@ export class CanvasRendererService {
         const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
         let step = steps[0];
         for (const s of steps) { if (s >= roughStep) { step = s; break; } }
+        // scale < 50/5000 = 0.01 makes roughStep exceed the table: step would
+        // stay 0.1, scale*step approaches 0 and the ruler loops over millions of
+        // SVG ticks (main-thread freeze). Extend with powers of 10 instead.
+        if (step < roughStep) {
+            step = Math.pow(10, Math.ceil(Math.log10(roughStep)));
+        }
         let precision = 0; if (step < 1) { precision = Math.ceil(-Math.log10(step)); }
         return { step, precision };
     }

@@ -22,6 +22,14 @@
       "pattern": "^\\d+\\.\\d+$",
       "examples": ["1.0"]
     },
+    "canvas_size_width": {
+      "type": "number",
+      "description": "Canvas width in design units (em box; default 1000, follows UPM scaling)"
+    },
+    "canvas_size_height": {
+      "type": "number",
+      "description": "Canvas height in design units (em box; default 1000, follows UPM scaling)"
+    },
     "family_name": {
       "type": "string",
       "description": "Font family name"
@@ -45,6 +53,10 @@
     "preferred_subfamily": {
       "type": "string",
       "description": "Preferred subfamily name"
+    },
+    "style_map_family": {
+      "type": "string",
+      "description": "Family name used for bold, italic and bold italic style mapping (UFO styleMapFamilyName)"
     },
     "copyright": {
       "type": "string",
@@ -119,6 +131,11 @@
     "cap_height": {
       "type": "number",
       "description": "Font cap height"
+    },
+    "italic_angle": {
+      "type": "number",
+      "description": "Italic angle in counter-clockwise degrees from the vertical (UFO italicAngle)",
+      "default": 0
     },
     "font_version": {
       "type": "string",
@@ -225,7 +242,7 @@
       "description": "A group (glyph / component definition / folder) with nested children (paths and component refs)",
       "properties": {
         "name": { "type": "string", "description": "Group display name" },
-        "char_code": { "type": ["string", "null"], "description": "Single character mapped to this glyph, or null for non-glyph groups" },
+        "char_code": { "type": ["string", "null"], "description": "Character or character sequence (ligature) mapped to this glyph, or null for non-glyph groups" },
         "advance": { "type": "number", "description": "Advance width in UPM units", "default": 1000, "minimum": 0 },
         "locked": { "type": "boolean", "description": "Whether the group is locked against editing", "default": false },
         "visible": { "type": "boolean", "description": "Whether the group is visible", "default": true },

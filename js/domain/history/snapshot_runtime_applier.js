@@ -43,13 +43,14 @@ function snapshotNumber(snapshotObj, key, fallback, defaultValue) {
     return Number.isFinite(value) ? value : fallback ?? defaultValue;
 }
 
-function fontSettingsFromSnapshot(snapshotObj = {}, fallback = {}) {
+export function fontSettingsFromSnapshot(snapshotObj = {}, fallback = {}) {
     return {
         family: snapshotString(snapshotObj, "family_name", fallback.family, "InkShader Default Font"),
         style: snapshotString(snapshotObj, "font_style", fallback.style, "Regular"),
         postscript_name: snapshotString(snapshotObj, "postscript_name", fallback.postscript_name),
         preferred_family: snapshotString(snapshotObj, "preferred_family", fallback.preferred_family),
         preferred_subfamily: snapshotString(snapshotObj, "preferred_subfamily", fallback.preferred_subfamily),
+        style_map_family: snapshotString(snapshotObj, "style_map_family", fallback.style_map_family),
         copyright: snapshotString(snapshotObj, "copyright", fallback.copyright),
         designer: snapshotString(snapshotObj, "designer", fallback.designer),
         designer_url: snapshotString(snapshotObj, "designer_url", fallback.designer_url),
@@ -67,6 +68,7 @@ function fontSettingsFromSnapshot(snapshotObj = {}, fallback = {}) {
         descender: snapshotNumber(snapshotObj, "descender", fallback.descender, -200),
         x_height: snapshotNumber(snapshotObj, "x_height", fallback.x_height, 500),
         cap_height: snapshotNumber(snapshotObj, "cap_height", fallback.cap_height, 700),
+        italic_angle: snapshotNumber(snapshotObj, "italic_angle", fallback.italic_angle, 0),
         version: snapshotString(snapshotObj, "font_version", fallback.version, "1.0"),
         project_name: snapshotString(snapshotObj, "project_name", fallback.project_name),
         basic_spacing: snapshotNumber(snapshotObj, "basic_spacing", fallback.basic_spacing, 1000)
@@ -279,8 +281,21 @@ function ensureControlHandle(node, curve, cm, controlKey, subField, value) {
     }
     return false;
 }
-function applyEditorField(canvas, cm, path, value, shouldExist) {
+function applyEditorField(canvas, cm, path, value, shouldExist, snapshotObj) {
     const key = path[0];
+    // Kerning rebuilds are direction-safe in both presence and absence: the
+    // snapshot object is patched to the target state before apply, so an
+    // absent key means the target has no data. fromJSON/classesFromJSON
+    // replace the whole maps (and clear on {}), covering leaf, coarse and
+    // delete patches alike.
+    if (key === "kerning") {
+        cm.kerningManager?.fromJSON(snapshotObj?.kerning || {});
+        return true;
+    }
+    if (key === "kerning_classes") {
+        cm.kerningManager?.classesFromJSON(snapshotObj?.kerning_classes || {});
+        return true;
+    }
     if (!shouldExist) return true;
     switch (key) {
         case "editor_root_order":
@@ -300,10 +315,28 @@ function applyEditorField(canvas, cm, path, value, shouldExist) {
         case "editor_guidelines":
             if (Array.isArray(value)) {
                 canvas.guidelines = value.map(g => ({ id: canvas._nextUserGuideId++, x: g.x, y: g.y, angle: g.angle, type: g.type }));
+                return true;
+            }
+            // Per-element patch: ["editor_guidelines", index, field] -
+            // guideline drag undo/redo and UPM rescale patches.
+            if (path.length === 3) {
+                const idx = Number(path[1]);
+                const field = path[2];
+                const guide = Number.isInteger(idx) ? canvas.guidelines?.[idx] : null;
+                if (guide && (field === "x" || field === "y" || field === "angle" || field === "type" || field === "id")) {
+                    guide[field] = value;
+                    return true;
+                }
             }
             return true;
         case "editor_guideline_lock":
             canvas.guideline_lock = !!value;
+            return true;
+        case "canvas_size_width":
+            if (Number.isFinite(Number(value)) && Number(value) > 0) canvas.canvas_size_width = Number(value);
+            return true;
+        case "canvas_size_height":
+            if (Number.isFinite(Number(value)) && Number(value) > 0) canvas.canvas_size_height = Number(value);
             return true;
         // expand_stroke_round_cap removed — now per-curve (expand_round_cap in path data).
         default:
@@ -320,11 +353,27 @@ function applySinglePatch(cm, canvas, patch, direction, snapshotObj) {
     if (!Array.isArray(path) || path.length === 0) return false;
     const { shouldExist, value } = patchValue(patch, direction);
     if (!GROUP_ROOT_KEYS.has(path[0])) {
-        return applyEditorField(canvas, cm, path, value, shouldExist);
+        return applyEditorField(canvas, cm, path, value, shouldExist, snapshotObj);
     }
     const charBucket = path[0];
     const groupName = path[1];
     if (typeof groupName !== "string") return false;
+    // Coarse whole-glyphs replacement (dropped-leaf fallback for model
+    // mutations that touch more nodes than the patch limit, e.g. a UPM
+    // rescale of a large document): rebuild every root group from the
+    // target snapshot state; roots missing from it are deleted.
+    if (path.length === 1 && path[0] === "glyphs") {
+        const groups = snapshotObj?.glyphs || {};
+        for (const rootId of [...cm.rootChildren]) {
+            const item = cm.treeItems.get(rootId);
+            const name = item?.name || rootId;
+            if (!groups[rootId] && !groups[name]) deleteRootGroupByName(cm, name);
+        }
+        for (const [groupNameT, gData] of Object.entries(groups)) {
+            if (!cm.getGroupByName(groupNameT)) reconstructRootGroup(cm, groupNameT, gData);
+        }
+        return true;
+    }
     if (path.length === 2) {
         if (!shouldExist) return deleteRootGroupByName(cm, groupName);
         return reconstructRootGroup(cm, groupName, value);
@@ -453,6 +502,11 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
+    // Canvas size (em box, design units) - legacy files predate the field.
+    const snapshotCanvasW = Number(snapshotObj.canvas_size_width);
+    if (Number.isFinite(snapshotCanvasW) && snapshotCanvasW > 0) canvas.canvas_size_width = snapshotCanvasW;
+    const snapshotCanvasH = Number(snapshotObj.canvas_size_height);
+    if (Number.isFinite(snapshotCanvasH) && snapshotCanvasH > 0) canvas.canvas_size_height = snapshotCanvasH;
     // expand_stroke_round_cap removed — now per-curve (expand_round_cap in path data).
     canvas.fontSettings = fontSettingsFromSnapshot(snapshotObj, canvas.fontSettings);
     return true;

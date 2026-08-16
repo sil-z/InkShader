@@ -26,7 +26,7 @@ import {
 } from "../domain/selection/selection_bounds.js";
 import { mergeInteractionFromStoreState } from "./editor_interaction_state.js";
 import { getMainCanvasFromDocument, whenCanvasReady } from "./canvas_access.js";
-import { drawSequenceGroupPreviewOnContext } from "./sequence_preview_facade.js";
+import { drawSequenceGroupPreviewOnContext, drawSampleTextPreviewOnContext, measureSampleTextPreview as measureSampleTextLayout } from "./sequence_preview_facade.js";
 
 function curveManager() {
     return getMainCanvasFromDocument()?.curve_manager ?? null;
@@ -234,6 +234,40 @@ export function computeSelectionBoundsForSnapshot(interactionSnapshot, mode = "t
 
 export function drawSequenceGroupPreview(ctx, groupId) {
     drawSequenceGroupPreviewOnContext(ctx, groupId);
+}
+
+/**
+ * Sample-text (specimen) preview for the sample-text panel.
+ * UI-only boundary: the component renders via this facade, never imports presentation directly.
+ */
+export function drawSampleTextPreview(ctx, text, options = {}) {
+    return drawSampleTextPreviewOnContext(ctx, text, options);
+}
+
+/**
+ * Layout-only pass (no drawing): returns { rows, contentHeight, scale } for the given text so
+ * the panel can size its canvas / scroll container to the content. Null when text is empty.
+ */
+export function measureSampleTextPreview(text, options = {}) {
+    return measureSampleTextLayout(text, options);
+}
+
+/**
+ * Live font metrics + sample text for the sample-text panel (reads canvas.fontSettings,
+ * which is the live SSOT for font settings; avoids stale snapshot reads).
+ */
+export function getSampleTextPanelState() {
+    const canvas = getMainCanvasFromDocument();
+    const fs = canvas?.fontSettings || {};
+    return {
+        sampleText: fs.sample_text || '',
+        ascender: fs.ascender,
+        descender: fs.descender,
+        capHeight: fs.cap_height,
+        xHeight: fs.x_height,
+        canvasSizeHeight: canvas?.canvas_size_height ?? fs.upm ?? 1000,
+        upm: fs.upm ?? 1000
+    };
 }
 
 export function isTreeDescendant(ancestorId, descendantId) {

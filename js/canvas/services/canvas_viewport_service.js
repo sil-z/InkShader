@@ -6,7 +6,7 @@
  * - Middle mouse drag: pan canvas
  * - Ctrl + left drag (no object hit): pan canvas (state -> PANNING)
  * - Ctrl + arrow keys (up/down/left/right): pan by 40px step
- * - Zoom range: 2% ~ 5000% (scale_min: 0.02, scale_max: 50)
+ * - Zoom range: 0.1% ~ 50000% (scale_min: 0.001, scale_max: 500)
  *
  * Zoom is calculated via zoomTicks counter + formula: scale = scaleBase * zoomFactor^ticks.
  * Snaps when approaching 100%.

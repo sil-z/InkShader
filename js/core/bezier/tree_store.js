@@ -1003,7 +1003,7 @@ export class TreeStore {
     // References / clones / unlink
     // =========================================================================
 
-    pasteGroupRef(sourceGroupId, targetGroupId, transform = null) {
+    pasteGroupRef(sourceGroupId, targetGroupId, transform = null, preferredName = null) {
         let parent = this.treeItems.get(targetGroupId);
         if (!parent || parent.type !== 'group' || parent.isRef) {
             return null;
@@ -1014,7 +1014,11 @@ export class TreeStore {
         const source = this.treeItems.get(sourceGroupId);
         if (!source) return null;
 
-        const uniqueRefName = this.ensureUniqueName(source.name + "_Ref");
+        // preName: keep the original ref name (e.g. "test_Ref_12") when
+        // re-importing a UFO/SVG round-trip; otherwise generate "X_Ref" / "X_Ref_N".
+        const uniqueRefName = preferredName
+            ? this.ensureUniqueName(preferredName)
+            : this.ensureUniqueName(source.name + "_Ref");
 
         this.treeItems.set(uniqueRefName, {
             id: uniqueRefName, type: 'group', name: uniqueRefName, charCode: null,

@@ -1224,7 +1224,9 @@ export class PropertyPanel extends HTMLElement {
             } else if (item.type === 'group' && !item.isRef && selectedCurves.length === 0) {
                 patch('g_name', item.name);
                 patch('g_char', item.charCode || '');
-                patch('g_advance', item.advance !== undefined ? item.advance : 1000);
+                // Live read (treeItems) — the tree snapshot may lag in-place advances (e.g. UPM rescale),
+                // matching the live-read pattern of getGroupLsbRsb below.
+                patch('g_advance', EditorModel.getGroupAdvance(item.id) ?? 1000);
                 const grpLr = getGroupLsbRsb(item.id);
                 patch('g_lsb', grpLr.lsb);
                 patch('g_rsb', grpLr.rsb);
@@ -1238,7 +1240,7 @@ export class PropertyPanel extends HTMLElement {
             if (activeItem && activeItem.type === 'group' && !activeItem.isRef) {
                 patch('g_name', activeItem.name);
                 patch('g_char', activeItem.charCode || '');
-                patch('g_advance', activeItem.advance !== undefined ? activeItem.advance : 1000);
+                patch('g_advance', EditorModel.getGroupAdvance(activeGroupId) ?? 1000);
                 const grpLr = getGroupLsbRsb(activeGroupId);
                 patch('g_lsb', grpLr.lsb);
                 patch('g_rsb', grpLr.rsb);

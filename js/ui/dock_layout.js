@@ -2,7 +2,8 @@ const PANEL_DEFS = {
     canvas: { label: "Canvas", compSelector: ".canvas-wrap" },
     objects: { label: "Objects", compSelector: "object-tree" },
     properties: { label: "Properties", compSelector: ".property_panel" },
-    console: { label: "Console", compSelector: "logger-panel" }
+    console: { label: "Console", compSelector: "logger-panel" },
+    sample: { label: "Sample", compSelector: "sample-text-panel" }
 };
 
 function createNode(type, data = {}) {
@@ -34,7 +35,21 @@ export class DockLayout {
         for (const [id, def] of Object.entries(PANEL_DEFS)) {
             this._componentRefs[id] = document.querySelector(def.compSelector);
         }
-        if (this._restoreFromStorage()) return;
+        if (this._restoreFromStorage()) {
+            // Restored layout may predate newly added panels (e.g. sample) — make sure
+            // every requested panel has a leaf in the tree, then persist the upgrade.
+            let changed = false;
+            for (const id of panelIds) {
+                if (this._hasPanelLeaf(id)) continue;
+                this._addPanelLeaf(id);
+                changed = true;
+            }
+            if (changed) {
+                this._buildDOM();
+                this._saveStateToStorage();
+            }
+            return;
+        }
         const canvasIdx = panelIds.indexOf("canvas");
         if (canvasIdx >= 0 && panelIds.length > 1) {
             const otherIds = panelIds.filter(id => id !== "canvas");
@@ -60,6 +75,30 @@ export class DockLayout {
         }
         this._buildDOM();
         this._saveStateToStorage();
+    }
+
+    /** Whether the tree contains a leaf with the given panel id. */
+    _hasPanelLeaf(panelId) {
+        const walk = (n) => {
+            if (!n) return false;
+            if (n.type === 'leaf' && n.id === panelId) return true;
+            if (n.children) return n.children.some(walk);
+            return false;
+        };
+        return walk(this.root);
+    }
+
+    /** Append a leaf for a missing panel (mirrors _unfloatPanel's addNode semantics). */
+    _addPanelLeaf(panelId) {
+        const node = createNode("leaf", { id: panelId });
+        if (!this.root) {
+            this.root = node;
+        } else if (this.root.type === "leaf" || this.root.type === "tabs") {
+            this.root = createNode("split", { direction: "v", sizes: [50, 50], children: [this.root, node] });
+        } else if (this.root.type === "split") {
+            this.root.children.push(node);
+            this.root.sizes = this.root.children.map(() => 100 / this.root.children.length);
+        }
     }
 
     serialize() {

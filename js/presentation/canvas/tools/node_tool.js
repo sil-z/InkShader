@@ -415,9 +415,9 @@ export class NodeTool extends BaseTool {
 
         // Cap snap threshold to prevent spatial grid queries from returning all nodes
         // at low zoom levels. The 5px visual threshold is preserved for normal zoom;
-        // at very low zoom we limit the search radius to 250 world units (= 5px at
-        // the minimum zoom of 0.02, maintaining consistent snap feel across the full
-        // zoom range).
+        // at very low zoom we limit the search radius to 250 world units as a
+        // performance guard (5px at 0.02; below that the radius stays capped at 250,
+        // independent of the minimum zoom of 0.001).
         let snapThresholdLogical = Math.min(5 / c.scale, 250);
 
         // Compute world position once

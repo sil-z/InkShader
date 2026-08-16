@@ -485,8 +485,8 @@ sequenceText: string       — 原始序列文本
 ```
 {
   version: "1.0",                    — 格式版本号
-  canvas_size_width: number,         — 画布宽度（CSS 像素）
-  canvas_size_height: number,        — 画布高度（CSS 像素）
+  canvas_size_width: number,         — 画布宽度（设计单位，em 框，默认 1000，随 UPM 统一缩放）
+  canvas_size_height: number,        — 画布高度（设计单位，em 框，默认 1000，随 UPM 统一缩放）
   family_name: string,               — 字体族名
   project_name: string,              — 项目名
   basic_spacing: number,             — 默认 advance（默认 1000）
@@ -494,8 +494,10 @@ sequenceText: string       — 原始序列文本
   postscript_name: string,           — PostScript 名称
   preferred_family: string,          — 首选字体族名
   preferred_subfamily: string,       — 首选字体子族名
+  style_map_family: string,          — 样式映射族名（UFO styleMapFamilyName）
   copyright/designer/...: string,    — 字体元数据
   upm/ascender/descender/...: number,— 字体度量
+  italic_angle: number,              — 斜体角（逆时针度数，默认 0）
   font_version: string,              — 字体版本
   editor_sequence: string,           — 序列文本（\group\ 引用格式）
   editor_active_indices: number[],   — 激活的序列索引

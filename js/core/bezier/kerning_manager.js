@@ -369,30 +369,38 @@ export class KerningManager {
     // =========================================================================
 
     /**
-     * Get kerning value: exact pair first, then class pair, then 0.
+     * Get kerning value for a pair. Follows the UFO kerning.plist lookup
+     * algorithm and exception conflict resolution:
+     *   1. exact pair (glyph+glyph — Level 3)
+     *   2. glyph + group  (Level 2; higher priority than group+glyph)
+     *   3. group + glyph  (Level 2)
+     *   4. group + group  (Level 1)
+     * An explicitly stored 0 is a valid exception value (it overrides a
+     * non-zero class value), so presence is checked, not truthiness.
      * @param {string} leftName - Left glyph name
      * @param {string} rightName - Right glyph name
      * @returns {number} Kerning value in UPM units
      */
     getKerning(leftName, rightName) {
-        // 1. Exact pair
-        const exact = this.getPair(leftName, rightName);
-        if (exact !== 0) return exact;
-        // 2. Class pair (both sides in classes)
+        // 1. Exact pair (presence check: explicit 0 must win over classes)
+        const rightMap = this._pairs.get(leftName);
+        if (rightMap && rightMap.has(rightName)) return rightMap.get(rightName);
+        // 2. Mixed pairs. UFO: glyph+group (class on the right) is given
+        //    higher priority than group+glyph (class on the left) when both
+        //    could apply.
         const leftClass = this.getGlyphClass(leftName, 'left');
         const rightClass = this.getGlyphClass(rightName, 'right');
+        if (rightClass) {
+            const inner = this.mixed_class_right.get(rightClass);
+            if (inner && inner.has(leftName)) return inner.get(leftName);
+        }
+        if (leftClass) {
+            const inner = this.mixed_class_left.get(leftClass);
+            if (inner && inner.has(rightName)) return inner.get(rightName);
+        }
+        // 3. Class pair (both sides in classes)
         if (leftClass && rightClass) {
             return this.getClassValue(leftClass, rightClass);
-        }
-        // 3. Mixed: class on left, glyph on right
-        if (leftClass) {
-            const mixedL = this.getMixedPair('leftClass', leftClass, rightName);
-            if (mixedL !== 0) return mixedL;
-        }
-        // 4. Mixed: glyph on left, class on right
-        if (rightClass) {
-            const mixedR = this.getMixedPair('rightClass', rightClass, leftName);
-            if (mixedR !== 0) return mixedR;
         }
         return 0;
     }

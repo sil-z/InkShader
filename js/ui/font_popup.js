@@ -40,6 +40,10 @@ const POPUP_HTML = `
         <label data-i18n="font.preferred_subfamily">Preferred Subfamily</label>
         <input type="text" id="font_popup_preferred_subfamily" class="font-popup-input">
     </div>
+    <div class="pen-tool-row">
+        <label data-i18n="font.style_map_family">Style Map Family</label>
+        <input type="text" id="font_popup_style_map_family" class="font-popup-input">
+    </div>
 
     <div class="pen-tool-separator"></div>
 
@@ -140,6 +144,10 @@ const POPUP_HTML = `
         <label data-i18n="font.cap_height">Cap Height</label>
         <input type="number" step="1" id="font_popup_cap_height" class="font-popup-input">
     </div>
+    <div class="pen-tool-row">
+        <label data-i18n="font.italic_angle">Italic Angle</label>
+        <input type="number" step="0.1" id="font_popup_italic_angle" class="font-popup-input">
+    </div>
 
     <div class="pen-tool-separator"></div>
 
@@ -157,6 +165,7 @@ const DEFAULT_FONT = {
     postscript_name: "",
     preferred_family: "",
     preferred_subfamily: "",
+    style_map_family: "",
     copyright: "",
     designer: "",
     designer_url: "",
@@ -174,6 +183,7 @@ const DEFAULT_FONT = {
     descender: -200,
     x_height: 500,
     cap_height: 700,
+    italic_angle: 0,
     version: "1.0"
 };
 
@@ -263,6 +273,7 @@ export class FontPopup extends HTMLElement {
         this.querySelector('#font_popup_postscript_name').value = fontSettings.postscript_name || '';
         this.querySelector('#font_popup_preferred_family').value = fontSettings.preferred_family || '';
         this.querySelector('#font_popup_preferred_subfamily').value = fontSettings.preferred_subfamily || '';
+        this.querySelector('#font_popup_style_map_family').value = fontSettings.style_map_family || '';
         this.querySelector('#font_popup_copyright').value = fontSettings.copyright || '';
         this.querySelector('#font_popup_designer').value = fontSettings.designer || '';
         this.querySelector('#font_popup_designer_url').value = fontSettings.designer_url || '';
@@ -280,6 +291,7 @@ export class FontPopup extends HTMLElement {
         this.querySelector('#font_popup_descender').value = fontSettings.descender;
         this.querySelector('#font_popup_x_height').value = fontSettings.x_height != null ? fontSettings.x_height : DEFAULT_FONT.x_height;
         this.querySelector('#font_popup_cap_height').value = fontSettings.cap_height != null ? fontSettings.cap_height : DEFAULT_FONT.cap_height;
+        this.querySelector('#font_popup_italic_angle').value = fontSettings.italic_angle != null ? fontSettings.italic_angle : DEFAULT_FONT.italic_angle;
         this.querySelector('#font_popup_version').value = fontSettings.version;
     }
 
@@ -294,12 +306,17 @@ export class FontPopup extends HTMLElement {
             const value = parseInt(this.querySelector(`#${id}`).value, 10);
             return Number.isFinite(value) ? value : fallback;
         };
+        const readFloat = (id, fallback) => {
+            const value = parseFloat(this.querySelector(`#${id}`).value);
+            return Number.isFinite(value) ? value : fallback;
+        };
         return {
             family: this.querySelector('#font_popup_family').value.trim() || DEFAULT_FONT.family,
             style: this.querySelector('#font_popup_style').value.trim() || DEFAULT_FONT.style,
             postscript_name: this.querySelector('#font_popup_postscript_name').value.trim(),
             preferred_family: this.querySelector('#font_popup_preferred_family').value.trim(),
             preferred_subfamily: this.querySelector('#font_popup_preferred_subfamily').value.trim(),
+            style_map_family: this.querySelector('#font_popup_style_map_family').value.trim(),
             copyright: this.querySelector('#font_popup_copyright').value.trim(),
             designer: this.querySelector('#font_popup_designer').value.trim(),
             designer_url: this.querySelector('#font_popup_designer_url').value.trim(),
@@ -317,6 +334,7 @@ export class FontPopup extends HTMLElement {
             descender: readInt('font_popup_descender', DEFAULT_FONT.descender),
             x_height: readInt('font_popup_x_height', DEFAULT_FONT.x_height),
             cap_height: readInt('font_popup_cap_height', DEFAULT_FONT.cap_height),
+            italic_angle: readFloat('font_popup_italic_angle', DEFAULT_FONT.italic_angle),
             version: this.querySelector('#font_popup_version').value.trim() || DEFAULT_FONT.version,
             project_name: this.querySelector('#font_popup_project_name').value.trim(),
             basic_spacing: canvas?.fontSettings?.basic_spacing ?? 1000
@@ -337,7 +355,8 @@ export class FontPopup extends HTMLElement {
             font_popup_ascender: {},
             font_popup_descender: {},
             font_popup_x_height: {},
-            font_popup_cap_height: {}
+            font_popup_cap_height: {},
+            font_popup_italic_angle: {}
         };
         const rule = numericRules[target.id];
         if (!rule) return true;
@@ -354,7 +373,8 @@ export class FontPopup extends HTMLElement {
             font_popup_ascender: DEFAULT_FONT.ascender,
             font_popup_descender: DEFAULT_FONT.descender,
             font_popup_x_height: DEFAULT_FONT.x_height,
-            font_popup_cap_height: DEFAULT_FONT.cap_height
+            font_popup_cap_height: DEFAULT_FONT.cap_height,
+            font_popup_italic_angle: DEFAULT_FONT.italic_angle
         };
         return map[id] != null ? String(map[id]) : '';
     }

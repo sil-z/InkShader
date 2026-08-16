@@ -68,6 +68,7 @@ export const translations = {
 
         "pref.font": "Font Info", "font.family": "Family Name", "font.style": "Style Name", 
         "font.postscript_name": "PostScript Name", "font.preferred_family": "Preferred Family", "font.preferred_subfamily": "Preferred Subfamily",
+        "font.style_map_family": "Style Map Family",
         "font.copyright": "Copyright", "font.designer": "Designer", "font.designer_url": "Designer URL",
         "font.manufacturer": "Manufacturer", "font.manufacturer_url": "Manufacturer URL",
         "font.license": "License", "font.license_url": "License URL",
@@ -75,12 +76,16 @@ export const translations = {
         "font.upm": "Units Per Em (UPM)", "font.weight_class": "Weight Class", "font.width_class": "Width Class",
         "font.ascender": "Ascender", "font.descender": "Descender", 
         "font.x_height": "x-Height", "font.cap_height": "Cap Height",
+        "font.italic_angle": "Italic Angle",
         "font.version": "Version",
 
         "menu.import": "Import",
         "prop.image_details": "Image Details",
         "kern.title": "Add Kerning", "kern.add": "Add",
-        "kern.no_pairs": "No kerning pairs defined."
+        "kern.no_pairs": "No kerning pairs defined.",
+        "sample.title": "Sample Text", "sample.kerning": "Kerning", "sample.guides": "Metric Guides",
+        "sample.fontSize": "Size",
+        "sample.placeholder": "Type sample text, \\name\\ for non-character glyphs, Enter for new line"
     },
     zh: {
         "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
@@ -146,6 +151,7 @@ export const translations = {
         "color.path_stroke": "路径描边", "color.path_fill": "路径填充", "color.preview": "预览曲线", "color.hover_stroke": "悬停高亮", "color.oncurve_stroke": "节点描边", "color.oncurve_fill": "节点填充", "color.selected_stroke": "选中边缘", "color.selected_fill": "选中填充", "color.ctrl_stroke": "控制柄连线", "color.ctrl_fill": "控制柄端点", "color.ctrl_ahead": "出场手柄", "color.ctrl_back": "入场手柄", "color.guideline": "参考线", "color.measure": "测量工具", "color.select_box": "选中包围盒", "color.body_bg": "画布底色",
         "pref.font": "字体信息", "font.family": "字体家族名称", "font.style": "字重/样式名称",
         "font.postscript_name": "PostScript 名称", "font.preferred_family": "首选家族名称", "font.preferred_subfamily": "首选子家族名称",
+        "font.style_map_family": "样式映射家族名称",
         "font.copyright": "版权信息", "font.designer": "设计师", "font.designer_url": "设计师网址",
         "font.manufacturer": "制造商", "font.manufacturer_url": "制造商网址",
         "font.license": "授权协议", "font.license_url": "授权协议网址",
@@ -153,12 +159,16 @@ export const translations = {
         "font.upm": "UPM (Em 框大小)", "font.weight_class": "字重等级", "font.width_class": "字宽等级",
         "font.ascender": "升部 (Ascender)", "font.descender": "降部 (Descender)",
         "font.x_height": "x-高度 (x-Height)", "font.cap_height": "大写高度 (Cap Height)",
+        "font.italic_angle": "斜体角度",
         "font.version": "字体版本",
 
         "menu.import": "导入",
         "prop.image_details": "图像详情",
         "kern.title": "添加字偶距", "kern.add": "添加",
-        "kern.no_pairs": "暂无字偶距数据"
+        "kern.no_pairs": "暂无字偶距数据",
+        "sample.title": "样张", "sample.kerning": "字偶距", "sample.guides": "度量参考线",
+        "sample.fontSize": "字号",
+        "sample.placeholder": "输入样张文本，\\name\\ 引用非字符字形，回车换行"
     }
 };
 

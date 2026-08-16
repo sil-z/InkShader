@@ -1,6 +1,6 @@
 // Windows Firefox only: control scrollbar visibility via data-scrollbar-visible attribute
 // Chrome: use scrollbar-color CSS property (supported in Chrome 121+) for reliable show/hide
-const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-scroll, .pen-tool-popup-body';
+const SCROLLABLE = '.placeholder, .tree_panel, .sequence-add-menu, .pref_modal_body, .pref_content_area, .logger-scroll, .pen-tool-popup-body, .sample-panel-body, .sample-canvas-wrap, .sample-text-input';
 
 function isFirefoxWindows() {
     return navigator.userAgent.toLowerCase().includes('firefox')

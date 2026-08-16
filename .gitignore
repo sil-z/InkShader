@@ -4,3 +4,31 @@
 # OpenCode working data
 .omo/
 .codegraph
+
+# Python cache
+__pycache__/
+
+# Playwright MCP downloads / screenshots
+.playwright-mcp/
+
+# Debug screenshots captured by probes (regenerable via test/*_probe.mjs).
+# NOTE: the canonical baseline fixture test/InkShader_project_*.json stays
+# TRACKED (the driver loads it every run) — only the generated amplified
+# fixtures below are ignored.
+test/*.png
+test/huge_project.json
+test/big_project.json
+
+# Python cache
+__pycache__/
+
+# Playwright MCP downloads / screenshots (outside repo, but harmless)
+.playwright-mcp/
+
+# Debug screenshots captured by probes (regenerable via test/*_probe.mjs)
+test/*.png
+
+# Generated test fixtures (amplified projects, 500KB+)
+test/*_project_*.json
+test/huge_project.json
+test/big_project.json

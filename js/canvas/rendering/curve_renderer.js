@@ -263,6 +263,15 @@ export function appendCurveOutlinePath(ctx, curve, viewport, { pass = "all", ref
         appendCurveFillPath(ctx, curve, viewport, { refId, strokePreview });
         return;
     }
+    if (pass === "skeleton") {
+        // Raw pre-expand data: emit the centerline skeleton bezier chain only.
+        // For smart strokes this is the model BEFORE boolean expand — used for
+        // SVG visual-layer export (stroke preserved as stroke-width, not baked
+        // into an expanded outline) and any other "original data" export.
+        emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(),
+            createViewportTransform(viewport), { close: isCurveClosedRing(curve) });
+        return;
+    }
     if (pass === "stroke" || strokePreview) {
         appendCurveFillPath(ctx, curve, viewport, { refId, strokePreview: true });
         emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));

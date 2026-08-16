@@ -86,6 +86,21 @@ function mergeCoincidentPathSegments(path, eps = 0.5) {
     }
 }
 
+/** First on-ring point inside a closed child (grid scan; bounds.center can
+ *  fall in the notch of a non-convex ring such as a "P" body). */
+function ringInteriorPoint(child, pScope) {
+    const b = child.bounds;
+    const steps = 20;
+    for (let gy = 1; gy < steps; gy++) {
+        for (let gx = 1; gx < steps; gx++) {
+            const px = b.x + b.width * gx / steps;
+            const py = b.y + b.height * gy / steps;
+            try { if (child.contains(new pScope.Point(px, py))) return { x: px, y: py }; } catch (_) { }
+        }
+    }
+    return { x: b.center.x, y: b.center.y };
+}
+
 /** Refresh cached_boolean_geometry based on current curve geometry */
 export function refreshCurveBooleanCache(curve) {
     const pScope = getPaperScope();
@@ -118,83 +133,104 @@ export function refreshCurveBooleanCache(curve) {
                 curve: roundCap ? curve : null,
                 halfWidth: roundCap ? hw : 0
             });
+            // Build the raw (unresolved) outlines FIRST: resolveCrossings
+            // removes the original path when it replaces it, so the raw
+            // self-intersecting ring must be captured before resolving.
+            const strokePathsRaw = buildPaperPaths(pScope, strokeRec, { resolveCrossings: false });
             const strokePaths = buildPaperPaths(pScope, strokeRec, { resolveCrossings: true });
 
-            // Swallowtail filtering: resolveCrossings splits the self-
-            // intersecting stroke outline ring into CompoundPath children.
-            // Two-stage classification:
+            // Winding-based swallowtail classification (replaces the old
+            // two-stage skeleton-corridor filter, which mis-kept the inner
+            // offset self-intersection ring of a sharp turn as a reversed
+            // fill core, cancelling it into a hole under fill("nonzero")).
             //
-            //   Stage 1 — Fill core test:
-            //     The skeleton ± halfWidth corridor is the INVARIABLE fill
-            //     zone (the stroke body).  Any child that CONTAINS a skeleton
-            //     point overlaps this zone and MUST be kept as fill.
+            // resolveCrossings splits the self-intersecting stroke outline
+            // ring into CompoundPath children. Classify each child by the
+            // winding of its interior point against the RAW outline
+            // (nonzero — the same semantics the canvas uses):
             //
-            //   Stage 2 — Candidate discrimination:
-            //     Children OUTSIDE the fill core are either:
-            //       • Genuine holes — enclosed regions bounded by forward
-            //         & backward offsets, located INSIDE the fill boundary
-            //         (keep — alternating winding from resolveCrossings
-            //          creates the hole under fill("nonzero")).
-            //       • Swallowtails — same-side offset self-intersection
-            //         loops that protrude OUTSIDE the fill boundary (remove).
+            //   • wn == 0  → genuine HOLE (region enclosed by forward &
+            //                backward offsets but outside the stroke body,
+            //                e.g. the counter of a "P"). KEEP with winding
+            //                opposite the fill rings so the CompoundPath
+            //                carves it under fill("nonzero").
+            //   • wn != 0, covered by another child → SWALLOWTAIL (same-side
+            //                offset self-intersection loop protruding from
+            //                the fill boundary at a sharp corner). REMOVE.
+            //   • wn != 0, not covered → stroke BODY. KEEP.
             //
-            // This replaces the old bounding-box heuristic (child bounds
-            // vs stroke width) which failed for small forward-backward
-            // crossing holes (misclassified as swallowtails).
-            const skelSegments = curve.getSkeletonBezierSegments();
-            const skeletonSamples = [];
-            for (const seg of skelSegments) {
-                for (const t of [0, 0.15, 0.3, 0.5, 0.7, 0.85, 1]) {
-                    const mt = 1 - t;
-                    const x = mt * mt * mt * seg.p0.x
-                        + 3 * mt * mt * t * seg.p1.x
-                        + 3 * mt * t * t * seg.p2.x
-                        + t * t * t * seg.p3.x;
-                    const y = mt * mt * mt * seg.p0.y
-                        + 3 * mt * mt * t * seg.p1.y
-                        + 3 * mt * t * t * seg.p2.y
-                        + t * t * t * seg.p3.y;
-                    skeletonSamples.push(new pScope.Point(x, y));
-                }
-            }
+            // Faithfulness guard: the classification is only meaningful when
+            // resolveCrossings PARTITIONS the raw outline. For pathological
+            // self-intersections (e.g. a 180° hairpin U-turn) resolveCrossings
+            // silently DROPS whole lobes; the summed child area then deviates
+            // from the raw area. In that case keep the raw self-intersecting
+            // outline instead — canvas fill("nonzero") renders it correctly
+            // without splitting.
             for (let i = 0; i < strokePaths.length; i++) {
                 const p = strokePaths[i];
+                const rawPath = strokePathsRaw[i];
                 if (p instanceof pScope.CompoundPath && p.children.length > 1) {
-                    // Stage 1: identify fill-core children (contain skeleton)
-                    const fillCore = [];
-                    const candidates = [];
+                    const rawArea = rawPath?.area || 0;
+                    const childAreaSum = p.children.reduce((s, c) => s + (c.area || 0), 0);
+                    const faithful = rawArea !== 0 &&
+                        Math.abs(childAreaSum - rawArea) / Math.abs(rawArea) < 0.1;
+                    if (!faithful) {
+                        p.remove();
+                        strokePaths[i] = rawPath;
+                        continue;
+                    }
+                    // Classify each child: winding at its interior + coverage.
+                    const kept = [];
                     for (const child of p.children) {
-                        if (!(child instanceof pScope.Path)) { fillCore.push(child); continue; }
-                        const hasSkel = skeletonSamples.length === 0
-                            || skeletonSamples.some(pt => child.contains(pt));
-                        if (hasSkel) {
-                            fillCore.push(child);
-                        } else {
-                            candidates.push(child);
+                        if (!(child instanceof pScope.Path)) {
+                            kept.push({ child, wnNonZero: true });
+                            continue;
+                        }
+                        const pt = ringInteriorPoint(child, pScope);
+                        let wnNonZero = true;
+                        try { wnNonZero = rawPath.contains(new pScope.Point(pt.x, pt.y)); } catch (_) { }
+                        let covered = false;
+                        for (const other of p.children) {
+                            if (other === child) continue;
+                            try {
+                                if (other.contains(new pScope.Point(pt.x, pt.y))) { covered = true; break; }
+                            } catch (_) { }
+                        }
+                        if (!wnNonZero || !covered) kept.push({ child, wnNonZero });
+                    }
+                    // Direction unification: all fill rings (wn != 0) share
+                    // one orientation, all hole rings (wn == 0) the opposite,
+                    // so the CompoundPath's nonzero fill matches the raw ring
+                    // (resolveCrossings only guarantees alternating winding
+                    //  for nested rings — separate swallowtail rings would
+                    //  otherwise turn into holes).
+                    const fillRings = kept.filter(m => m.wnNonZero).map(m => m.child);
+                    const holeRings = kept.filter(m => !m.wnNonZero).map(m => m.child);
+                    if (fillRings.length) {
+                        const baseSign = Math.sign(fillRings[0].area) || -1;
+                        for (const c of fillRings) {
+                            if ((Math.sign(c.area) || -1) !== baseSign) c.reverse();
+                        }
+                        for (const c of holeRings) {
+                            if ((Math.sign(c.area) || -1) === baseSign) c.reverse();
                         }
                     }
-                    // Stage 2: candidates inside fill boundary = hole, outside = swallowtail
-                    const holes = [];
-                    for (const cand of candidates) {
-                        const center = cand.bounds.center;
-                        const insideFill = fillCore.some(fc => {
-                            try { return fc.contains(center); } catch (_) { return false; }
-                        });
-                        if (insideFill) {
-                            holes.push(cand);
-                        } else {
-                            cand.remove(); // swallowtail
-                        }
-                    }
-                    const keep = [...fillCore, ...holes];
-                    if (keep.length === 1) {
-                        const clone = keep[0].clone();
+                    if (kept.length === 1) {
+                        const clone = kept[0].child.clone();
                         p.remove();
                         strokePaths[i] = clone;
+                    } else {
+                        // Keep the CompoundPath, but REMOVE the rejected
+                        // children (same-direction overlap rings that are
+                        // covered by another ring, e.g. when the skeleton
+                        // itself loops over its own stroke). Keeping them
+                        // would leak redundant overlapping paths into the
+                        // cached geometry.
+                        const keptSet = new Set(kept.map(m => m.child));
+                        for (const child of [...p.children]) {
+                            if (!keptSet.has(child)) child.remove();
+                        }
                     }
-                    // else keep CompoundPath with alternating-winding children
-                    // (fillCore children and hole children have opposite winding
-                    //  from resolveCrossings → fill("nonzero") creates holes)
                 }
             }
             allSolidPieces.push(...strokePaths);
@@ -244,15 +280,18 @@ export function refreshCurveBooleanCache(curve) {
         }
     }
 
-    // Reorient resolves winding within CompoundPath children: outer paths
-    // get clockwise winding, inner (hole) paths get counter-clockwise.
-    // For open smart-stroke paths, resolveCrossings already sets the correct
-    // alternating winding on CompoundPath children — reorient is unnecessary
-    // and may destroy the alternating winding if Paper.js misidentifies
-    // containment relationships for non-nested children.  For closed paths
-    // the fill-area + stroke-outline unite may merge the CompoundPath into
-    // a single self-intersecting Path, so reorient only for closed paths.
-    if (curve.closed && curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
+    // Apply the user's Smart Expand Direction setting: reorient the outline
+    // so root rings follow smart_stroke_clockwise and hole rings the opposite
+    // orientation.  The bundled paper.js reorient(nonZero, clockwise) is
+    // containment-aware (reorientPaths): it preserves the alternating winding
+    // of nested rings and only sets the orientation of root rings to
+    // `clockwise` — safe for both closed paths (fill-area ∪ stroke-outline
+    // may merge into a single self-intersecting Path) and open paths
+    // (CompoundPath children from resolveCrossings), so the old curve.closed
+    // guard is removed.  Without it, the direction setting was a silent
+    // no-op for open smart strokes (the common pen-stroke case), leaving
+    // expand direction always automatic.
+    if (curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
         try {
             resultPath.reorient(true, curve.smart_stroke_clockwise);
         } catch (e) {

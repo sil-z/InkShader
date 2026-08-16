@@ -1,0 +1,909 @@
+{
+    "version": "1.0",
+    "editor_guidelines": [],
+    "editor_sequence": "ABCDE\\test\\\\test1\\\\test2\\\\A_D\\",
+    "editor_active_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+    ],
+    "family_name": "Simple Script",
+    "project_name": "simple-script",
+    "basic_spacing": 1000,
+    "font_style": "Regular",
+    "postscript_name": "Simple-Script",
+    "preferred_family": "",
+    "preferred_subfamily": "",
+    "style_map_family": "",
+    "copyright": "",
+    "designer": "",
+    "designer_url": "",
+    "manufacturer": "",
+    "manufacturer_url": "",
+    "license": "",
+    "license_url": "",
+    "trademark": "",
+    "description": "",
+    "sample_text": "ABCDEFG",
+    "upm": 1000,
+    "weight_class": 400,
+    "width_class": 5,
+    "ascender": 800,
+    "descender": -200,
+    "x_height": 500,
+    "cap_height": 0,
+    "italic_angle": 0,
+    "font_version": "1.0",
+    "glyphs": {
+        "B": {
+            "name": "B",
+            "char_code": "B",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_2",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 439.9357355343625,
+                            "y": 112.98619409063548,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 536.2479909062632,
+                                "y": 243.51060648732982
+                            }
+                        },
+                        {
+                            "x": 117.06093339572323,
+                            "y": 797.4801342491861,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 343.9736682687761,
+                                "y": 404.4557485646523
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "path",
+                    "name": "Path_3",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 117.06093339572317,
+                            "y": 797.4801342491861,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 467.2751208528721,
+                                "y": 190.89136804195334
+                            }
+                        },
+                        {
+                            "x": 851.9497958920753,
+                            "y": 168.43329958206368,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 966.906610158589,
+                                "y": 222.0385424316409
+                            },
+                            "control_2": {
+                                "x": 725.2135111631598,
+                                "y": 109.33519944685791
+                            }
+                        },
+                        {
+                            "x": 656.4712848849988,
+                            "y": 450.0469930293608,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 585.1758281677621,
+                                "y": 450.0469930293608
+                            },
+                            "control_2": {
+                                "x": 876.21620814395,
+                                "y": 450.04699302936075
+                            }
+                        },
+                        {
+                            "x": 635.9449601557706,
+                            "y": 421.73987566134076,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 690.1188553371301,
+                                "y": 421.73987566134076
+                            },
+                            "control_2": {
+                                "x": 560.5985361749556,
+                                "y": 421.73987566134076
+                            }
+                        },
+                        {
+                            "x": 768.1579643327384,
+                            "y": 564.5501715738418,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 768.1579643327384,
+                                "y": 674.3863202258999
+                            },
+                            "control_2": {
+                                "x": 768.1579643327384,
+                                "y": 441.76986607327933
+                            }
+                        },
+                        {
+                            "x": 479.38932748980847,
+                            "y": 812.7067477560462,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 307.709074659594,
+                                "y": 812.7067477560462
+                            },
+                            "control_2": {
+                                "x": 625.9045238122716,
+                                "y": 812.7067477560462
+                            }
+                        },
+                        {
+                            "x": 925.6842030053502,
+                            "y": 501.3053706738034,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 559.369935186837,
+                                "y": 501.3053706738034
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "C": {
+            "name": "C",
+            "char_code": "C",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_6",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 174.01742325848534,
+                            "y": 537.6552674160768,
+                            "control_mode": "corner"
+                        },
+                        {
+                            "x": 660.783111596878,
+                            "y": 348.1528589106331,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 916.1486372059386,
+                                "y": 172.03082743720634
+                            },
+                            "control_2": {
+                                "x": 433.10646481075986,
+                                "y": 505.17825791619975
+                            }
+                        },
+                        {
+                            "x": 578.2725247725533,
+                            "y": 225.17560574275518,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 7.5856440779869345,
+                                "y": 635.0607733732423
+                            },
+                            "control_2": {
+                                "x": 846.7263577574457,
+                                "y": 32.36366620747319
+                            }
+                        },
+                        {
+                            "x": 660.783111596878,
+                            "y": 770.5910019106884,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 861.5725857783725,
+                                "y": 645.7113462523216
+                            },
+                            "control_2": {
+                                "x": 427.95383055866483,
+                                "y": 915.3975987791855
+                            }
+                        },
+                        {
+                            "x": 354.40717672471703,
+                            "y": 801.4633525817019,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 570.1296730639216,
+                                "y": 500.0972455069747
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "G": {
+            "name": "G",
+            "char_code": "G",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "E": {
+            "name": "E",
+            "char_code": "E",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_8",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 809.8198414358118,
+                            "y": 121.14245237472578,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 537.6475750639787,
+                                "y": 82.87814196730822
+                            }
+                        },
+                        {
+                            "x": 572.1471649198289,
+                            "y": 414.172273719638,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 631.2200925348733,
+                                "y": 414.172273719638
+                            },
+                            "control_2": {
+                                "x": 405.22435324254127,
+                                "y": 414.172273719638
+                            }
+                        },
+                        {
+                            "x": 569.0899586433337,
+                            "y": 385.89439373809836,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 456.7509780235192,
+                                "y": 385.89439373809836
+                            },
+                            "control_2": {
+                                "x": 619.7360155786804,
+                                "y": 385.89439373809836
+                            }
+                        },
+                        {
+                            "x": 291.27372263415884,
+                            "y": 651.5290978770499,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 291.27372263415884,
+                                "y": 839.925061752721
+                            },
+                            "control_2": {
+                                "x": 291.27372263415884,
+                                "y": 504.9812386989241
+                            }
+                        },
+                        {
+                            "x": 644.1057320120559,
+                            "y": 673.6928845036465,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 721.0461380160913,
+                                "y": 482.82468327212615
+                            },
+                            "control_2": {
+                                "x": 565.9165337837456,
+                                "y": 867.6589992755083
+                            }
+                        },
+                        {
+                            "x": 374.25756771304725,
+                            "y": 824.7997189077342,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 416.81910175850146,
+                                "y": 541.91438236228
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "D": {
+            "name": "D",
+            "char_code": "D",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_7",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 643.8266744734706,
+                            "y": 225.17560574275518,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 392.0999342443888,
+                                "y": 366.09745439323046
+                            }
+                        },
+                        {
+                            "x": 127.67392232693919,
+                            "y": 860.4280078360571,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -11.069814835408806,
+                                "y": 904.4841947595226
+                            },
+                            "control_2": {
+                                "x": 277.7561835571364,
+                                "y": 812.7714267904058
+                            }
+                        },
+                        {
+                            "x": 402.3687701087547,
+                            "y": 782.9112097182322,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 778.4760067112916,
+                                "y": 876.1253985543358
+                            },
+                            "control_2": {
+                                "x": 95.13328101702882,
+                                "y": 706.7661529093048
+                            }
+                        },
+                        {
+                            "x": 561.7768903275974,
+                            "y": 138.3448522761328,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 366.05686985707416,
+                                "y": 138.34485227613285
+                            },
+                            "control_2": {
+                                "x": 896.4091344247954,
+                                "y": 138.34485227613274
+                            }
+                        },
+                        {
+                            "x": 880.8856644169268,
+                            "y": 541.0714216963215,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 508.3848438732548,
+                                "y": 533.6723534614939
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "test": {
+            "name": "test",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_5",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 826.7724598285395,
+                            "y": 169.1465787585912,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -136.23977371879786,
+                                "y": 169.1465787585911
+                            },
+                            "control_2": {
+                                "x": 856.7724598285395,
+                                "y": 169.1465787585912
+                            }
+                        },
+                        {
+                            "x": 826.7724598285395,
+                            "y": 169.1465787585912,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 796.7724598285395,
+                                "y": 169.1465787585912
+                            },
+                            "control_2": {
+                                "x": -74.89540643254529,
+                                "y": 1581.166076670706
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "A": {
+            "name": "A",
+            "char_code": "A",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 826.7724598285395,
+                            "y": 169.1465787585912,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -136.23977371879786,
+                                "y": 169.1465787585911
+                            }
+                        },
+                        {
+                            "x": 826.7724598285395,
+                            "y": 169.1465787585912,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": -74.89540643254529,
+                                "y": 1581.166076670706
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "path",
+                    "name": "Path_1",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 826.7724598285395,
+                            "y": 169.1465787585912,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 558.719727250033,
+                                "y": 588.9194230975695
+                            }
+                        },
+                        {
+                            "x": 906.7139739687589,
+                            "y": 722.8704495512281,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 359.68924135913517,
+                                "y": 984.4961849681555
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "test1": {
+            "name": "test1",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "test_Ref",
+                    "component_id": "test",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "test2": {
+            "name": "test2",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "test_Ref_12",
+                    "component_id": "test",
+                    "transform": [
+                        -1,
+                        0,
+                        0,
+                        -1,
+                        954.1005859375,
+                        965.8573608398438
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "path",
+                    "name": "Path_4",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "show_skeleton": true,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 1550.2257006317504,
+                            "y": 386.74299152302217,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1205.4263426096275,
+                                "y": 526.3259025966277
+                            },
+                            "control_2": {
+                                "x": 1617.6115646725657,
+                                "y": 359.46360468778425
+                            }
+                        },
+                        {
+                            "x": 1759.8582006317502,
+                            "y": 493.2229915230222,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1616.7757006317497,
+                                "y": 799.3529915230223
+                            },
+                            "control_2": {
+                                "x": 1902.9407006317506,
+                                "y": 187.09299152302208
+                            }
+                        },
+                        {
+                            "x": 1926.2332006317502,
+                            "y": 586.3929915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1853.0282006317502,
+                                "y": 892.5229915230223
+                            },
+                            "control_2": {
+                                "x": 1999.43820063175,
+                                "y": 280.26299152302227
+                            }
+                        },
+                        {
+                            "x": 2089.2807006317507,
+                            "y": 676.2354915230222,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1593.4832006317502,
+                                "y": 975.7104915230224
+                            },
+                            "control_2": {
+                                "x": 2585.0782006317513,
+                                "y": 376.7604915230221
+                            }
+                        },
+                        {
+                            "x": 1403.8157006317506,
+                            "y": 839.2829915230222,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1453.7282006317491,
+                                "y": 1132.1029915230224
+                            },
+                            "control_2": {
+                                "x": 1353.903200631752,
+                                "y": 546.4629915230221
+                            }
+                        },
+                        {
+                            "x": 1866.3382006317497,
+                            "y": 959.0729915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1603.4657006317502,
+                                "y": 1205.3079915230223
+                            },
+                            "control_2": {
+                                "x": 2129.210700631749,
+                                "y": 712.8379915230223
+                            }
+                        },
+                        {
+                            "x": 1729.91070063175,
+                            "y": 1135.4304915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1373.8682006317504,
+                                "y": 1288.4954915230223
+                            },
+                            "control_2": {
+                                "x": 2085.9532006317495,
+                                "y": 982.3654915230222
+                            }
+                        },
+                        {
+                            "x": 1214.1482006317492,
+                            "y": 353.46799152302214,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1207.4932006317504,
+                                "y": 539.8079915230222
+                            },
+                            "control_2": {
+                                "x": 1220.803200631748,
+                                "y": 167.12799152302205
+                            }
+                        },
+                        {
+                            "x": 1224.1307006317493,
+                            "y": 296.90049152302214,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1244.0957006317494,
+                                "y": 729.4754915230222
+                            },
+                            "control_2": {
+                                "x": 1204.1657006317491,
+                                "y": -135.67450847697796
+                            }
+                        },
+                        {
+                            "x": 1430.4357006317496,
+                            "y": 479.9129915230222,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1330.6107006317488,
+                                "y": 662.9254915230223
+                            },
+                            "control_2": {
+                                "x": 1530.2607006317503,
+                                "y": 296.9004915230221
+                            }
+                        },
+                        {
+                            "x": 1823.08070063175,
+                            "y": 57.32049152302208,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1716.6007006317504,
+                                "y": 363.45049152302215
+                            },
+                            "control_2": {
+                                "x": 1929.5607006317496,
+                                "y": -248.80950847697804
+                            }
+                        },
+                        {
+                            "x": 1636.7407006317499,
+                            "y": -39.177008476977946,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1556.8807006317493,
+                                "y": 77.2854915230221
+                            },
+                            "control_2": {
+                                "x": 1716.6007006317504,
+                                "y": -155.639508476978
+                            }
+                        },
+                        {
+                            "x": 1503.6407006317495,
+                            "y": -425.167008476978,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1600.138200631749,
+                                "y": -188.91450847697797
+                            },
+                            "control_2": {
+                                "x": 1407.14320063175,
+                                "y": -661.4195084769781
+                            }
+                        },
+                        {
+                            "x": 2159.1582006317494,
+                            "y": -328.669508476978,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2235.6907006317506,
+                                "y": 10.73549152302212
+                            },
+                            "control_2": {
+                                "x": 2082.6257006317483,
+                                "y": -668.0745084769782
+                            }
+                        },
+                        {
+                            "x": 2588.4057006317507,
+                            "y": -132.34700847697798,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2511.8732006317496,
+                                "y": 410.0354915230222
+                            },
+                            "control_2": {
+                                "x": 2664.938200631752,
+                                "y": -674.7295084769781
+                            }
+                        },
+                        {
+                            "x": 2288.9307006317504,
+                            "y": 779.3879915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2215.7257006317504,
+                                "y": 1122.1204915230223
+                            },
+                            "control_2": {
+                                "x": 2362.1357006317503,
+                                "y": 436.6554915230222
+                            }
+                        },
+                        {
+                            "x": 2814.6757006317494,
+                            "y": 1428.2504915230224,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2395.41070063175,
+                                "y": 1617.9179915230225
+                            },
+                            "control_2": {
+                                "x": 3233.9407006317488,
+                                "y": 1238.5829915230224
+                            }
+                        },
+                        {
+                            "x": 1769.8407006317502,
+                            "y": 1464.8529915230224,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1137.6157006317499,
+                                "y": 1438.2329915230225
+                            },
+                            "control_2": {
+                                "x": 2402.0657006317506,
+                                "y": 1491.4729915230223
+                            }
+                        },
+                        {
+                            "x": 1104.3407006317493,
+                            "y": 1258.5479915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1477.0207006317505,
+                                "y": 1441.5604915230224
+                            },
+                            "control_2": {
+                                "x": 731.6607006317481,
+                                "y": 1075.5354915230223
+                            }
+                        },
+                        {
+                            "x": 2315.5507006317494,
+                            "y": 1218.6179915230223,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2252.3282006317495,
+                                "y": 1538.0579915230226
+                            },
+                            "control_2": {
+                                "x": 2378.773200631749,
+                                "y": 899.177991523022
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "A_D": {
+            "name": "A_D",
+            "char_code": "AD",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        }
+    },
+    "kerning": {
+        "A": {
+            "E": -500
+        }
+    },
+    "editor_root_order": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "G",
+        "test",
+        "test1",
+        "test2",
+        "A_D"
+    ]
+}

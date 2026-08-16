@@ -72,6 +72,7 @@ export class CanvasController {
                 return c.commands.changeSelectedObjectsBounds(payload.prop, payload.value, payload.options || {});
             case CANVAS_ACTIONS.RENAME_TREE_ITEM: return c.commands.renameTreeItem(payload.id, payload.newName);
             case CANVAS_ACTIONS.SET_GROUP_ADVANCE: return c.commands.setGroupAdvance(payload.id, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.SET_KERNING_PAIRS: return c.commands.setKerningPairs(payload.pairs || [], payload.options || {});
 
             case CANVAS_ACTIONS.UPDATE_NODE_PROPERTY:
                 return c.commands.updateSingleNodeProperty(payload.marker, payload.propId, payload.value, payload.options || {});

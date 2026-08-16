@@ -427,28 +427,31 @@ glyph-sequence-bar {
     white-space: nowrap;
     box-sizing: border-box;
     pointer-events: none;
+    /* 默认样式与其他动作按钮一致：白底（透明）、虚线边框、弱化文字 */
+    background: transparent;
+    border: 1px dashed var(--ui-border-light);
+    color: var(--ui-text-muted);
 }
 .seq-bar-name {
     font-weight: 500;
-    background: #6366f1; /* 原为 #8b5cf6，改为稍微内敛的靛蓝 */
-    border-color: #6366f1;
+}
+/* 活跃 glyph 指示：仅当 token 处于活跃状态时，名称/字码标签才显示彩色高亮（无边框实心色块，与原先一致） */
+.seq-bar-pos.active .seq-bar-name,
+.seq-bar-popup .seq-bar-name.active {
+    background: #4f46e5; /* 原为 #7c3aed，加深一档的靛蓝 */
+    border: none;
     color: #fff;
 }
-.seq-bar-pos .seq-bar-code,
-.seq-bar-popup .seq-bar-code {
-    background: #14b8a6 !important; /* 原为 #0d9488，改为更柔和的青灰绿 */
-    border-color: #14b8a6 !important;
-    color: #fff !important;
+.seq-bar-pos.active .seq-bar-code,
+.seq-bar-popup .seq-bar-code.active {
+    background: #14b8a6; /* 原为 #0d9488，改为更柔和的青灰绿 */
+    border: none;
+    color: #fff;
 }
-.seq-bar-pos .seq-bar-code.seq-bar-code-missing,
-.seq-bar-popup .seq-bar-code.seq-bar-code-missing {
-    background: #f43f5e !important; /* 原为 #e11d48，改为玫瑰红 */
-    border-color: #f43f5e !important;
-    color: #fff !important;
-}
-.seq-bar-pos.active .seq-bar-name {
-    background: #4f46e5; /* 原为 #7c3aed，加深一档的靛蓝 */
-    border-color: #4f46e5;
+.seq-bar-pos.active .seq-bar-code.seq-bar-code-missing,
+.seq-bar-popup .seq-bar-code.active.seq-bar-code-missing {
+    background: #f43f5e; /* 原为 #e11d48，改为玫瑰红 */
+    border: none;
     color: #fff;
 }
 .seq-bar-add-btn {
@@ -633,6 +636,7 @@ glyph-sequence-bar {
 .dock-content > object-tree,
 .dock-content > .placeholder,
 .dock-content > logger-panel,
+.dock-content > sample-text-panel,
 .dock-content > .canvas-wrap,
 .dock-content .placeholder {
     border: none !important;
@@ -829,6 +833,7 @@ glyph-sequence-bar {
 .dock-float-body > object-tree,
 .dock-float-body > .placeholder,
 .dock-float-body > logger-panel,
+.dock-float-body > sample-text-panel,
 .dock-float-body > .canvas-wrap,
 .dock-float-body .placeholder {
     border: none !important;
@@ -3399,4 +3404,183 @@ html.custom-cursor-active * {
 @keyframes inkshader-spin {
     from { transform: translate(-50%, -50%) rotate(0deg); }
     to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* =========================================
+   Sample Text Panel (样张面板)
+   ========================================= */
+sample-text-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--ui-bg-placeholder);
+}
+.sample-panel-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    overflow-y: auto;
+}
+.sample-text-input {
+    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 48px;
+    max-height: 120px;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 6px 10px; /* unified input styling (matches .pref_input / .logger-input group) */
+    border: 1px solid var(--ui-border);
+    border-radius: 6px; /* unified input radius */
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    outline: none;
+    transition: all 0.2s ease;
+}
+.sample-text-input:hover {
+    border-color: var(--ui-border-light);
+}
+.sample-text-input:focus {
+    border-color: var(--ui-accent);
+    box-shadow: 0 0 0 2px var(--ui-accent-bg);
+    background-color: var(--ui-bg-panel);
+}
+.sample-text-input::placeholder {
+    color: var(--ui-text-muted);
+}
+.sample-options-row {
+    flex-shrink: 0;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+.sample-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+.sample-option input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--ui-accent);
+}
+.sample-option input[type="number"] {
+    width: 56px;
+    box-sizing: border-box;
+    height: 22px; /* matches property-panel field height */
+    padding: 0 5px; /* matches property-panel field padding */
+    font-size: 11px; /* matches property-panel field font */
+    font-family: ui-monospace, monospace;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px; /* matches property-panel field radius */
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    outline: none;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.sample-option input[type="number"]::-webkit-outer-spin-button,
+.sample-option input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.sample-option input[type="number"]:hover {
+    border-color: var(--ui-border-light);
+}
+.sample-option input[type="number"]:focus {
+    border-color: var(--ui-accent);
+}
+.sample-canvas-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow-y: auto;
+    overflow-x: auto; /* canvas keeps at least one full line wide; narrow panels scroll horizontally */
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    background: var(--ui-bg-base);
+}
+/* Sample panel scrollbars: same values as the shared panel scrollbar group
+   (.dock-content / #property_container / .placeholder) — 6px, transparent
+   thumb, visible on hover/scroll. The textarea (.sample-text-input) is styled
+   with the same group: an UNSTYLED textarea falls back to the OS overlay
+   scrollbar (Chrome on Windows), which only appears while hovering exactly
+   over the scrollbar itself — the classic "scrollbar invisible until you aim
+   at it" problem. Custom scrollbars render always (transparent until hover),
+   so the textarea matches the rest of the app. */
+.sample-panel-body::-webkit-scrollbar,
+.sample-canvas-wrap::-webkit-scrollbar,
+.sample-text-input::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.sample-panel-body::-webkit-scrollbar-button,
+.sample-canvas-wrap::-webkit-scrollbar-button,
+.sample-text-input::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.sample-panel-body::-webkit-scrollbar-corner,
+.sample-canvas-wrap::-webkit-scrollbar-corner,
+.sample-text-input::-webkit-scrollbar-corner {
+    background: transparent;
+}
+/* The textarea keeps `resize: vertical`, so Chrome paints its DEFAULT gray resize
+   grip (::-webkit-resizer) at the bottom-right corner — an UNSTYLED resizer sits
+   on top of the corner where the horizontal and vertical scrollbars meet, visually
+   truncating both bars (measured: ~11px of #d9d9d9 exactly over the h-bar's right
+   end and the v-bar's bottom). Hide it so the corner matches the wrap/panel-body
+   scrollbar group; the resize hit-area still works. */
+.sample-text-input::-webkit-resizer {
+    background: transparent;
+    border: none;
+}
+.sample-panel-body::-webkit-scrollbar-thumb,
+.sample-canvas-wrap::-webkit-scrollbar-thumb,
+.sample-text-input::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
+}
+.sample-panel-body:hover::-webkit-scrollbar-thumb,
+.sample-canvas-wrap:hover::-webkit-scrollbar-thumb,
+.sample-text-input:hover::-webkit-scrollbar-thumb,
+.sample-panel-body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.sample-canvas-wrap[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+.sample-text-input[data-scrollbar-visible]::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
+}
+.sample-panel-body::-webkit-scrollbar-thumb:hover,
+.sample-canvas-wrap::-webkit-scrollbar-thumb:hover,
+.sample-text-input::-webkit-scrollbar-thumb:hover,
+.sample-panel-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.sample-canvas-wrap[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+.sample-text-input[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
+.sample-panel-body::-webkit-scrollbar-track,
+.sample-canvas-wrap::-webkit-scrollbar-track,
+.sample-text-input::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+.sample-canvas {
+    display: block;
+    width: 100%;
 }

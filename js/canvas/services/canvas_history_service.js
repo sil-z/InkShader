@@ -4,9 +4,11 @@ import { mergeInteractionFromStoreState, resolveActiveCanvasTool } from "../../a
 import { SnapshotPatchExecutor, snapshotDeepClone } from "../../domain/history/snapshot_patch_executor.js";
 import {
     applySnapshotPatchesToRuntime,
+    fontSettingsFromSnapshot,
     syncRuntimeFromSnapshotObject,
     syncTreeHierarchyFromSnapshot
 } from "../../domain/history/snapshot_runtime_applier.js";
+import { EDITOR_ACTIONS } from "../../domain/actions/editor_actions.js";
 import {
     expectsDocumentPatches,
     isMetaOnlyHistoryCommand
@@ -314,6 +316,88 @@ export class CanvasHistoryService {
         return true;
     }
 
+    /**
+     * Compact history entry for SET_FONT_SETTINGS — no snapshot patches.
+     * A UPM change rescales every coordinate in the document, so a
+     * full-document diff produces multi-MB patches and multi-second undo
+     * (measured on a ×500 document: 10.6MB patches / 4.2s undo). Instead,
+     * store the before/after font settings; undo/redo re-execute the command
+     * with the recorded settings — setFontSettings applies the inverse UPM
+     * ratio to every coordinate and restores the other font fields — then
+     * re-capture the snapshot baseline (scaleAllCoordinates marks every
+     * glyph dirty, so the re-serialize is complete).
+     */
+    _recordFontSettingsHistory(detail, commandName) {
+        const c = this.canvas;
+        if (c.is_restoring) return false;
+        const newState = this.getHistoryState(/* clearDirty= */ false);
+        const beforeSnap = c.currentStateObj?.snapshotObj || {};
+        const beforeFontSettings = fontSettingsFromSnapshot(beforeSnap, c.fontSettings);
+        const afterFontSettings = fontSettingsFromSnapshot(newState.snapshotObj, c.fontSettings);
+        const snapshotJsonChanged =
+            !!c.currentStateObj?.json &&
+            !!newState.json &&
+            c.currentStateObj.json !== newState.json;
+        if (!snapshotJsonChanged && this._isMetaSame(c.currentStateObj, newState)) {
+            return false;
+        }
+        const payload = this._normalizeHistoryPayload(
+            detail?.action?.payload || detail?.payload || {}
+        );
+        const entry = {
+            id: detail?.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            commandName,
+            payload,
+            action: detail?.action ? this._deepClone(detail.action) : null,
+            timestamp: detail?.timestamp || Date.now(),
+            snapshotPatches: [],
+            documentChanged: false,
+            fontSettingsEntry: true,
+            beforeFontSettings,
+            afterFontSettings,
+            beforeMeta: c.currentStateObj
+                ? {
+                      selection: this._deepClone(c.currentStateObj.selection),
+                      selectedCurveIds: this._deepClone(c.currentStateObj.selectedCurveIds || []),
+                      selectedRefIds: this._deepClone(c.currentStateObj.selectedRefIds || []),
+                      sessionImages: this._cloneSessionImages(c.currentStateObj.sessionImages),
+                      sequenceText: c.currentStateObj.sequenceText,
+                      activeIndices: this._deepClone(c.currentStateObj.activeIndices || []),
+                      activeGroupId: c.currentStateObj.activeGroupId,
+                      currentTool: c.currentStateObj.currentTool
+                  }
+                : null,
+            afterMeta: {
+                selection: this._deepClone(newState.selection),
+                selectedCurveIds: this._deepClone(newState.selectedCurveIds || []),
+                selectedRefIds: this._deepClone(newState.selectedRefIds || []),
+                sessionImages: this._cloneSessionImages(newState.sessionImages),
+                sequenceText: newState.sequenceText,
+                activeIndices: this._deepClone(newState.activeIndices || []),
+                activeGroupId: newState.activeGroupId,
+                currentTool: newState.currentTool
+            }
+        };
+
+        c.commandStack.push(entry);
+        // Grid + tree sync: scaleAllCoordinates no longer rebuilds the
+        // spatial grid itself (the double rebuild cost ~2.5s on dense
+        // documents); notifyTreeUpdate owns it. Must run BEFORE
+        // clearDirtyGlyphs — it reads the dirty set for its incremental
+        // decision, and the whole document is dirty after a UPM scale, so
+        // it takes the full-rebuild path.
+        c.curve_manager.notifyTreeUpdate?.();
+        c.curve_manager.clearDirtyGlyphs();
+        if (c.commandStack.length > c.max_command_log) c.commandStack.shift();
+        c.currentStateObj = newState;
+        c.redoCommandStack = [];
+        this._debugCommand(`recorded ${commandName} (font-settings compact)`, payload);
+        this._queueRuntimeStateSave();
+        this.saveCurrentViewState(false);
+        c.syncEditorStoreHistoryStacks();
+        return true;
+    }
+
     _buildStateFromSnapshotAndMeta(snapshotObj, meta = {}) {
         const safeSnapshot = this._deepClone(snapshotObj || {});
         return {
@@ -475,6 +559,14 @@ export class CanvasHistoryService {
         if (isMetaOnlyHistoryCommand(commandName)) {
             return this._recordMetaOnlyHistory(detail, commandName);
         }
+        // Font settings: compact entry — no snapshot patches. A UPM change
+        // rescales every coordinate in the document, so a full-document diff
+        // is multi-MB and multi-second to undo (measured: 10.6MB / 4.2s on a
+        // ×500 document). undo/redo re-execute the command instead, which
+        // applies the inverse UPM ratio itself.
+        if (commandName === EDITOR_ACTIONS.SET_FONT_SETTINGS) {
+            return this._recordFontSettingsHistory(detail, commandName);
+        }
         const newState = this.getHistoryState(/* clearDirty= */ false);
         const patchReport = c.currentStateObj?.snapshotObj
             ? this._buildSnapshotPatchesReport(c.currentStateObj.snapshotObj, newState.snapshotObj)
@@ -568,6 +660,21 @@ export class CanvasHistoryService {
 
         try {
             c.redoCommandStack.push(commandEntry);
+            if (commandEntry.fontSettingsEntry) {
+                // Compact SET_FONT_SETTINGS undo: re-execute the command with
+                // the recorded before-settings — setFontSettings applies the
+                // inverse UPM ratio to every coordinate and restores the other
+                // font fields — then re-capture the full snapshot baseline
+                // (all glyphs are dirty after the scale, so the serialize is
+                // complete). No patches are stored for this entry.
+                c.commands.setFontSettings(commandEntry.beforeFontSettings || {}, {});
+                c.currentStateObj = this.getHistoryState();
+                this._assignCurrentStateMeta(commandEntry.beforeMeta || {});
+                await this._applyState(c.currentStateObj, commandEntry, "undo");
+                this._debugCommand(`undo ${commandEntry.commandName} (font-settings)`, commandEntry.payload);
+                this._queueRuntimeStateSave();
+                return;
+            }
             const snapshotObj = c.currentStateObj?.snapshotObj;
             if (!snapshotObj) {
                 throw new Error("undo: missing snapshotObj baseline");
@@ -602,6 +709,18 @@ export class CanvasHistoryService {
 
         try {
             c.commandStack.push(commandEntry);
+            if (commandEntry.fontSettingsEntry) {
+                // Compact SET_FONT_SETTINGS redo: re-execute the command with
+                // the recorded after-settings (inverse of the undo scale),
+                // then re-capture the full snapshot baseline.
+                c.commands.setFontSettings(commandEntry.afterFontSettings || {}, {});
+                c.currentStateObj = this.getHistoryState();
+                this._assignCurrentStateMeta(commandEntry.afterMeta || {});
+                await this._applyState(c.currentStateObj, commandEntry, "redo");
+                this._debugCommand(`redo ${commandEntry.commandName} (font-settings)`, commandEntry.payload);
+                this._queueRuntimeStateSave();
+                return;
+            }
             const snapshotObj = c.currentStateObj?.snapshotObj;
             if (!snapshotObj) {
                 throw new Error("redo: missing snapshotObj baseline");

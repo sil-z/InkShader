@@ -9,6 +9,7 @@ import { DOMAIN_EVENTS } from '../../domain/events/domain_events.js';
 import { EMPTY_CURVE_MANAGER_HOST_PORT } from '../../domain/ports/curve_manager_host_port.js';
 import { SelectionState } from '../../domain/selection/selection_state.js';
 import { KerningManager } from './kerning_manager.js';
+import { CurveNode } from './node.js';
 import { generateMarker } from './utils.js';
 
 /**
@@ -84,6 +85,100 @@ export class CurveManager {
         if (!marker) return;
         const curve = this.curveStore.find_curve_by_dom(marker);
         if (curve) this._markDirty(curve.groupId);
+    }
+
+    // =========================================================================
+    // UPM rescale
+    // =========================================================================
+
+    /**
+     * Uniformly scale every coordinate-bearing value in the document model.
+     *
+     * Called when the font UPM changes (ratio = newUPM / oldUPM). The whole
+     * design space is stored in UPM units (schemas/project_schema.json), so
+     * nothing may be left unscaled: node coordinates + control handles,
+     * stroke widths, group advances, component (ref) translations, kerning
+     * values. Derived state (bounds caches, boolean geometry caches, GLIF
+     * export cache, sequence offsets, spatial grid) is invalidated here so
+     * the UI and file export never read stale geometry.
+     *
+     * @param {number} ratio - newUPM / oldUPM (> 0)
+     */
+    scaleAllCoordinates(ratio) {
+        if (!Number.isFinite(ratio) || ratio <= 0) return;
+
+        // 1) Curve geometry: on-curve nodes + control handles (full float
+        //    precision — expanded stroke outlines rely on exact handle
+        //    angles, see Session 11), stroke widths (integer).
+        for (const curve of this.curveById.values()) {
+            let node = curve.startNode;
+            while (node) {
+                node.x *= ratio;
+                node.y *= ratio;
+                if (node.control1) {
+                    node.control1.x *= ratio;
+                    node.control1.y *= ratio;
+                }
+                if (node.control2) {
+                    node.control2.x *= ratio;
+                    node.control2.y *= ratio;
+                }
+                node = node.nextOnCurve;
+            }
+            if (curve.stroke_width > 0) {
+                curve.stroke_width = Math.max(1, Math.round(curve.stroke_width * ratio));
+            }
+            curve._invalidateBounds();
+            curve.invalidateBooleanCache?.();
+            // Geometry hash changed — do not reuse the Paper boolean result.
+            curve._booleanContentHash = null;
+        }
+
+        // 2) Tree items: group advances (UPM units) + component translations
+        //    (e/f are design-space offsets; a/b/c/d are dimensionless scale/
+        //    rotation and must NOT be scaled — they multiply the already
+        //    scaled base-glyph coordinates).
+        for (const item of this.treeItems.values()) {
+            if (item.type !== 'group') continue;
+            if (item.isRef && item.transform) {
+                item.transform.e *= ratio;
+                item.transform.f *= ratio;
+                item.is_modified = true;
+            } else if (!item.isRef && typeof item.advance === 'number') {
+                item.advance = Math.max(0, Math.round(item.advance * ratio));
+                item.is_modified = true;
+            }
+        }
+        this.groupFlatCache?.clear?.();
+
+        // 3) Kerning: exact pairs, class-to-class, mixed — all in UPM units.
+        const km = this.kerningManager;
+        if (km) {
+            const scaleMapValues = (map) => {
+                for (const inner of map.values()) {
+                    for (const key of inner.keys()) {
+                        inner.set(key, Math.round(inner.get(key) * ratio));
+                    }
+                }
+            };
+            scaleMapValues(km._pairs);
+            scaleMapValues(km.class_values);
+            scaleMapValues(km.mixed_class_left);
+            scaleMapValues(km.mixed_class_right);
+        }
+
+        // 4) Derived state: every glyph must be re-serialized (history
+        //    snapshots + JSON save) and re-exported (GLIF cache) with the
+        //    new coordinates.
+        this._glifExportCache.clear();
+        for (const rootId of this.rootChildren) this._markDirty(rootId);
+
+        this.calculateSequenceOffsets();
+        // NOTE: no rebuildSpatialGrid() here — the caller (setFontSettings
+        // command → history/UI-sync layer) always follows up with
+        // notifyTreeUpdate(), which owns the grid rebuild. Rebuilding here
+        // AND in notifyTreeUpdate doubled the cost on dense documents
+        // (measured: ~2×1.0-1.5s on a ×500 fixture, addCurve 46.8% of undo).
     }
 
     // =========================================================================
@@ -575,8 +670,8 @@ export class CurveManager {
     // TreeStore delegation — references / clones
     // =========================================================================
 
-    pasteGroupRef(src, tgt, tx) {
-        const id = this.treeStore.pasteGroupRef(src, tgt, tx);
+    pasteGroupRef(src, tgt, tx, preferredName = null) {
+        const id = this.treeStore.pasteGroupRef(src, tgt, tx, preferredName);
         if (id) {
             this._markDirty(tgt);
             this.invalidateGroupCache(tgt);
@@ -604,18 +699,36 @@ export class CurveManager {
             if (!newNode) return null;
             newNode.smooth = current.smooth;
             // CurveNode defaults to control_mode=2 (symmetric). Always copy the source
-            // mode explicitly; only force-create handles when the source actually has them.
+            // mode explicitly; only create the handles the source ACTUALLY has.
+            // changeSmoothModeOnSingleNode(force=true) would synthesize the missing
+            // opposite handle — a phantom handle that corrupts asymmetric or
+            // single-handle sources on every copy.
             newNode.control_mode = current.control_mode ?? 0;
 
-            if (current.control1 || current.control2) {
-                this.changeSmoothModeOnSingleNode(mainMarker, current.control_mode, true);
-                if (current.control1 && newNode.control1) {
+            if (current.control1) {
+                if (newNode.control1) {
                     newNode.control1.x = current.control1.x;
                     newNode.control1.y = current.control1.y;
+                } else {
+                    const c1Marker = generateMarker("circle");
+                    const c1Node = new CurveNode(c1Marker, null, current.control1.x, current.control1.y, newNode, null, String(c1Marker.id));
+                    c1Node.curve = newCurve;
+                    newNode.control1 = c1Node;
+                    newCurve.domMap.set(c1Marker, c1Node);
+                    this.domMap.set(c1Marker, c1Node);
                 }
-                if (current.control2 && newNode.control2) {
+            }
+            if (current.control2) {
+                if (newNode.control2) {
                     newNode.control2.x = current.control2.x;
                     newNode.control2.y = current.control2.y;
+                } else {
+                    const c2Marker = generateMarker("circle");
+                    const c2Node = new CurveNode(c2Marker, null, current.control2.x, current.control2.y, newNode, null, String(c2Marker.id));
+                    c2Node.curve = newCurve;
+                    newNode.control2 = c2Node;
+                    newCurve.domMap.set(c2Marker, c2Node);
+                    this.domMap.set(c2Marker, c2Node);
                 }
             }
 
@@ -955,7 +1068,16 @@ export class CurveManager {
             this.treeStore.groupFlatCache.clear();
         }
         this.seqService.calculateSequenceOffsets();
-        this.rebuildSpatialGrid(dirtyIds);
+        // When the whole document is dirty, a full rebuild (grid.clear +
+        // re-add) is cheaper than the incremental path (per-group eviction
+        // via removeGroup + re-add); measured 1.05s vs 1.45s on a ×500
+        // fixture. A full rebuild is always a superset of the incremental
+        // one (both only index active sequence tokens), so this is safe.
+        if (dirtyIds && dirtyIds.size < this.rootChildren.length) {
+            this.rebuildSpatialGrid(dirtyIds);
+        } else {
+            this.rebuildSpatialGrid(null);
+        }
         this._emitEvent(DOMAIN_EVENTS.TREE_UPDATED);
     }
 
@@ -965,6 +1087,7 @@ export class CurveManager {
 
     async loadFromJSON(jsonStr) {
         this._dirtyGlyphs.clear();
+        this._glifExportCache.clear();
         this.__treeSnapCache = null;
         this._treeSnapshotVersion = (this._treeSnapshotVersion || 0) + 1;
         await this.serializer.loadFromJSON(jsonStr, (l, m) => this._reportMessage(l, m));
@@ -974,6 +1097,7 @@ export class CurveManager {
 
     async loadFromSnapshotObject(data) {
         this._dirtyGlyphs.clear();
+        this._glifExportCache.clear();
         this.__treeSnapCache = null;
         this._treeSnapshotVersion = (this._treeSnapshotVersion || 0) + 1;
         await this.serializer.loadFromSnapshotObject(data, (l, m) => this._reportMessage(l, m));

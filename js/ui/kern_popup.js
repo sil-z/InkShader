@@ -6,6 +6,7 @@
 
 import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
+import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 
 function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -165,32 +166,14 @@ export class KernPopup extends HTMLElement {
         if (!left || !right) return;
         if (isNaN(value)) return;
 
-        const km = this._getKerningManager();
-        if (!km) return;
-
-        km.setPair(left, right, value);
-        this._markDirty();
+        // Route through the command/history pipeline (undo/redo + autosave).
+        CanvasDispatcher.requestSetKerningPairs([{ left, right, value }], { recordHistory: true });
         this._scheduleRender();
     }
 
     _removeEntry(left, right) {
-        const km = this._getKerningManager();
-        if (!km) return;
-        km.removePair(left, right);
-        this._markDirty();
+        CanvasDispatcher.requestSetKerningPairs([{ left, right, remove: true }], { recordHistory: true });
         this._scheduleRender();
-    }
-
-    _markDirty() {
-        const c = this._resolveCanvas();
-        if (c) {
-            // Recalculate sequence offsets to reflect kerning changes
-            c.curve_manager?.calculateSequenceOffsets?.();
-            // Invalidate stable scene cache so dividers re-draw at new positions
-            c.renderer?.invalidateStableSceneCache?.();
-            c.is_dirty = true;
-            c.notifyPropertiesUpdate?.();
-        }
     }
 
     _scheduleRender() {
@@ -234,11 +217,7 @@ export class KernPopup extends HTMLElement {
             // Apply if changed
             const numVal = parseInt(newValue, 10);
             if (save && !isNaN(numVal) && numVal !== parseInt(original, 10)) {
-                const km = this._getKerningManager();
-                if (km) {
-                    km.setPair(left, right, numVal);
-                    this._markDirty();
-                }
+                CanvasDispatcher.requestSetKerningPairs([{ left, right, value: numVal }], { recordHistory: true });
                 valSpan.textContent = String(numVal);
             } else {
                 valSpan.textContent = original;

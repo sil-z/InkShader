@@ -208,6 +208,26 @@ export class ObjectTree extends HTMLElement {
             }
             return;
         }
+        // Curves and refs: a plain click (no modifiers, not on the checkbox) on
+        // an item that is part of a multi-selection collapses the selection to
+        // just that item. pointerdown intentionally skipped already-selected
+        // items (to allow drag-multi-select), so the collapse happens here.
+        if (
+            !e.shiftKey && !e.ctrlKey && !e.metaKey &&
+            !e.target.classList.contains("tree_select_btn") &&
+            this.interaction.hasTreeSelection(itemDiv.dataset.id) &&
+            this.interaction.selectedTreeIds.length > 1
+        ) {
+            const id = itemDiv.dataset.id;
+            let activeGroupId = null;
+            const item = EditorModel.getTreeItem(id);
+            if (item?.type === "group") activeGroupId = item.isRef ? item.parentId : id;
+            else if (item?.parentId) activeGroupId = item.parentId;
+            this._skipTreeScroll = true;
+            CanvasDispatcher.requestSetTreeSelection([id], activeGroupId);
+            requestAnimationFrame(() => { this._skipTreeScroll = false; });
+            return;
+        }
         if (e.target.classList.contains("tree_select_btn")) {
             const id = itemDiv.dataset.id;
             const allItems = Array.from(this.tree.querySelectorAll(".tree_item"));

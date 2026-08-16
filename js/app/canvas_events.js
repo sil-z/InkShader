@@ -37,6 +37,7 @@ export const CANVAS_EVENTS = Object.freeze({
     REQUEST_CHANGE_SELECTED_OBJECTS_BOUNDS: "request-change-selected-objects-bounds",
     REQUEST_RENAME_TREE_ITEM: "request-rename-tree-item",
     REQUEST_SET_GROUP_ADVANCE: "request-set-group-advance",
+    REQUEST_SET_KERNING_PAIRS: "request-set-kerning-pairs",
 
     REQUEST_UPDATE_NODE_PROPERTY: "request-update-node-property",
     REQUEST_SET_PEN_PROPERTIES: "request-set-pen-properties",

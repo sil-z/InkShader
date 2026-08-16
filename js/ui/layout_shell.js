@@ -22,7 +22,7 @@ export function initializeLayoutShell() {
     if (!dockContainer || !objectTree || !propertyPanel) return;
 
     const dock = new DockLayout(dockContainer);
-    dock.initialize(["canvas", "objects", "properties", "console"]);
+    dock.initialize(["canvas", "objects", "properties", "console", "sample"]);
     window.__dock = dock;
 
     if (!document.querySelector('node-property-popup')) {

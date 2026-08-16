@@ -60,6 +60,14 @@ export class SnapshotSerializer {
     async loadFromSnapshotObject(data, messageReporter) {
         if (!data) return;
         this._treeStore.initTree();
+        // Force a full syncTreeWithSequence sweep: _prevInTextIds/_prevRootIds
+        // may hold stale state from a previously loaded project (e.g. the
+        // project auto-loaded at startup). Without this reset the incremental
+        // sync branch would never hide root groups that exist in both trees
+        // but are absent from the new sequence text — leaving ghost objects
+        // visible in the object tree.
+        this._sequenceService._prevInTextIds = null;
+        this._sequenceService._prevRootIds = null;
         this._curveStore.curves = [];
         this._curveStore.domMap.clear();
         this._sequenceService.sequenceText = data.editor_sequence || '';
@@ -175,6 +183,10 @@ export class SnapshotSerializer {
         const fontSettings = editorState.font_settings || {};
         let file = {
             "version": "1.0",
+            "canvas_size_width": Number.isFinite(editorState.canvas_size_width) && editorState.canvas_size_width > 0
+                ? editorState.canvas_size_width : 1000,
+            "canvas_size_height": Number.isFinite(editorState.canvas_size_height) && editorState.canvas_size_height > 0
+                ? editorState.canvas_size_height : 1000,
             "editor_guidelines": (editorState.guidelines || []).map(g => ({
                 id: g.id, x: g.x, y: g.y, angle: g.angle, type: g.type
             })),
@@ -188,6 +200,7 @@ export class SnapshotSerializer {
             "postscript_name": fontSettings.postscript_name || "",
             "preferred_family": fontSettings.preferred_family || "",
             "preferred_subfamily": fontSettings.preferred_subfamily || "",
+            "style_map_family": fontSettings.style_map_family || "",
             "copyright": fontSettings.copyright || "",
             "designer": fontSettings.designer || "",
             "designer_url": fontSettings.designer_url || "",
@@ -205,6 +218,7 @@ export class SnapshotSerializer {
             "descender": fontSettings.descender ?? -200,
             "x_height": fontSettings.x_height ?? 500,
             "cap_height": fontSettings.cap_height ?? 700,
+            "italic_angle": fontSettings.italic_angle ?? 0,
             "font_version": fontSettings.version || "1.0",
             "glyphs": {},
             "kerning": this._kerningManager ? this._kerningManager.toJSON() : {},

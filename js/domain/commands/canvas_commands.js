@@ -39,6 +39,13 @@ function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
+    // Canvas size (em box, design units) is written to the file (S014a) and
+    // drives UFO/SVG export constants - restore it. Legacy files predate the
+    // field: keep the current size.
+    const canvasSizeW = Number(snapshotObj.canvas_size_width);
+    if (Number.isFinite(canvasSizeW) && canvasSizeW > 0) canvas.canvas_size_width = canvasSizeW;
+    const canvasSizeH = Number(snapshotObj.canvas_size_height);
+    if (Number.isFinite(canvasSizeH) && canvasSizeH > 0) canvas.canvas_size_height = canvasSizeH;
     // expand_stroke_round_cap is now per-curve (expanded_round_cap in path data).
     // The global file-level field is no longer read.
 }
@@ -50,6 +57,7 @@ function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
         postscript_name: snapshotString(snapshot, "postscript_name", fallback.postscript_name),
         preferred_family: snapshotString(snapshot, "preferred_family", fallback.preferred_family),
         preferred_subfamily: snapshotString(snapshot, "preferred_subfamily", fallback.preferred_subfamily),
+        style_map_family: snapshotString(snapshot, "style_map_family", fallback.style_map_family),
         copyright: snapshotString(snapshot, "copyright", fallback.copyright),
         designer: snapshotString(snapshot, "designer", fallback.designer),
         designer_url: snapshotString(snapshot, "designer_url", fallback.designer_url),
@@ -67,6 +75,7 @@ function fontSettingsFromSnapshot(snapshot = {}, fallback = {}) {
         descender: snapshotNumber(snapshot, "descender", fallback.descender, -200),
         x_height: snapshotNumber(snapshot, "x_height", fallback.x_height, 500),
         cap_height: snapshotNumber(snapshot, "cap_height", fallback.cap_height, 700),
+        italic_angle: snapshotNumber(snapshot, "italic_angle", fallback.italic_angle, 0),
         version: snapshotString(snapshot, "font_version", fallback.version, "1.0"),
         project_name: snapshotString(snapshot, "project_name", fallback.project_name),
         basic_spacing: snapshotNumber(snapshot, "basic_spacing", fallback.basic_spacing, 1000)
@@ -653,6 +662,44 @@ export class CanvasCommands {
     }
 
     /**
+     * Command: apply kerning pair changes (set or remove) through the history
+     * pipeline. Each item: { left, right, value } to set, or
+     * { left, right, remove: true } to delete. No change -> false (history is
+     * still recorded when recordHistory is requested, matching the advance
+     * command convention). Direct kerning mutations bypassing this command are
+     * NOT undoable: the history snapshot includes the `kerning`/`kerning_classes`
+     * fields (snapshot_patch_executor + snapshot_runtime_applier restore them),
+     * so every command commit captures the full kerning state.
+     */
+    setKerningPairs(pairs = [], options = {}) {
+        const km = this.curve_manager?.kerningManager;
+        if (!km || !Array.isArray(pairs) || pairs.length === 0) return false;
+        let changed = false;
+        for (const p of pairs) {
+            if (!p || typeof p.left !== 'string' || typeof p.right !== 'string' || !p.left || !p.right) continue;
+            if (p.remove === true) {
+                if (km.removePair(p.left, p.right)) changed = true;
+            } else if (p.value !== undefined) {
+                const num = Number(p.value);
+                if (!Number.isFinite(num)) continue;
+                if (km.getPair(p.left, p.right) !== num) {
+                    km.setPair(p.left, p.right, num);
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) return options.recordHistory === true;
+
+        // Sequence offsets depend on kerning (sequence_service.calculateSequenceOffsets);
+        // stable-scene cache holds divider positions, so both must refresh.
+        this.curve_manager.calculateSequenceOffsets?.();
+        this.renderer?.invalidateStableSceneCache?.();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
      * Command: update single node property
      */
     updateSingleNodeProperty(marker, propId, value, options = {}) {
@@ -740,6 +787,74 @@ export class CanvasCommands {
 	        const next = { ...previous, ...updates };
 	        if (JSON.stringify(previous) === JSON.stringify(next)) {
 	            return options.recordHistory === true;
+	        }
+
+	        // UPM change: scale EVERY coordinate-bearing value in the document
+	        // model so the whole design space follows the new UPM (user rule:
+	        // "changing the UPM must uniformly scale all coordinate data in
+	        // the font file - nothing may be left unscaled").
+	        const prevUpm = Number(previous.upm) || 1000;
+	        const newUpm = Number(next.upm);
+	        if (Number.isFinite(newUpm) && newUpm > 0 && Number.isFinite(prevUpm) && prevUpm > 0 && newUpm !== prevUpm) {
+	            const ratio = newUpm / prevUpm;
+	            const scaleVal = (v) => v * ratio;
+
+	            // 1) Document model: node coordinates, control handles, stroke
+	            //    widths, group advances, ref translations and kerning -
+	            //    all stored in UPM units (schemas/project_schema.json).
+	            this.curve_manager.scaleAllCoordinates(ratio);
+
+	            // 2) Editor overlays stored in design units.
+	            for (const g of canvas.guidelines || []) {
+	                if (Number.isFinite(g.x)) g.x = scaleVal(g.x);
+	                if (Number.isFinite(g.y)) g.y = scaleVal(g.y);
+	            }
+	            for (const r of canvas.rulers || []) {
+	                if (r && Number.isFinite(r.x1) && Number.isFinite(r.x2)) {
+	                    r.x1 = scaleVal(r.x1); r.y1 = scaleVal(r.y1);
+	                    r.x2 = scaleVal(r.x2); r.y2 = scaleVal(r.y2);
+	                }
+	            }
+
+	            // 3) Em-box size: canvas_size is the design-space baseline
+	            //    (UFO/SVG exports derive font y from it) - it must track
+	            //    the new UPM so import/export stay consistent.
+	            if (Number.isFinite(canvas.canvas_size_width) && canvas.canvas_size_width > 0) {
+	                canvas.canvas_size_width = Math.max(1, Math.round(scaleVal(canvas.canvas_size_width)));
+	            }
+	            if (Number.isFinite(canvas.canvas_size_height) && canvas.canvas_size_height > 0) {
+	                canvas.canvas_size_height = Math.max(1, Math.round(scaleVal(canvas.canvas_size_height)));
+	            }
+
+	            // 4) Metrics: scale unless the user explicitly typed a new
+	            //    value in this same save. The popup pre-fills every field
+	            //    from the current settings (or the built-in defaults), so
+	            //    an untouched field arrives equal to its previous value —
+	            //    and on a fresh document the previous value is undefined
+	            //    while the incoming one is a pre-fill, not an edit. Both
+	            //    cases scale; only a value that differs from the previous
+	            //    one is the user's own new value and must win.
+	            for (const key of ['ascender', 'descender', 'x_height', 'cap_height', 'basic_spacing']) {
+	                const prevVal = previous[key];
+	                const updVal = updates[key];
+	                const userEdited = updVal !== undefined && prevVal !== undefined && updVal !== prevVal;
+	                const base = prevVal !== undefined ? prevVal : updVal;
+	                if (!userEdited && base !== undefined) {
+	                    next[key] = Math.round(scaleVal(base));
+	                }
+	            }
+
+	            // 5) Viewport invariance (user rule): a UPM change must NOT touch
+	            //    scale / scaleBase / zoomTicks / offset. The old compensation
+	            //    (scaleBase = scale / ratio) pushed scale below scale_min when
+	            //    the zoom was already small, which killed wheel zoom (clamp-
+	            //    revert in change_canvas_size) and froze the rulers (step-table
+	            //    fallback in getStepAndPrecision) - removed.
+
+	            // 6) Geometry epoch + smart-stroke boolean caches: every curve
+	            //    changed (scaleAllCoordinates already cleared per-curve
+	            //    caches; this also invalidates the stable scene cache).
+	            canvas.flushSmartStrokeBooleanCache?.();
 	        }
 	        canvas.fontSettings = next;
 

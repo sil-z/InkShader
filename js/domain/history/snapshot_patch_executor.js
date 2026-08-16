@@ -354,12 +354,20 @@ export class SnapshotPatchExecutor {
             if (!clean) return null;
             sanitizedPatches.push(clean);
         }
+        const fontSettingsEntry = entry.fontSettingsEntry === true;
         return {
             id: entry.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             commandName: entry.commandName || "unknown-command",
             payload: entry.payload || {},
             timestamp: Number.isFinite(entry.timestamp) ? entry.timestamp : Date.now(),
             snapshotPatches: sanitizedPatches,
+            // Compact SET_FONT_SETTINGS entries store settings instead of
+            // patches (a UPM diff is multi-MB); preserve their fields so
+            // undo/redo keeps working after a reload.
+            documentChanged: fontSettingsEntry ? false : undefined,
+            fontSettingsEntry,
+            beforeFontSettings: fontSettingsEntry ? deepClone(entry.beforeFontSettings) : undefined,
+            afterFontSettings: fontSettingsEntry ? deepClone(entry.afterFontSettings) : undefined,
             beforeMeta: entry.beforeMeta ? deepClone(entry.beforeMeta) : null,
             afterMeta: entry.afterMeta ? deepClone(entry.afterMeta) : null
         };

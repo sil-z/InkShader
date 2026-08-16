@@ -5,9 +5,14 @@
 
 export function emitCubicBezierSegments(recorder, segments, mapPoint, { close = false } = {}) {
     if (!recorder || !segments?.length) return;
+    // Optional smooth-mode propagation: recorders that persist node control_mode
+    // (e.g. GLIF export) implement setSmoothMode(mode); canvas ctx etc. ignore it.
+    const setSmooth = (mode) => { if (typeof recorder.setSmoothMode === "function") recorder.setSmoothMode(mode); };
+    setSmooth(segments[0].node?.control_mode);
     const p0 = mapPoint(segments[0].p0.x, segments[0].p0.y);
     recorder.moveTo(p0.x, p0.y);
     for (const seg of segments) {
+        setSmooth(seg.endNode?.control_mode);
         const cp1 = mapPoint(seg.p1.x, seg.p1.y);
         const cp2 = mapPoint(seg.p2.x, seg.p2.y);
         const p3 = mapPoint(seg.p3.x, seg.p3.y);
