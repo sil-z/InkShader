@@ -7,6 +7,7 @@
 import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
+import { createCustomSelect } from "./custom_select.js";
 
 function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -16,9 +17,6 @@ function esc(s) {
 const POPUP_HTML = `
 <div class="prop_panel_title_wrapper"><span class="panel_title" data-i18n="panel.kerning">Kerning</span></div>
 <div class="pen-tool-popup-body kern-popup-body">
-  <div class="seq-menu-header">
-    <span class="seq-menu-title" data-i18n="kern.title">Add Kerning</span>
-  </div>
   <div class="kern-popup-add-row">
     <select class="kern-left-select" data-i18n-placeholder="kern.left_glyph" title="Left glyph">
       <option value="">-- Left --</option>
@@ -78,6 +76,9 @@ export class KernPopup extends HTMLElement {
 
         this.addEventListener('mousedown', (e) => e.stopPropagation());
 
+        // Convert native <select> to custom styled dropdowns
+        this.querySelectorAll('select').forEach(sel => createCustomSelect(sel));
+
         // Populate glyph selectors
         this._populateGlyphSelects();
 
@@ -133,8 +134,22 @@ export class KernPopup extends HTMLElement {
             rightSel.appendChild(this._optionEl(name));
         }
 
-        if (leftVal) leftSel.value = leftVal;
-        if (rightVal) rightSel.value = rightVal;
+        const newLeftVal = leftVal || '';
+        const newRightVal = rightVal || '';
+        leftSel.value = newLeftVal;
+        rightSel.value = newRightVal;
+
+        // Update custom select wrappers if they exist
+        const leftWrapper = leftSel.previousElementSibling;
+        const rightWrapper = rightSel.previousElementSibling;
+        if (leftWrapper?._csUpdateOptions) {
+            const leftOpts = [{ value: '', label: '-- Left --' }, ...names.map(n => ({ value: n, label: n }))];
+            leftWrapper._csUpdateOptions(leftOpts, newLeftVal);
+        }
+        if (rightWrapper?._csUpdateOptions) {
+            const rightOpts = [{ value: '', label: '-- Right --' }, ...names.map(n => ({ value: n, label: n }))];
+            rightWrapper._csUpdateOptions(rightOpts, newRightVal);
+        }
     }
 
     _optionEl(value) {

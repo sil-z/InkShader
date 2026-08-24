@@ -126,7 +126,7 @@ export class CanvasCommands {
         let success = this.curve_manager.adjustControlNode(marker, x, y);
         if (success) {
             this.notifyPropertiesUpdate();
-            this.is_dirty = true;
+            this.bumpGeometryEpoch();
             this.curve_manager.rebuildSpatialGrid();
             this._commitHistory("changeControlNodePosition");
         }
@@ -137,7 +137,7 @@ export class CanvasCommands {
         let success = this.curve_manager.deleteControlNode(marker);
         if (success) {
             this.notifyPropertiesUpdate();
-            this.is_dirty = true;
+            this.bumpGeometryEpoch();
             this._commitHistory("deleteControlNode");
         }
         return success;
@@ -152,7 +152,7 @@ export class CanvasCommands {
             this.curve_manager.moveSelectedNodes(updates);
         }
         this.notifyPropertiesUpdate();
-        this.is_dirty = true;
+        this.bumpGeometryEpoch();
         this.curve_manager.rebuildSpatialGrid();
         this._commitHistory("changeSelectedNodesPosition");
         return true;

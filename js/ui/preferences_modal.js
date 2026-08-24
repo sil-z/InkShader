@@ -6,6 +6,12 @@ import {
     restoreRememberedInputValue,
     trimmedInputValue
 } from "./input_validation.js";
+import { createCustomSelect } from "./custom_select.js";
+import { THEME_PRESETS, applyAccentPalette, clearAccentPalette } from "../services/theme_generator.js";
+
+function buildAccentOptions() {
+    return THEME_PRESETS.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
 
 const TEMPLATE_HTML = `
 <div class="pen-tool-popup-body">
@@ -25,12 +31,18 @@ const TEMPLATE_HTML = `
         </select>
     </div>
     <div class="pen-tool-separator"></div>
+    <div class="pen-tool-row">
+        <label data-i18n="pref.accentHue">Accent</label>
+        <select id="pref_accent_hue" class="font-popup-input">
+            ${buildAccentOptions()}
+        </select>
+    </div>
+    <div class="pen-tool-separator"></div>
     <div id="pref_colors"></div>
 </div>`;
 
 const CONFIGURABLE_COLORS = [
-    { varName: '--cvs-path-stroke', key: 'color.path_stroke' },
-    { varName: '--cvs-path-fill', key: 'color.path_fill' }
+    { varName: '--cvs-path-stroke', key: 'color.path_stroke' }
 ];
 
 export class PreferencesPopup extends HTMLElement {
@@ -47,6 +59,9 @@ export class PreferencesPopup extends HTMLElement {
         this._visible = false;
         installEnterBlurHandler(this);
 
+        // Convert native <select> to custom styled dropdowns
+        this.querySelectorAll('select').forEach(sel => createCustomSelect(sel));
+
         this.addEventListener('mousedown', (e) => e.stopPropagation());
         this.addEventListener('focusin', (e) => {
             if (e.target?.tagName === 'INPUT') rememberInputValue(this, e.target);
@@ -60,6 +75,9 @@ export class PreferencesPopup extends HTMLElement {
             if (!this._visible) return;
             // Allow menu bar items to handle toggle/switch via their click handlers
             if (e.target.closest('.top .item')) return;
+            // Custom select panels live in document.body (position:fixed) so they
+            // are outside the modal's DOM tree.  Treat clicks on them as inside.
+            if (e.target.closest('.cs-panel')) return;
             if (!this.contains(e.target)) this.hide();
         }, true);
     }
@@ -100,6 +118,11 @@ export class PreferencesPopup extends HTMLElement {
 
         this.querySelector('#pref_theme').addEventListener('change', (e) => {
             this.applyTheme(e.target.value);
+            this.saveSettings();
+        });
+
+        this.querySelector('#pref_accent_hue').addEventListener('change', (e) => {
+            this.applyAccentHue(e.target.value);
             this.saveSettings();
         });
     }
@@ -187,6 +210,18 @@ export class PreferencesPopup extends HTMLElement {
         Object.keys(this.customColors).forEach(key => {
             document.documentElement.style.setProperty(key, this.customColors[key]);
         });
+        // Re-apply accent palette for new mode (light/dark have different values)
+        const accentId = document.querySelector('#pref_accent_hue')?.value || 'blue';
+        this.applyAccentHue(accentId);
+    }
+
+    applyAccentHue(presetId) {
+        const preset = THEME_PRESETS.find(p => p.id === presetId);
+        if (!preset) return;
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        // Store the preset ID separately so saveSettings can read it back
+        document.documentElement.dataset.accentPreset = presetId;
+        applyAccentPalette(preset.hue, isDark);
         this.notifyCanvasUpdate();
     }
 
@@ -195,31 +230,52 @@ export class PreferencesPopup extends HTMLElement {
     }
 
     saveSettings() {
-        const existing = JSON.parse(localStorage.getItem('InkShader_preferences') || '{}');
-        const theme = existing.theme || document.documentElement.getAttribute('data-theme') || 'light';
         const settings = {
-            theme,
+            theme: document.documentElement.getAttribute('data-theme') || 'light',
+            accentHue: document.documentElement.dataset.accentPreset || 'blue',
             customColors: this.customColors
         };
         localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
     }
 
+    /** Sync a native <select> value AND update the custom select wrapper display */
+    _setSelectValue(selector, value) {
+        const sel = this.querySelector(selector);
+        if (!sel) return;
+        sel.value = value;
+        // The wrapper is the previous sibling (cs-wrapper inserted before the hidden select)
+        const wrapper = sel.previousElementSibling;
+        if (wrapper && wrapper._csSetValue) wrapper._csSetValue(value);
+    }
+
     loadSettings() {
         try {
             if (window.I18n) {
-                const langSel = this.querySelector('#pref_lang');
-                if (langSel) langSel.value = window.I18n.lang;
+                this._setSelectValue('#pref_lang', window.I18n.lang);
             }
             const data = localStorage.getItem('InkShader_preferences');
             if (data) {
                 const settings = JSON.parse(data);
+                // Set ALL select values BEFORE applying, so applyTheme can read
+                // the correct accent from the select without a second notification.
                 if (settings.theme) {
-                    const themeSel = this.querySelector('#pref_theme');
-                    if (themeSel) themeSel.value = settings.theme;
+                    this._setSelectValue('#pref_theme', settings.theme);
                 }
                 if (settings.customColors) {
                     this.customColors = settings.customColors;
                 }
+                if (settings.accentHue) {
+                    // Handle legacy 'generated' value from before preset IDs were stored
+                    const accentId = (settings.accentHue === 'generated') ? 'blue' : settings.accentHue;
+                    this._setSelectValue('#pref_accent_hue', accentId);
+                }
+                // applyTheme internally reads accent from select and calls applyAccentHue,
+                // so a single call handles both theme + accent in one notification.
+                const theme = settings.theme || 'light';
+                this.applyTheme(theme);
+            } else {
+                // No saved settings — apply default accent (blue)
+                this.applyAccentHue('blue');
             }
         } catch (e) { console.warn("Failed to load preferences", e); }
     }

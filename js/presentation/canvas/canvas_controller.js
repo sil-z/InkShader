@@ -39,7 +39,12 @@ export class CanvasController {
 
     onBus(eventName, listener, options = false) {
         const cleanup = appEventBus.on(eventName, listener, options);
-        this.canvas.globalEventTrackers.push(cleanup);
+        // Session 25: window event-bus listeners are PERMANENT. They survive the
+        // element being detached (hidden dock panel), so CanvasDispatcher
+        // requests and model-sync events keep flowing while the canvas is hidden.
+        // disconnectedCallback only cleans globalEventTrackers (DOM-side);
+        // reconnect() therefore never re-registers these.
+        this.canvas.globalBusTrackers.push(cleanup);
     }
 
     handleAction(action) {
@@ -305,6 +310,7 @@ export class CanvasController {
         const c = this.canvas;
         this.onBus(CANVAS_EVENTS.THEME_PARAMS_UPDATED, () => {
             updateThemeParams();
+            c.renderer?.invalidateStableSceneCache?.();
             c.is_dirty = true;
         });
     }
@@ -506,15 +512,14 @@ export class CanvasController {
         } catch (err) { console.error(" [Storage] Restore state failed:", err); }
     }
 
-    /** Re-register event bus listeners after the dock system removed/re-attached
-     *  the <main-canvas> element, which triggered disconnectedCallback → cleanup.
-     *  Does NOT call setupGuidelineToggle() — those are direct DOM listeners on
-     *  elements that survive re-attach, so calling it again would register duplicates. */
+    /** Kept for lifecycle symmetry — the gen>1 connectedCallback path still calls
+     *  it. Since Session 25, window event-bus listeners (registered via onBus into
+     *  globalBusTrackers) are PERMANENT: disconnectedCallback never removes them,
+     *  so there is nothing to re-register here. Direct DOM listeners (guidelines,
+     *  rulers) survive re-attach on their own; pointer/keyboard listeners are
+     *  re-registered by canvasInputController.bind(). */
     reconnect() {
-        this.registerModelSyncListeners();
-        this.registerToolListeners();
-        this.registerCommandBridgeListeners();
-        this.registerThemeListener();
+        // Intentionally empty — see comment above.
     }
 
     async initialize() {

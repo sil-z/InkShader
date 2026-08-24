@@ -1,4 +1,5 @@
 import { getCanvasTheme } from "../rendering/canvas_theme.js";
+import { themeGeneration } from "../../services/theme.js";
 import {
     shouldIncludeCurrentDrawingCurve,
     snapshotIncludesNodeMarker
@@ -670,9 +671,12 @@ export class CanvasRendererService {
         // showHandles=false keeps handle lines + non-hovered sprites single-
         // draw from the cache — no line thickening, no sprite doubling.
         const mapPt = createViewportTransform(viewport);
+        const _isStartNode = mainNode.curve && mainNode === mainNode.curve.startNode;
         drawCurveNode(c.ctx, mainNode, viewport, p, {
             isSelected, showHandles: false,
             precomputedMap: mapPt,
+            isStartNode: _isStartNode,
+            nextNode: _isStartNode ? mainNode.nextOnCurve : null,
             hoverStates: { main: isMainHov, c1: isC1Hov, c2: isC2Hov }
         });
         // Control hover: the evenodd clip also excluded the normal handle
@@ -1432,6 +1436,8 @@ export class CanvasRendererService {
                             }
                             let nodeToDraw = start_node;
                             drawCurveNode(c.ctx, nodeToDraw, viewport, p, { isSelected, showHandles, precomputedMap: mapPt,
+                                isStartNode: (nodeToDraw === cd.curve.startNode),
+                                nextNode: (nodeToDraw === cd.curve.startNode) ? nodeToDraw.nextOnCurve : null,
                                 hoverStates: noHover ? {} : { main: c.hovered_node_marker === marker, c1: start_node.control1 && c.hovered_node_marker === start_node.control1.main_node, c2: start_node.control2 && c.hovered_node_marker === start_node.control2.main_node }
                             });
                             start_node = start_node.nextOnCurve;
@@ -1972,7 +1978,7 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0;
         const h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
         if (w <= 0 || h <= 0) return;
-        const stateKey = `${c.scale},${c.offset.x},${w}`;
+        const stateKey = `${c.scale},${c.offset.x},${w},${themeGeneration}`;
         if (stateKey === this._rulerHState) return;
         this._rulerHState = stateKey;
         c.ruler_horizontal.replaceChildren();
@@ -2007,7 +2013,7 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
         const h = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
         if (w <= 0 || h <= 0) return;
-        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h}`;
+        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h},${themeGeneration}`;
         if (stateKey === this._rulerVState) return;
         this._rulerVState = stateKey;
         c.ruler_vertical.replaceChildren();

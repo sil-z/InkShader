@@ -88,6 +88,49 @@ function _buildHandleSprite(radius, fillStyle, strokeStyle, lineWidth) {
     });
 }
 
+/**
+ * Draw a 30° apex isosceles triangle arrow whose geometric centroid sits at (cx, cy).
+ * The triangle points in the given `angle` direction (forward tangent of the curve).
+ *
+ * Geometry: for a 30° isosceles triangle with height h, the centroid lies at
+ * 2h/3 from the apex along the symmetry axis.  We offset the apex backwards
+ * so the centroid lands exactly at (cx, cy).
+ *
+ * @param {number} baseLength  Desired base width in CSS px (≈ square node side).
+ */
+function _drawStartArrow(ctx, cx, cy, angle, baseLength, fillStyle, strokeStyle, lineWidth) {
+    const apexAngle = Math.PI / 6; // 30°
+    const halfAngle = apexAngle / 2;
+    const height = (baseLength / 2) / Math.tan(halfAngle);
+    const halfBase = baseLength / 2;
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const perpX = -sin;
+    const perpY = cos;
+
+    // Centroid is 2h/3 from apex along symmetry axis → offset apex AHEAD
+    // so the centroid lands at (cx, cy) and the tip points in direction `angle`.
+    const offset = (2 * height) / 3;
+    const ax = cx + offset * cos;
+    const ay = cy + offset * sin;
+
+    // Base center is `height` pixels BEHIND the apex
+    const bcx = ax - height * cos;
+    const bcy = ay - height * sin;
+
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bcx + halfBase * perpX, bcy + halfBase * perpY);
+    ctx.lineTo(bcx - halfBase * perpX, bcy - halfBase * perpY);
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+}
+
 function _ensureSprites(theme) {
     const dpr = Math.ceil(window.devicePixelRatio || 1);
     if (_spriteCache && _spriteThemeRef === theme && _spriteDPR === dpr) return;
@@ -156,13 +199,16 @@ export function drawCurveNode(
     node,
     viewport,
     theme = getCanvasTheme(),
-    {
+    opts = {}
+) {
+    const {
         isSelected = false,
         hoverStates = {},
         showHandles = true,
-        precomputedMap = null   // optional: reuse transform across batched nodes
-    } = {}
-) {
+        precomputedMap = null,   // optional: reuse transform across batched nodes
+        isStartNode = false,     // true → draw directional arrow instead of node body (when unselected)
+        nextNode = null          // the node after this one on the curve (used for arrow direction)
+    } = opts;
     if (!ctx || !node) return;
     _ensureSprites(theme);
 
@@ -172,11 +218,12 @@ export function drawCurveNode(
     const sy = mainPt.y;
 
     // ── Handle lines (dynamic per-frame, draw directly) ──
+    // Uses skeleton line color (path_stroke_color) for both ahead and back handles.
     if (showHandles) {
         ctx.lineWidth = theme.path_stroke_width * 0.75;
         if (node.control1 !== null) {
             const cp = mapPoint(node.control1.x, node.control1.y);
-            ctx.strokeStyle = theme.control_ahead_color;
+            ctx.strokeStyle = theme.path_stroke_color;
             ctx.beginPath();
             ctx.moveTo(sx, sy);
             ctx.lineTo(cp.x, cp.y);
@@ -184,7 +231,7 @@ export function drawCurveNode(
         }
         if (node.control2 !== null) {
             const cp = mapPoint(node.control2.x, node.control2.y);
-            ctx.strokeStyle = theme.control_back_color;
+            ctx.strokeStyle = theme.path_stroke_color;
             ctx.beginPath();
             ctx.moveTo(sx, sy);
             ctx.lineTo(cp.x, cp.y);
@@ -196,9 +243,35 @@ export function drawCurveNode(
     // ── Node body sprite ──
     const baseR = hoverStates.main ? 5 : 4.2;
     const selKey = isSelected ? "s" : "u";
-    const sprite = _spriteCache[`${node.control_mode}_${selKey}_${baseR}`];
-    if (sprite) {
-        _drawSprite(ctx, sprite, sx - sprite.half, sy - sprite.half);
+
+    // Start-node directional arrow: 30° isosceles triangle whose centroid sits
+    // at the node position, pointing in the forward tangent direction.
+    // Tangent at t=0 = 3*(control1 − startNode), direction toward control1.
+    // Fallback when control1 is null (degenerate first derivative):
+    //   B'(0)=0 → B''(0)=6(P2−P0) → direction toward P2 = nextNode.control2
+    //   (segment P0,P1,P2,P3 with P1=P0: the second derivative points toward P2)
+    // Final fallback: chord direction startNode→nextOnCurve (straight segment).
+    // When the start node is selected, fall back to the normal node sprite.
+    if (opts.isStartNode && !isSelected) {
+        const fwd = node.control1 ?? opts.nextNode?.control2 ?? opts.nextNode;
+        if (fwd) {
+            const fwdPt = mapPoint(fwd.x, fwd.y);
+            const angle = Math.atan2(fwdPt.y - sy, fwdPt.x - sx);
+            // baseLength ≈ square node side: baseR * 0.9 * 2
+            const baseLen = baseR * 0.9 * 2;
+            _drawStartArrow(ctx, sx, sy, angle, baseLen,
+                theme.oncurve_fill_color, theme.oncurve_stroke_color,
+                theme.path_stroke_width);
+        } else {
+            // Degenerate: no forward direction at all — draw normal sprite
+            const sprite = _spriteCache[`${node.control_mode}_${selKey}_${baseR}`];
+            if (sprite) _drawSprite(ctx, sprite, sx - sprite.half, sy - sprite.half);
+        }
+    } else {
+        const sprite = _spriteCache[`${node.control_mode}_${selKey}_${baseR}`];
+        if (sprite) {
+            _drawSprite(ctx, sprite, sx - sprite.half, sy - sprite.half);
+        }
     }
 
     // ── Control handle sprites ──

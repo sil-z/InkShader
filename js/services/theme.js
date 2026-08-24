@@ -1,7 +1,12 @@
 // js/services/theme.js
 export let param_set = { "1": {} };
+// Incremented every time updateThemeParams() runs. The ruler uses this
+// in its state-key so it redraws once per theme change even if scale,
+// offset and viewport size are unchanged.
+export let themeGeneration = 0;
 
 export function updateThemeParams() {
+    themeGeneration++;
     const rootStyles = getComputedStyle(document.documentElement);
     const getVar = (name, fallback) => rootStyles.getPropertyValue(name).trim() || fallback;
 

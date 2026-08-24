@@ -52,6 +52,15 @@ export class DockLayout {
         // Optional panels (font/kerning/glyphs): hidden until shown from the
         // Edit menu. Persisted inside the layout storage blob.
         this._hiddenPanels = new Set();
+        // Session 27: hiding a panel moves the component OUT of the docking
+        // system. Hidden components live inside `_hiddenHost` — a display:none
+        // container under <body>. Moving an element inside the same document
+        // keeps it CONNECTED (no disconnect/reconnect), so the component's
+        // window-bus listeners and state sync keep running while hidden.
+        this._hiddenHost = null;
+        // Session 27: slot memory — where each hidden leaf lived, so showPanel
+        // can put it back. Only "root"/"sibling-root" modes are serialized.
+        this._hiddenSlots = {};
     }
 
     initialize(panelIds) {
@@ -67,10 +76,12 @@ export class DockLayout {
             // (Session 24 generalization).
             let changed = false;
             for (const id of panelIds) {
-                if (this._hiddenPanels.has(id)) {
-                    if (this._hasPanelLeaf(id)) { this._removeLeaf(id); changed = true; }
-                    continue;
-                }
+                // User-hidden panels — ANY panel id, not just the optional trio — are NEVER
+                // auto-added: they stay in the hidden set until the Edit menu re-shows them
+                // (Session 24 generalization). A restored tree carrying a hidden leaf (legacy
+                // Session 26 blob) gets it dropped by _applyHiddenPanelPlacement() during
+                // _buildDOM, and the component moves into the hidden host (Session 27).
+                if (this._hiddenPanels.has(id)) continue;
                 if (this._hasPanelLeaf(id)) continue;
                 this._addPanelLeaf(id);
                 changed = true;
@@ -215,8 +226,15 @@ export class DockLayout {
     _fitsNewSlot(splitNode) {
         const extent = this._nodeExtentPx(splitNode, splitNode.direction);
         if (extent <= 0) return true; // container not measurable (hidden/boot) — do not block layout
-        const minPx = splitNode.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
-        return _maxSlots(extent, minPx) >= splitNode.children.length + 1;
+        const flatMin = splitNode.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+        // Session 31: recursive per-child minimums — a same-direction nested
+        // split child consumes more than one flat slot's worth of extent, so
+        // a drop could previously create a subtree whose children could not
+        // all keep >= their minimum (the drag clamp later locks such seams).
+        // For flat leaves this equals the old floor((extent+gap)/(min+gap))
+        // capacity check: extent >= (n+1)*min + n*gap.
+        const childrenMin = splitNode.children.reduce((sum, c) => sum + this._nodeMinPx(c, splitNode.direction), 0);
+        return extent >= childrenMin + flatMin + RESIZER_GAP * splitNode.children.length;
     }
 
     /** Container size along `dir` in px (0 when the dock is not laid out). */
@@ -253,6 +271,32 @@ export class DockLayout {
         };
         walk(this.root);
         return dir === "h" ? w : h;
+    }
+
+    /**
+     * Minimum pixel extent of `node` along `dir` — the pixel minimum a resize
+     * clamp must respect when this node is a child of a split clamped along
+     * `dir`. Recursive (Session 31): a subtree's minimum is the SUM of its
+     * children's minimums plus resizer gaps when its own direction matches
+     * `dir` (children are laid out one after another along the constrained
+     * axis), or the MAX of its children's minimums when perpendicular
+     * (children share the constrained axis simultaneously — e.g. every panel
+     * of a V-split needs the SAME 200px width). A leaf and a tabs group are
+     * both single panels: the flat per-direction minimum.
+     */
+    _nodeMinPx(node, dir) {
+        if (!node || node.type === "leaf" || node.type === "tabs") {
+            return dir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+        }
+        if (node.type === "split") {
+            const childMins = node.children.map(c => this._nodeMinPx(c, dir));
+            if (childMins.length === 0) return dir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+            if (node.direction === dir) {
+                return childMins.reduce((a, b) => a + b, 0) + RESIZER_GAP * (node.children.length - 1);
+            }
+            return Math.max(...childMins);
+        }
+        return dir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
     }
 
     /**
@@ -321,12 +365,13 @@ export class DockLayout {
 
     deserialize(state) {
         this.root = state;
+        // Session 27: hidden panels have NO tree leaves — drop any the state
+        // carries (Session 26 blobs kept them) and host their components.
+        this._applyHiddenPanelPlacement();
         // Session 24: a saved view-state tree may be over-crowded (fold overflow
-        // into tabs) or reference panels the user has hidden (drop those leaves).
+        // into tabs). Runs after hidden leaves are gone — they must not count
+        // toward capacity.
         this._normalizeOverflowingSplits();
-        for (const pid of this._hiddenPanels) {
-            if (this._hasPanelLeaf(pid)) this._removeLeaf(pid);
-        }
         this.container.textContent = "";
         const el = this._buildNodeDOM(this.root);
         this.container.appendChild(el);
@@ -354,6 +399,7 @@ export class DockLayout {
                 tree: this.serialize(),
                 floats: floatState,
                 hiddenPanels: Array.from(this._hiddenPanels),
+                hiddenSlots: this._serializableHiddenSlots(),
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch (e) {
@@ -390,6 +436,16 @@ export class DockLayout {
                 // otherwise an old layout would resurrect all three panels.
                 for (const id of ["font", "kerning", "glyphs"]) this._hiddenPanels.add(id);
             }
+            // Session 27: restore the serializable slot memory (root /
+            // sibling-root) so a hidden panel re-shown after a reload lands
+            // EXACTLY where it was. Deeper (runtime) slots are not persisted.
+            if (data.hiddenSlots && typeof data.hiddenSlots === "object") {
+                for (const [pid, slot] of Object.entries(data.hiddenSlots)) {
+                    if (slot && (slot.mode === "root" || slot.mode === "sibling-root")) {
+                        this._hiddenSlots[pid] = slot;
+                    }
+                }
+            }
             this._restoring = true;
             // Assign tree root BEFORE building DOM so all tree operations work.
             // Fold any over-crowded split into tabs (Session 24 min-size rule) —
@@ -400,6 +456,14 @@ export class DockLayout {
             if (Array.isArray(data.floats)) {
                 data.floats.forEach((f) => {
                     const comp = this._componentRefs?.[f.panelId];
+                    // Session 27: a hidden floated panel stays hidden — its
+                    // component lives in the hidden host and the float window
+                    // is not re-created (hiding removes it from the float
+                    // system entirely).
+                    if (this._hiddenPanels.has(f.panelId)) {
+                        if (comp) this._ensureHiddenHost().appendChild(comp);
+                        return;
+                    }
                     if (!comp) return;
                     this._floatedPanels.delete(f.panelId);
                     this._floatPanel(f.panelId, {
@@ -437,6 +501,9 @@ export class DockLayout {
     }
 
     _buildDOM() {
+        // Session 27: hidden panels own no tree leaves (drop legacy ones) and
+        // their components live in the hidden host — before the rebuild.
+        this._applyHiddenPanelPlacement();
         this.container.textContent = "";
         if (!this.root) return;
         const el = this._buildNodeDOM(this.root);
@@ -1216,8 +1283,24 @@ export class DockLayout {
         const delta = pos - r.startPos;
         const pct = delta / r.total;
 
-        const minPixel = r.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
-        const minPct = Math.max(5, (minPixel / r.total) * 100);
+        // Session 31: per-child minimums sourced from the tree, not one flat
+        // minimum for the whole split. A nested subtree's true minimum along
+        // the clamp direction can exceed the flat panel minimum (a same-
+        // direction nested split needs the SUM of its children's minimums +
+        // resizer gaps). The old flat clamp treated every subtree as an
+        // atomic 200px unit: it crushed a nested h-split to 200px while its
+        // children landed at ~100px each (multi-tab groups below the 200px
+        // minimum), and once every child sat below its LOCAL minimum the
+        // capacity summed to 0 — the seam then locked dead in BOTH drag
+        // directions. Fall back to the flat minimum when tree data is
+        // unavailable (e.g. mid-mutation or mismatched DOM).
+        const tNode = r.splitEl._treeNode;
+        const flatMin = r.direction === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+        const childMins = (tNode && tNode.children && tNode.children.length === r.children.length)
+            ? tNode.children.map(c => this._nodeMinPx(c, r.direction))
+            : r.children.map(() => flatMin);
+        const minPctOf = (i) => Math.max(5, (childMins[i] / r.total) * 100);
+
         const deltaPct = pct * 100;
         const newPcts = [...r.startPcts];
 
@@ -1230,12 +1313,12 @@ export class DockLayout {
         if (deltaPct < 0) {
             const toShrink = -deltaPct;
             let capacity = 0;
-            for (let i = 0; i <= r.leftIdx; i++) capacity += Math.max(0, r.startPcts[i] - minPct);
+            for (let i = 0; i <= r.leftIdx; i++) capacity += Math.max(0, r.startPcts[i] - minPctOf(i));
             const clampedShrink = Math.min(toShrink, capacity);
             if (clampedShrink <= 0) return; // shrink side already at minimum — no drift
             let remaining = clampedShrink;
             for (let i = r.leftIdx; i >= 0 && remaining > 0; i--) {
-                const avail = Math.max(0, r.startPcts[i] - minPct);
+                const avail = Math.max(0, r.startPcts[i] - minPctOf(i));
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
@@ -1244,12 +1327,12 @@ export class DockLayout {
         } else if (deltaPct > 0) {
             const toShrink = deltaPct;
             let capacity = 0;
-            for (let i = r.leftIdx + 1; i < newPcts.length; i++) capacity += Math.max(0, r.startPcts[i] - minPct);
+            for (let i = r.leftIdx + 1; i < newPcts.length; i++) capacity += Math.max(0, r.startPcts[i] - minPctOf(i));
             const clampedShrink = Math.min(toShrink, capacity);
             if (clampedShrink <= 0) return; // grow side already at minimum — no drift
             let remaining = clampedShrink;
             for (let i = r.leftIdx + 1; i < newPcts.length && remaining > 0; i++) {
-                const avail = Math.max(0, r.startPcts[i] - minPct);
+                const avail = Math.max(0, r.startPcts[i] - minPctOf(i));
                 const take = Math.min(remaining, avail);
                 newPcts[i] = r.startPcts[i] - take;
                 remaining -= take;
@@ -1802,13 +1885,158 @@ export class DockLayout {
 
     // ── Optional panel visibility (Edit menu show/hide) ──
 
+    /**
+     * Session 27: hiding is a REMOVE — the leaf leaves the dock tree (its
+     * space goes to siblings, its title/tab disappears) and the component is
+     * moved into the body-level hidden host. The move is document-internal,
+     * so the component stays CONNECTED: window-bus listeners and state sync
+     * keep running exactly as if it were visible (unlike the Session 26 CSS
+     * placeholder — which the user rejected — and the Session 25 destroy —
+     * which killed the listeners).
+     */
+    _ensureHiddenHost() {
+        if (!this._hiddenHost) {
+            this._hiddenHost = document.createElement("div");
+            this._hiddenHost.id = "dock-hidden-host";
+            this._hiddenHost.style.display = "none";
+            document.body.appendChild(this._hiddenHost);
+        }
+        return this._hiddenHost;
+    }
+
+    /** Where the panel's leaf currently sits in the tree, or null. */
+    _findPanelLeafSlot(panelId) {
+        const walk = (n, parent, index) => {
+            if (!n) return null;
+            if (n.type === "leaf" && n.id === panelId) return { node: n, parent, index };
+            if (!n.children) return null;
+            for (let i = 0; i < n.children.length; i++) {
+                const r = walk(n.children[i], n, i);
+                if (r) return r;
+            }
+            return null;
+        };
+        return walk(this.root, null, -1);
+    }
+
+    /**
+     * Remember where the panel's leaf lived BEFORE hidePanel removes it.
+     * Only "root" (the leaf IS the whole tree) and "sibling-root" (the leaf's
+     * parent split is the root and collapses onto the sibling after removal)
+     * survive serialization. Deeper "runtime-split"/"runtime-tabs" slots keep
+     * live parent references and work within one session only — after a
+     * reload they fall back to the min-size placement (_addPanelLeaf).
+     */
+    _captureHiddenSlot(panelId) {
+        const found = this._findPanelLeafSlot(panelId);
+        if (!found) return;
+        const { node, parent, index } = found;
+        if (this.root === node) {
+            this._hiddenSlots[panelId] = { mode: "root" };
+            return;
+        }
+        if (parent.type === "split") {
+            const remaining = parent.children.length - 1;
+            const slot = {
+                mode: (remaining <= 1 && parent === this.root) ? "sibling-root" : "runtime-split",
+                parent,
+                index,
+                sizes: [...(parent.sizes || [])],
+                direction: parent.direction
+            };
+            this._hiddenSlots[panelId] = slot;
+            return;
+        }
+        if (parent.type === "tabs") {
+            this._hiddenSlots[panelId] = { mode: "runtime-tabs", parent, index };
+        }
+    }
+
+    /** Whether `node` (an object reference) is still reachable in the live tree. */
+    _isNodeInTree(node) {
+        const walk = (n) => {
+            if (!n) return false;
+            if (n === node) return true;
+            if (n.children) return n.children.some(walk);
+            return false;
+        };
+        return walk(this.root);
+    }
+
+    /**
+     * Put the panel's leaf back where it was before hiding. Consumes the
+     * slot memory. Returns false (and falls back to _addPanelLeaf) when the
+     * restore is impossible — parent collapsed away, tree restructured, etc.
+     */
+    _restoreHiddenSlot(panelId) {
+        const slot = this._hiddenSlots[panelId];
+        if (!slot) return false;
+        const leaf = createNode("leaf", { id: panelId });
+        if (slot.mode === "root") {
+            this.root = leaf;
+            delete this._hiddenSlots[panelId];
+            return true;
+        }
+        if (slot.mode === "sibling-root") {
+            const sibling = this.root;
+            if (!sibling) { delete this._hiddenSlots[panelId]; return false; }
+            const children = slot.index === 0 ? [leaf, sibling] : [sibling, leaf];
+            this.root = createNode("split", { direction: slot.direction, children, sizes: slot.sizes });
+            delete this._hiddenSlots[panelId];
+            return true;
+        }
+        const parent = slot.parent;
+        if (parent && this._isNodeInTree(parent) && Array.isArray(parent.children)) {
+            const idx = Math.min(slot.index, parent.children.length);
+            parent.children.splice(idx, 0, leaf);
+            if (slot.mode === "runtime-split") {
+                if (Array.isArray(slot.sizes) && slot.sizes.length === parent.children.length) {
+                    parent.sizes = slot.sizes.slice();
+                }
+            } else if (slot.mode === "runtime-tabs") {
+                parent.activeIndex = Math.min(idx, parent.children.length - 1);
+            }
+            delete this._hiddenSlots[panelId];
+            return true;
+        }
+        delete this._hiddenSlots[panelId];
+        return false;
+    }
+
+    /** Only the slot modes that can be rebuilt across a reload. */
+    _serializableHiddenSlots() {
+        const out = {};
+        for (const [pid, slot] of Object.entries(this._hiddenSlots)) {
+            if (slot.mode === "root" || slot.mode === "sibling-root") out[pid] = slot;
+        }
+        return out;
+    }
+
+    /**
+     * Apply Session 27 hide semantics before every DOM (re)build: hidden
+     * panels have NO tree leaf (drop any legacy leaf a Session 26 blob kept)
+     * and their components live in `_hiddenHost` (keep-alive, connected).
+     */
+    _applyHiddenPanelPlacement() {
+        if (!this._componentRefs) return;
+        for (const pid of this._hiddenPanels) {
+            if (this._hasPanelLeaf(pid)) this._removeLeaf(pid);
+            const comp = this._componentRefs[pid];
+            if (comp && !this._hiddenHost?.contains(comp)) {
+                this._ensureHiddenHost().appendChild(comp);
+            }
+        }
+    }
+
     isPanelHidden(panelId) {
         return this._hiddenPanels.has(panelId);
     }
 
     /**
-     * Reveal an optional panel: un-hide it, give it a leaf in the dock tree
-     * (if it is not floated already) and activate its tab.
+     * Reveal a hidden panel (Session 27): take the component back from the
+     * hidden host and restore its leaf — exactly where it lived before, via
+     * the captured slot; otherwise the generic min-size placement. The DOM
+     * rebuild re-attaches the component (still connected throughout).
      * @returns {boolean} true when the panel is now visible.
      */
     showPanel(panelId) {
@@ -1816,28 +2044,36 @@ export class DockLayout {
         this._hiddenPanels.delete(panelId);
         const comp = this._componentRefs?.[panelId];
         if (comp) delete comp.dataset.panelHidden;
-        // A floated panel is already visible — nothing else to do.
         if (this._floatedPanels.has(panelId)) {
+            // Floated AND visible — nothing to restore (hiding a floated
+            // panel removes it from the float system entirely).
             this._saveStateToStorage();
             return true;
         }
-        if (!this._hasPanelLeaf(panelId)) this._addPanelLeaf(panelId);
+        if (!this._restoreHiddenSlot(panelId)) {
+            this._addPanelLeaf(panelId);
+        }
         this._buildDOM();
+        // _attachComponentElements moved the component out of the hidden host
+        // into its leaf's content area. If the leaf landed inside a tabs
+        // group, make it the active tab.
         const leaf = this.container.querySelector(`.dock-leaf[data-panel-id="${panelId}"]`);
         const tabsEl = leaf?.closest(".dock-tabs");
         if (tabsEl) {
             const idx = Array.from(tabsEl.querySelectorAll(".dock-leaf")).findIndex((l) => l.dataset.panelId === panelId);
             if (idx > -1) this._activateTab(tabsEl, idx);
-        } else {
-            this._saveStateToStorage();
         }
+        this._saveStateToStorage();
         return true;
     }
 
     /**
-     * Hide an optional panel: remove its leaf (and/or float window) from the
-     * workspace and mark it hidden. The component element survives detached in
-     * _componentRefs (custom elements keep their state), ready for showPanel().
+     * Hide a panel (Session 27): REMOVE it from the docking system — the leaf
+     * leaves the tree (siblings take the space, the title/tab disappears) and
+     * the component moves into the hidden host under <body>. The move keeps
+     * the component CONNECTED (document-internal), so window-bus listeners and
+     * state sync keep running while hidden. A floated panel is removed from
+     * its float window the same way.
      * @returns {boolean} true when the panel is now hidden.
      */
     hidePanel(panelId) {
@@ -1846,14 +2082,16 @@ export class DockLayout {
         const comp = this._componentRefs?.[panelId];
         if (comp) comp.dataset.panelHidden = "1";
         if (this._floatedPanels.has(panelId)) {
+            // Move the component into the hidden host FIRST (still connected),
+            // then tear the float window down around it.
+            if (comp) this._ensureHiddenHost().appendChild(comp);
             this._removePanelFromFloat(panelId);
-        }
-        if (this._hasPanelLeaf(panelId)) {
+        } else if (this._hasPanelLeaf(panelId)) {
+            this._captureHiddenSlot(panelId);
             this._removeLeaf(panelId);
-            this._rebuild();
-        } else {
-            this._saveStateToStorage();
+            if (comp) this._ensureHiddenHost().appendChild(comp);
         }
+        this._rebuild();
         return true;
     }
 }

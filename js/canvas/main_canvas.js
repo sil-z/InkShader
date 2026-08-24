@@ -101,7 +101,7 @@ class MainCanvasBase extends HTMLElement {
         this._hoveredRulerId = null;
         this._hoveredRulerEndpoint = null;
         this._pendingContextMenuOnControl = false;
-        this.is_dirty = true; this.globalEventTrackers = []; this.rAF_id = null;
+        this.is_dirty = true; this.globalEventTrackers = []; this.globalBusTrackers = []; this.rAF_id = null;
         // Track is_dirty assignments for debugging
         this._dirtyStack = false; let _is_dirty = true;
         Object.defineProperty(this, 'is_dirty', { configurable: true,
@@ -328,6 +328,11 @@ class MainCanvasBase extends HTMLElement {
         this.renderRuntimeService.startLoop();
     }
     disconnectedCallback() {
+        // Clean ONLY the DOM-side listeners. Window event-bus listeners
+        // (globalBusTrackers) deliberately survive so CanvasDispatcher requests
+        // and model-sync events keep working while the dock hides the element —
+        // Session 25 hidden-panel sync. Reconnect re-registers DOM listeners via
+        // the connectedCallback gen>1 path.
         this.globalEventTrackers.forEach(cleanup => cleanup());
         this.globalEventTrackers = [];
         if (this.resizeObserver) { this.resizeObserver.disconnect(); this.resizeObserver = null; }

@@ -44,9 +44,17 @@ export function setupCanvasView(canvas) {
     canvas.offset.y = (viewportHeight - canvas.ruler_size - canvas.canvas_size_height * canvas.scale) / 2;
 }
 export function setupCanvasResizeBehavior(canvas) {
+    // Debounce ResizeObserver to prevent cascading redraws during theme
+    // switches (CSS variable changes → layout shift → ResizeObserver →
+    // ruler replaceChildren → layout shift → …).
+    let _resizeRaf = 0;
     const onViewportChange = () => {
-        canvas.resizeCanvas();
-        canvas.is_dirty = true;
+        if (_resizeRaf) cancelAnimationFrame(_resizeRaf);
+        _resizeRaf = requestAnimationFrame(() => {
+            _resizeRaf = 0;
+            canvas.resizeCanvas();
+            canvas.is_dirty = true;
+        });
     };
     canvas.addGlobalListener("window", "resize", onViewportChange);
     canvas.resizeObserver = new ResizeObserver(onViewportChange);

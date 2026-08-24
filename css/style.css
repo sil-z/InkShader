@@ -1,9 +1,13 @@
 /* =========================================
    全局主题变量 (Theme Variables)
+   色调系统：基础 UI 颜色 × 主题模式 × 色调方案
+   data-accent-hue="blue"  → 蓝色调（默认）
+   data-accent-hue="red"   → 红色调（测试）
    ========================================= */
-/* 亮色模式 (Light Mode - Default) */
+
+/* ── Light Mode (default) ── */
 :root, [data-theme="light"] {
-    /* --- 基础 UI 变量 --- */
+    /* 基础 UI 变量（非色调相关） */
     --ui-bg-base: #f8fafc;
     --ui-bg-panel: #ffffff;
     --ui-bg-overlay: rgba(255, 255, 255, 0.95);
@@ -13,51 +17,47 @@
     --ui-border: #e2e8f0;
     --ui-border-light: #cbd5e1;
     --ui-hover-bg: #f1f5f9;
-    --ui-accent: #0284c7; 
-    --ui-accent-hover: #0ea5e9;
-    --ui-accent-bg: #e6f3fa;       
-    --ui-accent-bg-hover: #cce7f5;
-    --ui-accent-text: #0284c7;
     --ui-active-bg: #e2e8f0;
-    
     --ui-divider: rgba(0, 0, 0, 0.06);
     --ui-bg-placeholder: #f8fafc;
-    /* --- Canvas 渲染颜色变量 --- */
-    --cvs-path-stroke: #808080;            /* 骨架描边：中间值灰色 */
-    --cvs-path-fill: #000000;              /* 路径填充：纯黑 */
-    --cvs-ctrl-ahead: rgba(37, 99, 235, 0.9);
-    --cvs-ctrl-back: rgba(225, 29, 72, 0.9);
-    --cvs-preview: rgba(16, 185, 129, 0.8);
-    
-    /* 节点：恢复半透明感 (0.6) */
-    --cvs-oncurve-stroke: rgba(2, 132, 199, 1); 
+
+    /* ── 蓝色调 (light) ── */
+    --ui-accent: #0284c7;
+    --ui-accent-hover: #0ea5e9;
+    --ui-accent-bg: #e6f3fa;
+    --ui-accent-bg-hover: #cce7f5;
+    --ui-accent-text: #0284c7;
+    --cvs-oncurve-stroke: rgba(2, 132, 199, 1);
     --cvs-oncurve-fill: rgba(2, 132, 199, 0.6);
-    --cvs-ctrl-stroke: rgba(14, 165, 233, 1); 
+    --cvs-ctrl-stroke: rgba(14, 165, 233, 1);
     --cvs-ctrl-fill: rgba(14, 165, 233, 0.6);
-    
+    --cvs-ctrl-ahead: rgba(37, 99, 235, 0.9);  /* fixed: pure blue */
+    --cvs-ctrl-back: rgba(220, 38, 38, 0.9);    /* fixed: pure red */
+    --cvs-hover-stroke: rgba(2, 132, 199, 1);
+    --cvs-select-box: rgba(14, 165, 233, 0.4);
+    --cvs-select-handle-stroke: #0284c7;
+    --cvs-marquee-stroke: #0ea5e9;
+    --cvs-marquee-fill: rgba(14, 165, 233, 0.08);
+    --cvs-guide-stroke: rgba(2, 132, 199, 0.6);
+    --cvs-guide-fill: rgba(2, 132, 199, 0.4);
+
+    /* 非色调结构色（不随色调变化） */
+    --cvs-path-stroke: #808080;
+    --cvs-path-fill: #000000;
+    --cvs-preview: rgba(202, 138, 4, 0.8);
     --cvs-selected-fill: rgba(250, 204, 21, 0.5);
     --cvs-selected-stroke: rgba(202, 138, 4, 1);
-    --cvs-hover-stroke: rgba(2, 132, 199, 1);
-    
     --cvs-body-bg: rgba(255, 255, 255, 1);
     --cvs-canvas-base: #f1f5f9;
-    
     --cvs-ruler-text: #64748b;
     --cvs-ruler-line: #cbd5e1;
     --cvs-guideline: rgba(249, 115, 22, 0.8);
     --cvs-measure: #ef4444;
     --cvs-measure-text-bg: rgba(255, 255, 255, 0.9);
-    
-    --cvs-select-box: rgba(14, 165, 233, 0.4);
     --cvs-select-handle-fill: #ffffff;
-    --cvs-select-handle-stroke: #0284c7;
-    --cvs-marquee-stroke: #0ea5e9;
-    --cvs-marquee-fill: rgba(14, 165, 233, 0.08);
     --cvs-divider-line: rgba(0, 0, 0, 0.15);
     --cvs-grid-dot: #bcc8d8;
     --cvs-char-preview-color: rgba(160, 160, 160, 0.3);
-    --cvs-guide-stroke: rgba(2, 132, 199, 0.6);
-    --cvs-guide-fill: rgba(2, 132, 199, 0.4);
     --cvs-guide-hover-stroke: rgba(250, 204, 21, 0.8);
     --cvs-guide-hover-fill: rgba(250, 204, 21, 0.6);
     --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.7);
@@ -69,8 +69,29 @@
     --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
     --cvs-boolean-fill: #000000;
 }
-/* 暗色模式 (Dark Mode) 也同步优化 */
+/* 红色调 × 亮色 — 切换节点高亮、选中高亮、UI 主色；控制柄标记跟随主节点，控制柄线段跟随蓝色基底 */
+[data-theme="light"][data-accent-hue="red"] {
+    --ui-accent: #dc2626;
+    --ui-accent-hover: #ef4444;
+    --ui-accent-bg: #fee2e2;
+    --ui-accent-bg-hover: #fecaca;
+    --ui-accent-text: #dc2626;
+    --cvs-oncurve-stroke: rgba(220, 38, 38, 1);
+    --cvs-oncurve-fill: rgba(220, 38, 38, 0.6);
+    --cvs-hover-stroke: rgba(220, 38, 38, 1);
+    --cvs-select-box: rgba(239, 68, 68, 0.4);
+    --cvs-select-handle-stroke: #dc2626;
+    --cvs-marquee-stroke: #ef4444;
+    --cvs-marquee-fill: rgba(239, 68, 68, 0.08);
+    --cvs-selected-fill: rgba(250, 204, 21, 0.5);
+    --cvs-selected-stroke: rgba(234, 179, 8, 1);
+    --cvs-ctrl-stroke: rgba(220, 38, 38, 1);
+    --cvs-ctrl-fill: rgba(220, 38, 38, 0.6);
+}
+
+/* ── Dark Mode ── */
 [data-theme="dark"] {
+    /* 基础 UI 变量（非色调相关） */
     --ui-bg-base: #18181b;
     --ui-bg-panel: #27272a;
     --ui-bg-overlay: rgba(39, 39, 42, 0.95);
@@ -79,50 +100,48 @@
     --ui-text-muted: #a1a1aa;
     --ui-border: #3f3f46;
     --ui-border-light: #52525b;
-    --ui-hover-bg: #323235;        /* 替代 rgba(255, 255, 255, 0.08) */
-    --ui-active-bg: #414144;       /* 替代 rgba(255, 255, 255, 0.15) */
-    --ui-accent: #3b82f6; 
-    --ui-accent-hover: #60a5fa;
-    --ui-accent-bg: #273752;       /* 替代 rgba(59, 130, 246, 0.15) */
-    --ui-accent-bg-hover: #2f456c; /* 替代 rgba(59, 130, 246, 0.3) */
-    --ui-accent-text: #ffffff;
-    
+    --ui-hover-bg: #323235;
+    --ui-active-bg: #414144;
     --ui-divider: rgba(255, 255, 255, 0.1);
     --ui-bg-placeholder: #202023;
-    --cvs-path-stroke: #a1a1aa; 
-    --cvs-path-fill: #f8fafc;
-    --cvs-ctrl-ahead: rgba(96, 165, 250, 0.9);
-    --cvs-ctrl-back: rgba(251, 113, 133, 0.9);
-    --cvs-preview: rgba(52, 211, 153, 0.9);
-    
+
+    /* ── 蓝色调 (dark) ── */
+    --ui-accent: #3b82f6;
+    --ui-accent-hover: #60a5fa;
+    --ui-accent-bg: #273752;
+    --ui-accent-bg-hover: #2f456c;
+    --ui-accent-text: #ffffff;
     --cvs-oncurve-stroke: rgba(56, 189, 248, 1);
     --cvs-oncurve-fill: rgba(56, 189, 248, 0.6);
     --cvs-ctrl-stroke: rgba(125, 211, 252, 1);
     --cvs-ctrl-fill: rgba(125, 211, 252, 0.6);
-    
+    --cvs-ctrl-ahead: rgba(96, 165, 250, 0.9);  /* fixed: pure blue (dark) */
+    --cvs-ctrl-back: rgba(248, 113, 113, 0.9);  /* fixed: pure red (dark) */
+    --cvs-hover-stroke: rgba(56, 189, 248, 1);
+    --cvs-select-box: rgba(13, 153, 255, 0.6);
+    --cvs-select-handle-stroke: #38bdf8;
+    --cvs-marquee-stroke: #38bdf8;
+    --cvs-marquee-fill: rgba(13, 153, 255, 0.15);
+    --cvs-guide-stroke: rgba(56, 189, 248, 0.7);
+    --cvs-guide-fill: rgba(56, 189, 248, 0.4);
+
+    /* 非色调结构色（不随色调变化） */
+    --cvs-path-stroke: #808080;
+    --cvs-path-fill: #000000;
+    --cvs-preview: rgba(250, 204, 21, 0.9);
     --cvs-selected-fill: rgba(253, 224, 71, 0.3);
     --cvs-selected-stroke: rgba(250, 204, 21, 1);
-    --cvs-hover-stroke: rgba(56, 189, 248, 1);
-    
     --cvs-body-bg: #1e1e1e;
     --cvs-canvas-base: #252526;
-    
     --cvs-ruler-text: #888888;
     --cvs-ruler-line: #555555;
     --cvs-guideline: rgba(255, 150, 50, 0.8);
     --cvs-measure: #ff6b6b;
     --cvs-measure-text-bg: rgba(40, 40, 40, 0.85);
-    
-    --cvs-select-box: rgba(13, 153, 255, 0.6);
     --cvs-select-handle-fill: #333333;
-    --cvs-select-handle-stroke: #38bdf8;
-    --cvs-marquee-stroke: #38bdf8;
-    --cvs-marquee-fill: rgba(13, 153, 255, 0.15);
     --cvs-divider-line: rgba(255, 255, 255, 0.2);
     --cvs-grid-dot: #52525b;
     --cvs-char-preview-color: rgba(160, 160, 160, 0.3);
-    --cvs-guide-stroke: rgba(56, 189, 248, 0.7);
-    --cvs-guide-fill: rgba(56, 189, 248, 0.4);
     --cvs-guide-hover-stroke: rgba(250, 204, 21, 0.9);
     --cvs-guide-hover-fill: rgba(250, 204, 21, 0.7);
     --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.8);
@@ -133,6 +152,25 @@
     --cvs-measure-hover: #fde047;
     --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
     --cvs-boolean-fill: #f8fafc;
+}
+/* 红色调 × 暗色 — 切换节点高亮、选中高亮、UI 主色；控制柄标记跟随主节点，控制柄线段跟随蓝色基底 */
+[data-theme="dark"][data-accent-hue="red"] {
+    --ui-accent: #f87171;
+    --ui-accent-hover: #fca5a5;
+    --ui-accent-bg: #451a1a;
+    --ui-accent-bg-hover: #5a2222;
+    --ui-accent-text: #ffffff;
+    --cvs-oncurve-stroke: rgba(252, 129, 129, 1);
+    --cvs-oncurve-fill: rgba(252, 129, 129, 0.6);
+    --cvs-hover-stroke: rgba(252, 129, 129, 1);
+    --cvs-select-box: rgba(248, 113, 113, 0.6);
+    --cvs-select-handle-stroke: #f87171;
+    --cvs-marquee-stroke: #fca5a5;
+    --cvs-marquee-fill: rgba(248, 113, 113, 0.15);
+    --cvs-selected-fill: rgba(250, 204, 21, 0.4);
+    --cvs-selected-stroke: rgba(234, 179, 8, 1);
+    --cvs-ctrl-stroke: rgba(252, 129, 129, 1);
+    --cvs-ctrl-fill: rgba(252, 129, 129, 0.6);
 }
 /* =========================================
    提取的基础 UI 样式类
@@ -438,13 +476,13 @@ glyph-sequence-bar {
 /* 活跃 glyph 指示：仅当 token 处于活跃状态时，名称/字码标签才显示彩色高亮（无边框实心色块，与原先一致） */
 .seq-bar-pos.active .seq-bar-name,
 .seq-bar-popup .seq-bar-name.active {
-    background: #4f46e5; /* 原为 #7c3aed，加深一档的靛蓝 */
+    background: var(--ui-accent);
     border: none;
     color: #fff;
 }
 .seq-bar-pos.active .seq-bar-code,
 .seq-bar-popup .seq-bar-code.active {
-    background: #14b8a6; /* 原为 #0d9488，改为更柔和的青灰绿 */
+    background: var(--ui-accent-hover);
     border: none;
     color: #fff;
 }
@@ -489,7 +527,7 @@ glyph-sequence-bar {
     white-space: nowrap;
     box-sizing: border-box;
     pointer-events: none;
-    color: #000000;
+    color: var(--ui-text-muted);
 }
 .seq-bar-ins-last-btn {
     width: auto;
@@ -524,7 +562,7 @@ glyph-sequence-bar {
     white-space: nowrap;
     box-sizing: border-box;
     pointer-events: none;
-    color: #000000;
+    color: var(--ui-text-muted);
 }
 .toolbar {
     display: flex;
@@ -682,7 +720,7 @@ glyph-sequence-bar {
     left: 0;
     right: 0;
     height: 3px;
-    background: #60a5fa;
+    background: var(--ui-accent-hover);
     border-radius: 0 0 2px 2px;
 }
 .dock-tab:hover:not(.active) {
@@ -1703,7 +1741,13 @@ kern-popup .pen-tool-popup-body {
     box-shadow: none;
     overflow-y: auto;
 }
-/* Scrollbar for tool popups: match other panel scrollbar style */
+/* Scrollbar for tool popups: match other panel scrollbar style.
+   Same contract as the shared panel group above: transparent by default,
+   thumb appears on element hover / scrollbar_visibility.js data-visible,
+   darker while hovering the bar itself. (The old .show-scrollbar class was
+   never added by any code - scrollbar_visibility.js sets data-scrollbar-visible;
+   the always-on thumb override below it was removed so popups behave like
+   every other panel.) */
 preferences-popup .pen-tool-popup-body::-webkit-scrollbar,
 font-popup .pen-tool-popup-body::-webkit-scrollbar,
 pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar,
@@ -1728,45 +1772,49 @@ ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-corner,
 kern-popup .pen-tool-popup-body::-webkit-scrollbar-corner {
     background: transparent;
 }
- preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
-     background: transparent;
-     border-radius: 10px;
-     transition: background 0.35s ease 0.5s;
- }
- preferences-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
- font-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
- pen-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
- ellipse-tool-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb,
- kern-popup .pen-tool-popup-body.show-scrollbar::-webkit-scrollbar-thumb {
-     background: var(--ui-border-light);
-     transition: background 0.05s ease 0s;
- }
- preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
- font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
- pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
- ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
- kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover {
-     background: var(--ui-text-muted);
-     transition: background 0.05s ease 0s;
- }
- preferences-popup .pen-tool-popup-body::-webkit-scrollbar-track,
- font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
- pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
- ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
- kern-popup .pen-tool-popup-body::-webkit-scrollbar-track {
-     background: transparent;
-     border: none;
- }
- preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
- kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
-     background: var(--ui-border-light);
-     transition: none;
- }
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    transition: background 0.35s ease 0.5s;
+}
+preferences-popup .pen-tool-popup-body:hover::-webkit-scrollbar-thumb,
+font-popup .pen-tool-popup-body:hover::-webkit-scrollbar-thumb,
+pen-tool-popup .pen-tool-popup-body:hover::-webkit-scrollbar-thumb,
+ellipse-tool-popup .pen-tool-popup-body:hover::-webkit-scrollbar-thumb,
+kern-popup .pen-tool-popup-body:hover::-webkit-scrollbar-thumb,
+preferences-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+font-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+pen-tool-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+ellipse-tool-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb,
+kern-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    transition: background 0.05s ease 0s;
+}
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+font-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar-thumb:hover,
+preferences-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+font-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+pen-tool-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+ellipse-tool-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover,
+kern-popup .pen-tool-popup-body[data-scrollbar-visible]::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-text-muted);
+    transition: background 0.05s ease 0s;
+}
+preferences-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+font-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+pen-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+ellipse-tool-popup .pen-tool-popup-body::-webkit-scrollbar-track,
+kern-popup .pen-tool-popup-body::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
 
 preferences-popup .pen-tool-row,
 font-popup .pen-tool-row {
@@ -2092,7 +2140,7 @@ expand-stroke-popup .npp-row input[type="checkbox"] {
     content: '';
     position: absolute;
     inset: 4px;
-    border: 2px dashed rgba(96, 165, 250, 0.6);
+    border: 2px dashed var(--ui-accent-hover);
     border-radius: 8px;
     pointer-events: none;
     z-index: 1;
@@ -2189,8 +2237,8 @@ expand-stroke-popup .npp-row input[type="checkbox"] {
     min-width: 0;
 }
 .npp-row .npp-axis {
-    font-size: 10px;
-    color: var(--ui-text-muted);
+    font: var(--ink-field-label-font);
+    color: var(--ui-text-main);
     flex-shrink: 0;
     width: 18px;
     text-align: right;
@@ -2364,7 +2412,7 @@ expand-stroke-popup .npp-row input[type="checkbox"] {
 .tree_item[data-type="group"] .tree_select_btn {
     display: none;
 }
-.tree_toggle img { width: 12px; height: 12px; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+.tree_toggle img { width: 12px; height: 12px; }
 .tree_label, .tree_label_group { color: var(--ui-text-main); line-height: normal; white-space: nowrap; pointer-events: auto; padding-bottom: 1px; min-width: 0; }
 .tree_label_group { font-weight: 600; }
 .group-reference .tree_label_group { font-style: italic; color: var(--ui-text-muted); }
@@ -3135,7 +3183,115 @@ ellipse-tool-popup .npp-row input:not([type="checkbox"]):not(.prop_toggle_btn):f
     color: var(--ui-accent);
     font-weight: 600;
 }
-/* 新增: 弹窗操作按钮统一容器与样式 */
+
+/* =========================================
+   Custom Select (cs-*) — replaces native <select>
+   ========================================= */
+.cs-wrapper {
+    position: relative;
+    user-select: none;
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+}
+.cs-wrapper.font-popup-input {
+    width: 120px;
+    flex: 0 0 120px;
+}
+.cs-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--ui-border);
+    border-radius: 3px;
+    background: var(--ui-bg-base);
+    color: var(--ui-text-main);
+    font: var(--ink-field-input-font);
+    letter-spacing: normal;
+    box-sizing: border-box;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.cs-trigger:hover {
+    border-color: var(--ui-border-light);
+}
+.cs-trigger:focus,
+.cs-wrapper.open .cs-trigger {
+    border-color: var(--ui-accent);
+}
+.cs-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+.cs-chevron {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    margin-left: 4px;
+    color: var(--ui-text-muted);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.cs-wrapper.open .cs-chevron {
+    transform: rotate(180deg);
+}
+.cs-panel {
+    display: none;
+    position: fixed;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--ui-bg-overlay);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 10000;
+    padding: 2px 0;
+}
+.cs-panel::-webkit-scrollbar {
+    width: 4px;}
+.cs-panel::-webkit-scrollbar-thumb {
+    background: var(--ui-border-light);
+    border-radius: 4px;
+}
+.cs-option {
+    padding: 4px 10px;
+    font: var(--ink-field-input-font);
+    letter-spacing: normal;
+    cursor: pointer;
+    color: var(--ui-text-main);
+    white-space: nowrap;
+    transition: background 0.1s;
+}
+.cs-option:hover {
+    background: var(--ui-hover-bg);
+}
+.cs-option.selected {
+    background: var(--ui-accent-bg);
+    color: var(--ui-accent);
+    font-weight: 600;
+}
+/* Also style native selects that haven't been converted yet to match */
+preferences-popup .pen-tool-row select,
+font-popup .pen-tool-row select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8L9.5 4.5' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 5px center;
+    background-size: 10px;
+    padding-right: 20px;
+    border-radius: 3px;
+}
+/* =========================================
+   弹窗操作按钮统一容器与样式
+   ========================================= */
 .pref_modal_actions {
     margin-top: auto;
     text-align: right;
@@ -3233,16 +3389,16 @@ main-canvas[data-cursor="default"]     { cursor: default     !important; }
    Dock 拖拽预览样式变体（从 JS 硬编码颜色解耦）
    ========================================= */
 .dock-preview-merge {
-    background: rgba(96, 165, 250, 0.2) !important;
+    background: var(--ui-accent-bg) !important;
     box-shadow: none !important;
 }
 .dock-preview-insert {
-    background: #60a5fa !important;
-    box-shadow: 0 0 6px rgba(96, 165, 250, 0.5) !important;
+    background: var(--ui-accent-hover) !important;
+    box-shadow: 0 0 6px var(--ui-accent-hover) !important;
     border-radius: 0 !important;
 }
 .dock-preview-insert-merge {
-    background: rgba(96, 165, 250, 0.2) !important;
+    background: var(--ui-accent-bg) !important;
     box-shadow: none !important;
 }
 /* Body resizing cursor */

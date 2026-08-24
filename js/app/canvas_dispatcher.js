@@ -167,7 +167,6 @@ export const CanvasDispatcher = Object.freeze({
     /** Preferences / theme: notify canvas to recompute theme and redraw */
     notifyThemeAndRedraw() {
         appEventBus.emit(CANVAS_EVENTS.THEME_PARAMS_UPDATED);
-        appEventBus.emit(CANVAS_EVENTS.FORCE_CANVAS_REDRAW);
     },
 
     /** Persist view state after layout size change (right column height, width, etc.) */

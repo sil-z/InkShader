@@ -1,7 +1,7 @@
 // js/ui/glyph_popup.js — Glyph picker panel (Web Component)
 //
 // Renders the same glyph selection UI as the sequence bar's add menu:
-// header with title, name/code/advance form, ASCII character grid, other groups.
+// name/code/advance form, ASCII character grid, other groups.
 // Originally a popup triggered from the top "Glyphs" menu item; now a persistent
 // dock panel whose content is rendered inline inside the component element
 // (the old implementation appended a floating .sequence-add-menu to <body>).
@@ -85,12 +85,28 @@ export class GlyphPopup extends HTMLElement {
         this._buildMenu();
     }
 
-    // Grid columns are fixed now that the panel fills its dock leaf.
-    static get COLS() { return 8; }
+    // Grid columns follow the panel width: the panel fills its dock leaf and
+    // the leaf can be resized freely. Column width and gap are CONSTANT
+    // (aesthetic) — when the width grows between column thresholds, the extra
+    // space accumulates at the RIGHT of the grid instead of stretching the
+    // columns. The sequence bar's fixed-width menu uses the same constants.
+    static get COLUMN_W() { return 68; }
+    static get GRID_GAP() { return 4; }       // .seq-menu-grid gap
+    static get SECTION_PAD() { return 16; }   // .seq-menu-section horizontal padding (8px + 8px)
+
+    _computeCols() {
+        // Prefer the grid's own content width (self-corrects if section
+        // padding changes in CSS); before the grid exists (first _buildMenu
+        // call) fall back to the menu width minus the section padding.
+        const grid = this._menu?.querySelector(".seq-menu-grid");
+        const w = grid ? grid.clientWidth : (this._menu?.clientWidth ?? 0) - GlyphPopup.SECTION_PAD;
+        // N columns fit iff N*COLUMN_W + (N-1)*GRID_GAP <= w
+        return Math.max(1, Math.floor((w + GlyphPopup.GRID_GAP) / (GlyphPopup.COLUMN_W + GlyphPopup.GRID_GAP)));
+    }
 
     _buildMenu() {
         const menu = this._menu;
-        const COLS = GlyphPopup.COLS;
+        this._cols = this._computeCols();
 
         const asciiCharToGroup = new Map();
         const groups = EditorModel.listSequenceMenuGroups();
@@ -113,7 +129,7 @@ export class GlyphPopup extends HTMLElement {
 
         const refreshSections = () => {
             const charGrid = menu.querySelector(".seq-menu-char-grid");
-            if (charGrid) this._refreshCharGrid(charGrid, asciiCharToGroup, COLS);
+            if (charGrid) this._refreshCharGrid(charGrid, asciiCharToGroup, this._cols);
             let eg = menu.querySelector(".seq-menu-existing-groups");
             if (nonAsciiGroups.length > 0) {
                 if (!eg) {
@@ -127,7 +143,7 @@ export class GlyphPopup extends HTMLElement {
                 }
                 const existingGrid = eg.querySelector(".seq-menu-grid");
                 if (existingGrid) existingGrid.remove();
-                this._renderNoCodeGroups(eg, nonAsciiGroups, COLS);
+                this._renderNoCodeGroups(eg, nonAsciiGroups, this._cols);
             } else if (eg) {
                 eg.remove();
             }
@@ -166,15 +182,6 @@ export class GlyphPopup extends HTMLElement {
         // Scrollbar visibility on hover (same contract as the old popup).
         menu.addEventListener("mouseenter", () => menu.classList.add("show-scrollbar"));
         menu.addEventListener("mouseleave", () => menu.classList.remove("show-scrollbar"));
-
-        // Header
-        const header = document.createElement("div");
-        header.className = "seq-menu-header";
-        const title = document.createElement("span");
-        title.className = "seq-menu-title";
-        title.textContent = "Add Glyph";
-        header.appendChild(title);
-        menu.appendChild(header);
 
         // Form
         const form = document.createElement("div");
@@ -296,7 +303,7 @@ export class GlyphPopup extends HTMLElement {
         charSection.appendChild(charTitle);
         const charGrid = document.createElement("div");
         charGrid.className = "seq-menu-grid seq-menu-char-grid";
-        this._refreshCharGrid(charGrid, asciiCharToGroup, COLS);
+        this._refreshCharGrid(charGrid, asciiCharToGroup, this._cols);
         charSection.appendChild(charGrid);
         menu.appendChild(charSection);
 
@@ -308,14 +315,27 @@ export class GlyphPopup extends HTMLElement {
             secTitle.className = "seq-menu-section-title";
             secTitle.textContent = "Other Groups";
             sec.appendChild(secTitle);
-            this._renderNoCodeGroups(sec, nonAsciiGroups, COLS);
+            this._renderNoCodeGroups(sec, nonAsciiGroups, this._cols);
             menu.appendChild(sec);
         }
+
+        // Column count follows the panel width. The sequence bar's add menu
+        // (fixed-width scenario, opened from the add/insert buttons) keeps its
+        // own static column logic — this observer only tracks dock-leaf resizes.
+        this._resizeObserver = new ResizeObserver(() => {
+            const cols = this._computeCols();
+            if (cols === this._cols) return;
+            this._cols = cols;
+            refreshSections();
+        });
+        this._resizeObserver.observe(menu);
     }
 
     _refreshCharGrid(charGrid, asciiCharToGroup, cols) {
         charGrid.replaceChildren();
-        charGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        // Fixed-width columns: leftover width stays on the right of the grid,
+        // columns and gaps never stretch (see _computeCols).
+        charGrid.style.gridTemplateColumns = `repeat(${cols}, ${GlyphPopup.COLUMN_W}px)`;
         for (let code = 32; code <= 126; code++) {
             const afdkoName = AFDKO_NAMES[code] || _toAfdkoName(String.fromCodePoint(code));
             const char = String.fromCodePoint(code);
@@ -416,7 +436,9 @@ export class GlyphPopup extends HTMLElement {
             return g;
         })();
         grid.replaceChildren();
-        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        // Fixed-width columns: leftover width stays on the right of the grid,
+        // columns and gaps never stretch (see _computeCols).
+        grid.style.gridTemplateColumns = `repeat(${cols}, ${GlyphPopup.COLUMN_W}px)`;
         for (const g of groups) {
             const item = document.createElement("div");
             item.className = "seq-menu-item";

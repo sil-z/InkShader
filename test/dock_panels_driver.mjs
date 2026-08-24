@@ -182,13 +182,18 @@ try {
     })()`);
     const B8 = await evalJs(ws, `(() => {
         const stored = JSON.parse(localStorage.getItem('inkshader_dock_layout_v2'));
+        const leaf = document.querySelector('.dock-leaf[data-panel-id="font"]');
         return {
             hidden: window.__dock.isPanelHidden('font'),
-            leaf: !!document.querySelector('.dock-leaf[data-panel-id="font"]'),
+            leaf: !!leaf,
+            gone: !leaf,
+            hosted: !!document.querySelector('#dock-hidden-host font-popup'),
+            attached: !!document.querySelector('font-popup'),
             hiddenPanels: stored.hiddenPanels
         };
     })()`);
-    assert(B8.hidden === true && !B8.leaf, "B8 Font panel hidden again (leaf removed)", B8);
+    assert(B8.hidden === true && B8.gone && B8.hosted && B8.attached,
+        "B8 Font panel hidden again (leaf removed, component kept alive in hidden host)", B8);
     assert(JSON.stringify(B8.hiddenPanels) === '["kerning","glyphs","font"]', "B9 storage hiddenPanels now includes font", B8.hiddenPanels);
 
     // Show all three for content checks.
@@ -238,21 +243,24 @@ try {
     assert(JSON.stringify(B17.zh) === '["字体","字偶距","字形"]', "B17 title bars translate (zh)", B17.zh);
     assert(JSON.stringify(B17.en) === '["Font","Kerning","Glyphs"]', "B18 title bars revert (en)", B17.en);
 
-    // dataset.panelHidden lifecycle. NOTE: while hidden the component is
-    // DETACHED from the document (held only in __dock._componentRefs), so the
-    // probe must reach it through the dock, not querySelector.
+    // dataset.panelHidden lifecycle (Session 27): hiding removes the leaf from
+    // the dock tree (no title, no space) but the component is kept ALIVE in the
+    // body-level hidden host — document-internal move, never detached.
     const B19 = await evalJs(ws, `(() => {
         const comp = window.__dock._componentRefs.font;
         window.__dock.hidePanel('font');
         const flag = comp.dataset.panelHidden;
-        const detached = !document.querySelector('font-popup');
+        const attached = !!document.querySelector('font-popup');
+        const hosted = !!document.querySelector('#dock-hidden-host font-popup');
+        const leafGone = !document.querySelector('.dock-leaf[data-panel-id="font"]');
         window.__dock.showPanel('font');
         const gone = !('panelHidden' in comp.dataset);
-        const reattached = !!document.querySelector('font-popup');
-        return { flag, gone, detached, reattached, shown: !window.__dock.isPanelHidden('font') };
+        const leafShown = !!document.querySelector('.dock-leaf[data-panel-id="font"]');
+        const backInDock = !!document.querySelector('.dock-leaf[data-panel-id="font"] font-popup');
+        return { flag, gone, attached, hosted, leafGone, leafShown, backInDock, shown: !window.__dock.isPanelHidden('font') };
     })()`);
-    assert(B19.flag === "1" && B19.gone && B19.shown && B19.detached && B19.reattached,
-        "B19 dataset.panelHidden lifecycle (set+detach on hide, removed+reattach on show)", B19);
+    assert(B19.flag === "1" && B19.gone && B19.shown && B19.attached && B19.hosted && B19.leafGone && B19.leafShown && B19.backInDock,
+        "B19 dataset.panelHidden lifecycle (flag set/removed, component kept alive in hidden host)", B19);
 
     // ├─ Phase C: persistence across reloads ──
     await cdp(ws, "Network.clearBrowserCache");
@@ -281,11 +289,16 @@ try {
     await cdp(ws, "Network.clearBrowserCache");
     await cdp(ws, "Page.reload");
     await waitReady(ws);
-    const C3 = await evalJs(ws, `(() => ({
-        hidden: ['font','kerning','glyphs'].map(id => window.__dock.isPanelHidden(id)),
-        leaves: ['font','kerning','glyphs'].map(id => !!document.querySelector('.dock-leaf[data-panel-id="' + id + '"]'))
-    }))()`);
-    assert(C3.hidden.every(Boolean) && C3.leaves.every(l => !l), "C3 hidden panels persist through reload", C3);
+    const C3 = await evalJs(ws, `(() => {
+        const hosts = { font: 'font-popup', kerning: 'kern-popup', glyphs: 'glyph-popup' };
+        return {
+            hidden: ['font','kerning','glyphs'].map(id => window.__dock.isPanelHidden(id)),
+            leaves: ['font','kerning','glyphs'].map(id => !!document.querySelector('.dock-leaf[data-panel-id="' + id + '"]')),
+            hosted: ['font','kerning','glyphs'].map(id => !!document.querySelector('#dock-hidden-host ' + hosts[id]))
+        };
+    })()`);
+    assert(C3.hidden.every(Boolean) && C3.leaves.every(l => !l) && C3.hosted.every(Boolean),
+        "C3 hidden panels persist through reload (no dock leaves, components alive in hidden host)", C3);
 
     // Migration: old v2 layout WITHOUT hiddenPanels and without the three ids.
     await evalJs(ws, `(() => {
@@ -342,15 +355,18 @@ try {
     // D3/D4: console is a CORE panel — hide/show must work like the trio.
     const D3 = await evalJs(ws, `(() => {
         window.__dock.hidePanel('console');
+        const leaf = document.querySelector('.dock-leaf[data-panel-id="console"]');
         return {
             hidden: window.__dock.isPanelHidden('console'),
-            leaf: !!document.querySelector('.dock-leaf[data-panel-id="console"]'),
-            compDetached: !document.querySelector('logger-panel'),
+            leaf: !!leaf,
+            gone: !leaf,
+            compAttached: !!document.querySelector('logger-panel'),
+            hosted: !!document.querySelector('#dock-hidden-host logger-panel'),
             refKept: !!window.__dock._componentRefs.console
         };
     })()`);
-    assert(D3.hidden && !D3.leaf && D3.compDetached && D3.refKept,
-        "D3 console hidden (leaf removed, component detached)", D3);
+    assert(D3.hidden && D3.gone && D3.compAttached && D3.hosted && D3.refKept,
+        "D3 console hidden (leaf removed, component kept alive in hidden host)", D3);
 
     const D4 = await evalJs(ws, `(() => {
         window.__dock.showPanel('console');
@@ -366,15 +382,18 @@ try {
     // D5/D6: the canvas itself can be hidden and restored without breaking the app.
     const D5 = await evalJs(ws, `(() => {
         window.__dock.hidePanel('canvas');
+        const leaf = document.querySelector('.dock-leaf[data-panel-id="canvas"]');
         return {
             hidden: window.__dock.isPanelHidden('canvas'),
-            leaf: !!document.querySelector('.dock-leaf[data-panel-id="canvas"]'),
-            wrapDetached: !document.querySelector('.canvas-wrap'),
+            leaf: !!leaf,
+            gone: !leaf,
+            wrapAttached: !!document.querySelector('.canvas-wrap'),
+            hosted: !!document.querySelector('#dock-hidden-host main-canvas'),
             canvasAlive: !!window.__canvas && !!window.__canvas.curve_manager
         };
     })()`);
-    assert(D5.hidden && !D5.leaf && D5.wrapDetached && D5.canvasAlive,
-        "D5 canvas hidden (core panel, detached but alive)", D5);
+    assert(D5.hidden && D5.gone && D5.wrapAttached && D5.hosted && D5.canvasAlive,
+        "D5 canvas hidden (leaf removed, component alive in hidden host)", D5);
 
     const D6 = await evalJs(ws, `(() => {
         window.__dock.showPanel('canvas');
@@ -470,8 +489,12 @@ try {
         "D9 narrow fresh layout fits capacity, trio hidden", D9);
 
     // D10: dropping a panel INTO a full split (parallel zone) auto-tabs it.
+    // A real drop source is always VISIBLE — clear the hidden flag first
+    // (Session 27: hidden panels have no tree leaf; a hidden insert would be
+    // reverted by _applyHiddenPanelPlacement during _rebuild).
     const D10 = await evalJs(ws, `(() => {
         const d = window.__dock;
+        d._hiddenPanels.delete('font');
         d._insertAtPanel('font', 'canvas', 'right');
         const t = d.serialize();
         return { t, countLeaves: (() => { let c = 0; const w = (n) => { if (!n) return; if (n.type === 'leaf') c++; else (n.children || []).forEach(w); }; w(t); return c; })() };
@@ -486,6 +509,7 @@ try {
     const D11 = await evalJs(ws, `(() => {
         const d = window.__dock;
         d.hidePanel('font');
+        d._hiddenPanels.delete('font'); // visible again before the drop (Session 27)
         d._insertAtPanel('font', 'canvas', 'top');
         const t = d.serialize();
         return t;
@@ -526,16 +550,20 @@ try {
         D12.hiddenTrio.every(Boolean) && D12.storedChildren === 2 && D12.storedSum100,
         "D12 crowded restore folds overflow into tabs and persists the normalization", D12);
 
-    // D13: deserialize (view-state path) drops leaves of panels in the hidden set.
+    // D13: deserialize (view-state path) DROPS leaves of hidden panels — hiding
+    // removes the panel from the docking system (Session 27); a view state
+    // that still carries a hidden leaf must shed it, and the component goes
+    // into the hidden host.
     const D13 = await evalJs(ws, `(() => {
         const d = window.__dock;
         d._hiddenPanels.add('font');
         d.deserialize({ type: 'split', direction: 'h', sizes: [50,50], children: [{type:'leaf',id:'canvas'},{type:'leaf',id:'font'}] });
         const t = d.serialize();
         const hasFont = (n) => { if (!n) return false; if (n.type === 'leaf') return n.id === 'font'; return (n.children || []).some(hasFont); };
-        return { hasFont: hasFont(t), hidden: d.isPanelHidden('font') };
+        return { hasFont: hasFont(t), hidden: d.isPanelHidden('font'), hosted: !!document.querySelector('#dock-hidden-host font-popup') };
     })()`);
-    assert(!D13.hasFont && D13.hidden, "D13 deserialize drops hidden-panel leaves", D13);
+    assert(!D13.hasFont && D13.hidden && D13.hosted,
+        "D13 deserialize drops hidden-panel leaves (component moved to hidden host)", D13);
 
     // D14: back to normal width, reload, zero app errors for the whole run.
     await cdp(ws, "Emulation.clearDeviceMetricsOverride");

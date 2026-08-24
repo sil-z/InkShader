@@ -538,7 +538,7 @@ export class PropertyPanel extends HTMLElement {
 
         hasPath = selectedCurves.length > 0;
 
-        let bounds = (this.currentTool === 'SELECT' && selectedIds.length > 0) ? this.getSelectionBounds() : null;
+        let bounds = selectedIds.length > 0 ? this.getSelectionBounds() : null;
         let hasBounds = bounds !== null;
         let nodeCount = this.interaction.nodeSelectionCount || 0;
 

@@ -364,14 +364,16 @@ export class ObjectTree extends HTMLElement {
         lockBtn.appendChild(lockImg);
         lockBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const selected = Array.from(
-                this.tree.querySelectorAll('.tree_item.selected')
-            ).map(el => el.dataset.id);
-            if (selected.length === 0) return;
-            const gi = EditorModel.getTreeItem(selected[0]);
+            const id = el.dataset.id;
+            const gi = EditorModel.getTreeItem(id);
             if (!gi) return;
-            const locked = !!gi.locked;
-            CanvasDispatcher.requestToggleSelectedObjectsLock(selected, !locked);
+            const newLocked = !gi.locked;
+            const selected = this.interaction?.selectedTreeIds || [];
+            if (selected.includes(id) && selected.length > 1) {
+                CanvasDispatcher.requestToggleSelectedObjectsLock(selected, newLocked);
+            } else {
+                CanvasDispatcher.requestToggleSelectedObjectsLock([id], newLocked);
+            }
         });
         const hideBtn = document.createElement("button");
         hideBtn.className = "tree_hide_btn";
@@ -382,14 +384,16 @@ export class ObjectTree extends HTMLElement {
         hideBtn.appendChild(hideImg);
         hideBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const selected = Array.from(
-                this.tree.querySelectorAll('.tree_item.selected')
-            ).map(el => el.dataset.id);
-            if (selected.length === 0) return;
-            const gi = EditorModel.getTreeItem(selected[0]);
+            const id = el.dataset.id;
+            const gi = EditorModel.getTreeItem(id);
             if (!gi) return;
-            const hidden = gi.visible === false;
-            CanvasDispatcher.requestToggleSelectedObjectsDisplay(selected, hidden);
+            const newVisible = gi.visible === false;
+            const selected = this.interaction?.selectedTreeIds || [];
+            if (selected.includes(id) && selected.length > 1) {
+                CanvasDispatcher.requestToggleSelectedObjectsDisplay(selected, newVisible);
+            } else {
+                CanvasDispatcher.requestToggleSelectedObjectsDisplay([id], newVisible);
+            }
         });
         right.append(lockBtn, hideBtn);
         el.append(right);
@@ -397,13 +401,10 @@ export class ObjectTree extends HTMLElement {
         return el;
     }
     _ensureGroupToggleSvg(toggle, collapsed) {
-        let img = toggle.querySelector("img");
-        if (!img) {
-            img = document.createElement("img");
-            toggle.appendChild(img);
-        }
-        const src = collapsed ? "./assets/icons/tree-expand.svg" : "./assets/icons/tree-collapse.svg";
-        if (img.getAttribute("src") !== src) img.src = src;
+        const MARKUP_EXPAND = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,4 10,8 6,12"/></svg>';
+        const MARKUP_COLLAPSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,6 8,10 12,6"/></svg>';
+        const desired = collapsed ? MARKUP_EXPAND : MARKUP_COLLAPSE;
+        if (toggle.innerHTML !== desired) toggle.innerHTML = desired;
     }
     _treeRowKey(rows) {
         return rows.map((r) => r.id).join("\0");

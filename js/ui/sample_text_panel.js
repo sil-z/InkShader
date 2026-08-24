@@ -111,7 +111,9 @@ export class SampleTextPanel extends HTMLElement {
         this._cleanups = [
             appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, () => this._syncFromModel()),
             appEventBus.on(CANVAS_EVENTS.SEQUENCE_CHANGED, () => this._syncFromModel()),
-            appEventBus.on('COMMAND_COMMITTED', () => this._syncFromModel())
+            appEventBus.on('COMMAND_COMMITTED', () => this._syncFromModel()),
+            // Re-render on theme change (colors are read from CSS vars at draw time)
+            appEventBus.on(CANVAS_EVENTS.THEME_PARAMS_UPDATED, () => this._render(this.input.value)),
         ];
         this._syncFromModel();
     }

@@ -8,6 +8,7 @@ import {
     restoreRememberedInputValue,
     trimmedInputValue
 } from "./input_validation.js";
+import { createCustomSelect } from "./custom_select.js";
 
 const POPUP_HTML = `
 <div class="prop_panel_title_wrapper"><span class="panel_title" data-i18n="panel.font">Font</span></div>
@@ -211,6 +212,9 @@ export class FontPopup extends HTMLElement {
         this.innerHTML = POPUP_HTML;
         installEnterBlurHandler(this);
 
+        // Convert native <select> to custom styled dropdowns
+        this.querySelectorAll('select').forEach(sel => createCustomSelect(sel));
+
         this.addEventListener('mousedown', (e) => e.stopPropagation());
         this.addEventListener('focusin', (e) => {
             const target = e.target;
@@ -220,12 +224,9 @@ export class FontPopup extends HTMLElement {
             }
         });
 
-        // Toggle scrollbar visibility on mouse enter/leave
-        const body = this.querySelector('.pen-tool-popup-body');
-        if (body) {
-            body.addEventListener('mouseenter', () => body.classList.add('show-scrollbar'));
-            body.addEventListener('mouseleave', () => body.classList.remove('show-scrollbar'));
-        }
+        // Scrollbar visibility is handled app-wide by scrollbar_visibility.js
+        // (CSS :hover + [data-scrollbar-visible] on .pen-tool-popup-body) -
+        // no per-component show-scrollbar class anymore.
 
         // Auto-save on focusout: when any input/select/textarea loses focus
         this.addEventListener('focusout', (e) => {
@@ -255,6 +256,15 @@ export class FontPopup extends HTMLElement {
         this._loadSettings();
     }
 
+    /** Sync a native <select> value AND update the custom select wrapper display */
+    _setSelectValue(selector, value) {
+        const sel = this.querySelector(selector);
+        if (!sel) return;
+        sel.value = value;
+        const wrapper = sel.previousElementSibling;
+        if (wrapper && wrapper._csSetValue) wrapper._csSetValue(value);
+    }
+
     _loadSettings() {
         const canvas = this._resolveCanvas();
         let fontSettings = { ...DEFAULT_FONT, ...(canvas?.fontSettings || {}) };
@@ -279,8 +289,8 @@ export class FontPopup extends HTMLElement {
         this.querySelector('#font_popup_description').value = fontSettings.description || '';
         this.querySelector('#font_popup_sample_text').value = fontSettings.sample_text || '';
         this.querySelector('#font_popup_upm').value = fontSettings.upm;
-        this.querySelector('#font_popup_weight_class').value = fontSettings.weight_class || DEFAULT_FONT.weight_class;
-        this.querySelector('#font_popup_width_class').value = fontSettings.width_class || DEFAULT_FONT.width_class;
+        this._setSelectValue('#font_popup_weight_class', fontSettings.weight_class || DEFAULT_FONT.weight_class);
+        this._setSelectValue('#font_popup_width_class', fontSettings.width_class || DEFAULT_FONT.width_class);
         this.querySelector('#font_popup_ascender').value = fontSettings.ascender;
         this.querySelector('#font_popup_descender').value = fontSettings.descender;
         this.querySelector('#font_popup_x_height').value = fontSettings.x_height != null ? fontSettings.x_height : DEFAULT_FONT.x_height;

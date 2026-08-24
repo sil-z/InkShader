@@ -4,6 +4,7 @@ import { appEventBus } from "../app/event_bus.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
+import { createCustomSelect } from "./custom_select.js";
 
 /** @returns {import('../core/bezier/kerning_manager.js').KerningManager|null} */
 function getKerningManager() {
@@ -92,6 +93,9 @@ export class GroupSettingsPopup extends HTMLElement {
         this.container = this;
 
         installEnterBlurHandler(this.container);
+
+        // Convert native <select> to custom styled dropdowns
+        this.querySelectorAll('select').forEach(sel => createCustomSelect(sel));
 
         this.container.addEventListener('focusin', (e) => {
             if (e.target.tagName === 'INPUT') {
@@ -446,27 +450,45 @@ export class GroupSettingsPopup extends HTMLElement {
         leftSel.innerHTML = '<option value="">(none)</option>';
         rightSel.innerHTML = '<option value="">(none)</option>';
 
+        const leftClasses = [];
+        const rightClasses = [];
         if (km) {
             for (const cn of km.getAllClasses('left')) {
                 const opt = document.createElement('option');
                 opt.value = cn;
                 opt.textContent = cn;
                 leftSel.appendChild(opt);
+                leftClasses.push({ value: cn, label: cn });
             }
             for (const cn of km.getAllClasses('right')) {
                 const opt = document.createElement('option');
                 opt.value = cn;
                 opt.textContent = cn;
                 rightSel.appendChild(opt);
+                rightClasses.push({ value: cn, label: cn });
             }
         }
 
         // Restore or set current glyph's class
+        let finalLeftVal = leftVal || '';
+        let finalRightVal = rightVal || '';
         if (item && km) {
             const leftClass = km.getGlyphClass(item.name, 'left');
             const rightClass = km.getGlyphClass(item.name, 'right');
-            if (leftClass) leftSel.value = leftClass;
-            if (rightClass) rightSel.value = rightClass;
+            if (leftClass) finalLeftVal = leftClass;
+            if (rightClass) finalRightVal = rightClass;
+        }
+        leftSel.value = finalLeftVal;
+        rightSel.value = finalRightVal;
+
+        // Update custom select wrappers if they exist
+        const leftWrapper = leftSel.previousElementSibling;
+        const rightWrapper = rightSel.previousElementSibling;
+        if (leftWrapper?._csUpdateOptions) {
+            leftWrapper._csUpdateOptions([{ value: '', label: '(none)' }, ...leftClasses], finalLeftVal);
+        }
+        if (rightWrapper?._csUpdateOptions) {
+            rightWrapper._csUpdateOptions([{ value: '', label: '(none)' }, ...rightClasses], finalRightVal);
         }
     }
 

@@ -154,8 +154,11 @@ const PROBE_A = `
 
     // 9. Font size is a SET value, independent of the component size: changing the
     //    control rescales the CONTENT (canvas height = rows*fontSize + 2*PAD) while
-    //    the wrap (component) size stays fixed.
-    const wrapH = wrap.clientHeight;
+    //    the wrap (component) size stays fixed. Measure border-box (offsetHeight):
+    //    a large font can make the canvas wider than the wrap, and the horizontal
+    //    scrollbar that appears then eats 6px off clientHeight (255 -> 249) without
+    //    changing the layout size at all (diag2 verified).
+    const wrapH = wrap.offsetHeight;
     const setSize = async (v) => {
         const inp = panel.querySelector('#sample_font_size');
         inp.value = String(v);
@@ -166,7 +169,7 @@ const PROBE_A = `
     const h48 = await setSize(48);
     const h96 = await setSize(96);
     check('content height tracks font size (h96 = rows*96 + 20 = 116, h48 = 68)', h48 === 68 && h96 === 116, { h48, h96 });
-    check('wrap size unchanged (font size independent of component)', wrap.clientHeight === wrapH, { wrapH, wrapNow: wrap.clientHeight });
+    check('wrap size unchanged (font size independent of component)', wrap.offsetHeight === wrapH, { wrapH, wrapNow: wrap.offsetHeight });
     // Compare ink against the guides-OFF baseline (pxGuidesOff), not pxAB (which included guides)
     check('larger font size renders more ink', px(ctx) > pxGuidesOff, { big: px(ctx), small: pxGuidesOff });
 
@@ -396,7 +399,7 @@ const PROBE_A = `
     const bodyEl = panel.querySelector('.sample-panel-body');
     bodyEl.style.flex = '0 0 20px';
     await sleep(300);
-    const minH48 = wrap.clientHeight;
+    const minH48 = wrap.offsetHeight;
     const bodyH = bodyEl.clientHeight;
     const inkCollapsed = px(ctx);
     check('body actually collapsed (squeezed to 20px)', bodyH < 100, { bodyH });
@@ -404,7 +407,7 @@ const PROBE_A = `
     check('preview still renders when panel collapses', inkCollapsed > 100, inkCollapsed);
     const h96c = await setSize(96);
     await sleep(300);
-    const minH96 = wrap.clientHeight;
+    const minH96 = wrap.offsetHeight;
     check('min-height tracks font size (96 -> >= 116)', minH96 >= 116, { minH: minH96 });
     bodyEl.style.flex = '';
     await setSize(48);
@@ -522,20 +525,49 @@ async function main() {
     await send('Runtime.enable');
     await send('Network.enable');
     await send('Network.clearBrowserCache');
-    await send('Page.navigate', { url: APP_URL });
+    const waitReady = async (deadline) => {
+        let ready = false;
+        while (Date.now() < deadline) {
+            const r = await send('Runtime.evaluate', {
+                expression: `!!document.querySelector('main-canvas') && !!document.querySelector('main-canvas').curve_manager && !!document.querySelector('main-canvas').services?.renderer`,
+                returnByValue: true
+            });
+            if (r.result?.result?.value === true) { ready = true; break; }
+            await new Promise(r2 => setTimeout(r2, 500));
+        }
+        if (!ready) { console.log('TIMEOUT waiting for app bootstrap'); process.exit(1); }
+        await new Promise(r2 => setTimeout(r2, 1500));
+    };
 
-    const deadline = Date.now() + 60000;
-    let ready = false;
-    while (Date.now() < deadline) {
-        const r = await send('Runtime.evaluate', {
-            expression: `!!document.querySelector('main-canvas') && !!document.querySelector('main-canvas').curve_manager && !!document.querySelector('main-canvas').services?.renderer`,
-            returnByValue: true
-        });
-        if (r.result?.result?.value === true) { ready = true; break; }
-        await new Promise(r2 => setTimeout(r2, 500));
-    }
-    if (!ready) { console.log('TIMEOUT waiting for app bootstrap'); process.exit(1); }
-    await new Promise(r2 => setTimeout(r2, 1500));
+    await send('Page.navigate', { url: APP_URL });
+    await waitReady(Date.now() + 60000);
+
+    // STALE DOCK-LAYOUT HYGIENE (Session 22 localStorage lesson, dock edition): a previous
+    // driver/probe run may leave `inkshader_dock_layout_v2` where the sample panel sits in
+    // an INACTIVE tab (leaf display:none) or a 0-height split. Every wrap/canvas measurement
+    // then reads 0 and the panel looks broken — the "canvas renders glyphs: 0" 25-check
+    // failure family — while the app is fine (same code passes with a healthy layout).
+    // Replace the key with a KNOWN layout + reload so Phase A always starts deterministic:
+    //   - canvas 75% + sample 25% FULL HEIGHT (objects/properties/console hidden in the
+    //     host). The sample wrap must be TALL enough that the font-size min-height floor
+    //     (68/116px) never engages — the default 4-panel column (~100px/leaf) makes the
+    //     wrap min-height-bound and the "wrap size unchanged" / "min-height tracks" checks
+    //     fail (wrap height legitimately follows the font size in a short leaf by design,
+    //     Session 22 follow-up 2).
+    //   - hiddenPanels must list ALL six non-visible ids: with a RESTORED layout the app
+    //     never seeds the optional trio hidden by itself, and any core panel missing from
+    //     the tree gets re-added (capacity placement) — both would crowd the sample leaf.
+    const clean = await evaluate(`(() => {
+        const layout = { tree: { type: 'split', direction: 'h', sizes: [75, 25], children: [
+            { type: 'leaf', id: 'canvas' },
+            { type: 'leaf', id: 'sample' }
+        ] }, floats: [], hiddenPanels: ['objects', 'properties', 'console', 'font', 'kerning', 'glyphs'], hiddenSlots: [] };
+        localStorage.setItem('inkshader_dock_layout_v2', JSON.stringify(layout));
+        return 'seeded';
+    })()`);
+    if (clean.error) console.log('layout cleanup error:', clean.error);
+    await send('Page.navigate', { url: APP_URL + '&clean=1' });
+    await waitReady(Date.now() + 60000);
 
     // ── Phase A ──
     const a = await evaluate(PROBE_A);
@@ -550,7 +582,7 @@ async function main() {
                 { type: 'split', direction: 'v', sizes: [33.33, 33.33, 33.33],
                     children: [ { type: 'leaf', id: 'objects' }, { type: 'leaf', id: 'properties' }, { type: 'leaf', id: 'console' } ] }
             ] };
-        localStorage.setItem('inkshader_dock_layout_v2', JSON.stringify({ tree: oldTree, floats: [] }));
+        localStorage.setItem('inkshader_dock_layout_v2', JSON.stringify({ tree: oldTree, floats: [], hiddenPanels: ['font', 'kerning', 'glyphs'] }));
         return 'seeded';
     })()`);
     console.log('seed old layout:', seed.error || seed.value);

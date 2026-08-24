@@ -167,9 +167,19 @@ export function initializeLayoutShell() {
         const I18nManager = window.I18n || { t: (k) => k };
 
         // Build the fixed items first (before the async cache submenu)
+        // Shortcut labels mirror the global keydown shortcuts in
+        // canvas_input_controller.js (keep in sync with the header comment).
+        const FILE_SHORTCUTS = {
+            'file.new_project': 'Ctrl+N',
+            'file.load_json': 'Ctrl+O',
+            'file.save_json': 'Ctrl+S',
+            'file.save_ufo': 'Ctrl+Shift+E',
+            'file.save_svg': 'Ctrl+Shift+S'
+        };
         const makeItem = (i18nKey, disabled = false, action = null) => ({
             label: I18nManager.t(i18nKey),
             i18n: i18nKey,
+            shortcut: FILE_SHORTCUTS[i18nKey] || null,
             disabled: disabled,
             action: disabled ? null : action
         });
@@ -264,14 +274,8 @@ export function initializeLayoutShell() {
             makeItem('edit.copy', 'Ctrl+C', () => CanvasDispatcher.requestCopySelectedObjects()),
             makeItem('edit.paste', 'Ctrl+V', () => CanvasDispatcher.requestEditorAction('paste', c?.getInteractionSnapshot()?.activeGroupId ?? null)),
             makeItem('edit.duplicate', 'Ctrl+D', () => CanvasDispatcher.requestDuplicateSelectedObjects()),
-            makeItem('edit.delete', 'Del', () => {
-                const tool = c?.getActiveTool?.();
-                if (tool === 'NODE') {
-                    c?.commands?.deleteSelectedNodes();
-                } else {
-                    CanvasDispatcher.requestDeleteSelectedObjects();
-                }
-            }),
+            makeItem('edit.delete', 'Del', () => CanvasDispatcher.requestDeleteSelectedObjects()),
+            makeItem('edit.delete_nodes', 'D', () => { const c2 = canvas(); if (c2) c2.commands?.deleteSelectedNodes(); }),
             { separator: true },
             makeToggle('edit.snap_alignment', c?.snap_alignment_enabled !== false, () => {
                 if (c) c.snap_alignment_enabled = !c.snap_alignment_enabled;
@@ -391,6 +395,12 @@ export function initializeLayoutShell() {
         const I18nManager = window.I18n || { t: (k) => k };
 
         const items = [
+            {
+                label: I18nManager.t('help.shortcuts'),
+                i18n: 'help.shortcuts',
+                action: () => document.querySelector('help-modal')?.open()
+            },
+            { separator: true },
             {
                 label: I18nManager.t('help.about'),
                 i18n: 'help.about',

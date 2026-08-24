@@ -3,18 +3,28 @@ import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } f
 /**
  * CanvasInputController: binds DOM events to canvas interaction layer.
  *
- * Keyboard shortcuts (handled at canvas level):
- * - Delete / Backspace: delete selected objects (SELECT tool) or selected nodes (NODE tool) | canvas / tree
+ * Keyboard shortcuts (handled at canvas level; keep in sync with Help modal):
+ * - 1 / 2 / 3 / 4 / 5: select / node / draw / ellipse / measure tool | global
+ * - Delete / Backspace: delete selected objects | canvas / tree
+ * - D (NODE tool): delete selected nodes
  * - Ctrl+Z: undo; during DRAW draw reverts last main node | global
  * - Ctrl+Shift+Z / Ctrl+Y: redo | global
  * - Ctrl+C: copy selected objects | canvas / tree
  * - Ctrl+V: paste to active group | canvas / tree
  * - Ctrl+D: duplicate selected objects | canvas / tree
+ * - Ctrl+N: new project | global
+ * - Ctrl+O: open (load JSON) | global
  * - Ctrl+S: save file | global
+ * - Ctrl+Shift+S: export SVG | global
  * - Ctrl+Shift+E: export UFO | global
- * - Ctrl+U: boolean union | global
+ * - Ctrl+U / Ctrl+Shift+U / Ctrl+Alt+U / Ctrl+Alt+Shift+U: boolean union / intersection / difference / exclusion | global
+ * - Ctrl+Shift+X: expand stroke | global
  * - Ctrl+= / Ctrl+-: adjust canvas size (change_canvas_size) | global
- * - Escape: cancel current operation | global
+ * - Ctrl+Arrow: pan canvas in 40px steps | global
+ * - C / S / Y (NODE tool): corner / smooth / symmetric node mode | global
+ * - I / J / B (NODE tool): insert / join / break node | global
+ * - Space + drag: temporary pan | global
+ * - Escape: cancel current operation, drop uncommitted path, clear selection | global
  *
  * Mouse coordinate display:
  * Top-right of canvas shows world coordinates: "Mouse Pos {x} {y}"
@@ -130,7 +140,7 @@ export class CanvasInputController {
             let hitResult = c.utils.hitTestNode(mouseX, mouseY);
             let hitMarker = hitResult ? hitResult.marker : null;
             // Nodes sit above strokes: only test curve when no node is under the cursor.
-            // SELECT uses hitTestCurve only for cursor below — don't pay for it twice.
+            // SELECT uses hitTestCurve only for cursor below â€” don't pay for it twice.
             let hitCurveSegment = null;
             if (!hitMarker && tool !== 'SELECT') {
                 hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
@@ -156,7 +166,7 @@ export class CanvasInputController {
                     hoverStateChanged = true;
                 }
             }
-            // Nodes also sit above guides / dividers / metrics — clear chrome hover.
+            // Nodes also sit above guides / dividers / metrics â€” clear chrome hover.
             if (hitMarker) {
                 if (c._hoveredUserGuideId !== null) {
                     c._hoveredUserGuideId = null;
@@ -374,7 +384,7 @@ export class CanvasInputController {
                         c.curve_manager.calculateSequenceOffsets();
                     }
                 } else if (!leftGroup && rightGroup && div.isLeftEdge) {
-                    // Leftmost divider: same pattern as modifyRight=true — decrease first
+                    // Leftmost divider: same pattern as modifyRight=true â€” decrease first
                     // glyph's advance and shift its nodes LEFT. calculateSequenceOffsets
                     // propagates the change to all subsequent seqOffsets, canceling with
                     // the canvas offset shift for all downstream content.
@@ -502,7 +512,7 @@ export class CanvasInputController {
                 const tool = c.getActiveTool();
                 // handleWindowMouseMove (window mousemove) runs AFTER this handler (bubble phase)
                 // and already manages node hover + clears guide/divider/metric hovers when a node
-                // is under cursor. Avoid duplicating hitTestNode here — use the previous frame's
+                // is under cursor. Avoid duplicating hitTestNode here â€” use the previous frame's
                 // hovered_node_marker to suppress guide hit testing.
                 const hasNodeUnderCursor = (tool === 'NODE' || tool === 'DRAW')
                     && !!c.hovered_node_marker;
@@ -512,7 +522,7 @@ export class CanvasInputController {
                         c.is_dirty = true;
                     }
                 } else if (hasNodeUnderCursor) {
-                    // Nodes sit above guides — do not steal hover / cursor.
+                    // Nodes sit above guides â€” do not steal hover / cursor.
                     if (c._hoveredUserGuideId !== null) {
                         c._hoveredUserGuideId = null;
                         c.is_dirty = true;
@@ -563,7 +573,7 @@ export class CanvasInputController {
             c.addGlobalListener(c.canvasObj, "dblclick", (e) => {
                 c.refreshViewportConfig();
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-                // Nodes sit above guides / dividers / metrics — do not open chrome dialogs.
+                // Nodes sit above guides / dividers / metrics â€” do not open chrome dialogs.
                 const tool = c.getActiveTool();
                 if ((tool === 'NODE' || tool === 'DRAW') && c.utils.hitTestNode(pointer.x, pointer.y)) {
                     return;
@@ -652,11 +662,11 @@ export class CanvasInputController {
                 let seqIndex = divHit.seqIndex;
                 let modifyRight = false;
                 if (isFirstLeftEdge) {
-                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
+                    // Left edge of first glyph â€” hoverable but not draggable, shows LSB of first glyph
                     rightGroupId = divHit.groupId;
                     seqIndex = 0;
                 } else if (isRightEdge) {
-                    // Right edge of last glyph — divider at the right edge of the last glyph
+                    // Right edge of last glyph â€” divider at the right edge of the last glyph
                     leftGroupId = divHit.groupId;
                     rightGroupId = null;
                     seqIndex = divHit.seqIndex;
@@ -665,7 +675,7 @@ export class CanvasInputController {
                         CanvasDispatcher.requestActivateGroup?.(leftGroupId);
                     }
                 } else {
-                    // Left edge of glyph i (i > 0) — divider between glyph i-1 and glyph i
+                    // Left edge of glyph i (i > 0) â€” divider between glyph i-1 and glyph i
                     const seqTokens = c.curve_manager.sequenceTokens || [];
                     const prevToken = seqTokens[divHit.seqIndex - 1];
                     leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
@@ -793,61 +803,12 @@ export class CanvasInputController {
         });
             c.addGlobalListener('window', "mouseup", c.handleMouseUp);
             c.addGlobalListener('window', "contextmenu", e => e.preventDefault());
-            c.addGlobalListener('window', "keydown", (e) => {
-                const tool = resolveActiveCanvasTool(c);
-                if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) e.preventDefault();
-                if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) { if (e.target.type !== 'checkbox' && e.target.type !== 'radio') return; }
-                if (c.is_restoring) { e.preventDefault(); return; }
-                if (e.ctrlKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
-                    e.preventDefault(); const moveStep = 40;
-                    if (e.code === "ArrowUp") c.offset.y += moveStep; if (e.code === "ArrowDown") c.offset.y -= moveStep;
-                    if (e.code === "ArrowLeft") c.offset.x += moveStep; if (e.code === "ArrowRight") c.offset.x -= moveStep;
-                    c.is_dirty = true; c.history.saveCurrentViewState(); return;
-                }
-                if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) {
-                    let dy = (e.key === '-' || e.code === 'NumpadSubtract') ? 100 : -100;
-                    c.renderer.change_canvas_size(dy, 0, 0, false, true); c.is_dirty = true; return;
-                }
-                if (e.ctrlKey && e.code === "KeyS") { e.preventDefault(); c.io.triggerSave(); return; }
-                if (e.ctrlKey && e.shiftKey && e.code === "KeyE") { e.preventDefault(); c.io.exportToUFO(); return; }
-                if (e.ctrlKey && e.code === "KeyU") { e.preventDefault(); CanvasDispatcher.requestBooleanUnion(); return; }
-                if (e.ctrlKey && (e.code === "KeyZ" || e.key === "z")) {
-                    e.preventDefault();
-                    if (e.shiftKey) CanvasDispatcher.requestRedo();
-                    else if (tool === "DRAW" && c.current_curve) c.commands.undoDrawingStep();
-                    else CanvasDispatcher.requestUndo();
-                    return;
-                }
-                if (e.ctrlKey && (e.code === "KeyY" || e.key === "y")) {
-                    e.preventDefault();
-                    CanvasDispatcher.requestRedo();
-                    return;
-                }
-                let activeContext = c.env.getActiveContext() || 'canvas';
-                const dispatchTreeAction = (action, contextId = null) => { CanvasDispatcher.requestEditorAction(action, contextId); };
-                if (activeContext === 'tree') {
-                    if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
-                    else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
-                    else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
-                    else if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); dispatchTreeAction('delete'); }
-                } else {
-                    if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
-                    else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
-                    else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
-                    else if (e.code === "Delete" || e.code === "Backspace") {
-                        e.preventDefault();
-                        if (tool === 'NODE') {
-                            c.commands.deleteSelectedNodes();
-                        } else if (tool === 'SELECT') {
-                            CanvasDispatcher.requestDeleteSelectedObjects();
-                        }
-                    }
-                }
-            });
+            c.addGlobalListener('window', "keydown", (e) => handleWindowKeydown(c, e));
+            c.addGlobalListener('window', "keyup", (e) => handleWindowKeyup(c, e));
             return;
         }
 
-        // First-time binding — register ALL listeners (direct + global)
+        // First-time binding â€” register ALL listeners (direct + global)
         c.addGlobalListener('window', "wheel", (e) => {
             const isHoveringCanvas = e.composedPath().includes(c) || e.composedPath().includes(c.canvas);
             if (!isHoveringCanvas && !e.ctrlKey) return;
@@ -899,7 +860,7 @@ export class CanvasInputController {
             if (e.button === 1 && isTextInputActive) {
                 if (typeof activeEl.blur === 'function') activeEl.blur();
                 e.preventDefault();
-                // Don't return — fall through to panning handler below
+                // Don't return â€” fall through to panning handler below
             }
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
@@ -908,7 +869,8 @@ export class CanvasInputController {
             let hitMarker = hitResult ? hitResult.marker : null;
             let hitCurveSegment = c.utils.hitTestCurve(mouseX, mouseY);
             let handleHit = tool === 'SELECT' ? c.utils.hitTestTransformHandles(mouseX, mouseY) : null;
-            let isCtrlLeftPan = (e.button === 0 && e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
+            let isSpacePan = (e.button === 0 && c._spaceDown && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
+            let isCtrlLeftPan = (e.button === 0 && e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE') || isSpacePan;
             let isMiddlePan = (e.button === 1);
             if (isMiddlePan || isCtrlLeftPan) {
                 e.preventDefault(); c.current_state = 'PANNING';
@@ -1156,7 +1118,7 @@ export class CanvasInputController {
             c.current_state = 'IDLE';
             if (!dragStarted) {
                 // New guide was pushed on mousedown but never actually dragged.
-                // Remove the orphan — user just clicked and released on the ruler.
+                // Remove the orphan â€” user just clicked and released on the ruler.
                 if (wasNew) {
                     c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
                 } else if (origX != null) {
@@ -1180,7 +1142,7 @@ export class CanvasInputController {
             }
             if (wasNew) {
                 // Guide was already pushed to c.guidelines in startUserGuideDrag (mousedown).
-                // Do NOT push again — that creates a duplicate entry causing all guides
+                // Do NOT push again â€” that creates a duplicate entry causing all guides
                 // to highlight on hover (both copies share the same id).
                 CanvasDispatcher.requestHistoryCommit("createUserGuideline", { id: guide.id });
             } else {
@@ -1335,7 +1297,7 @@ export class CanvasInputController {
         c.addGlobalListener(c.canvasObj, "dblclick", (e) => {
             c.refreshViewportConfig();
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY, e);
-            // Nodes sit above guides / dividers / metrics — do not open chrome dialogs.
+            // Nodes sit above guides / dividers / metrics â€” do not open chrome dialogs.
             const tool = c.getActiveTool();
             if ((tool === 'NODE' || tool === 'DRAW') && c.utils.hitTestNode(pointer.x, pointer.y)) {
                 return;
@@ -1426,7 +1388,7 @@ export class CanvasInputController {
                 let rightSeqIndex = -1;
                 let modifyRight = false;
                 if (isFirstLeftEdge) {
-                    // Left edge of first glyph — hoverable but not draggable, shows LSB of first glyph
+                    // Left edge of first glyph â€” hoverable but not draggable, shows LSB of first glyph
                     rightGroupId = divHit.groupId;
                     rightSeqIndex = 0;
                     const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
@@ -1434,7 +1396,7 @@ export class CanvasInputController {
                         modifyRight = true;
                     }
                 } else if (isRightEdge) {
-                    // Right edge of last glyph — divider at the right edge of the last glyph
+                    // Right edge of last glyph â€” divider at the right edge of the last glyph
                     leftGroupId = divHit.groupId;
                     rightGroupId = null;
                     rightSeqIndex = -1;
@@ -1444,7 +1406,7 @@ export class CanvasInputController {
                         CanvasDispatcher.requestActivateGroup?.(leftGroupId);
                     }
                 } else {
-                    // Left edge of glyph i (i > 0) — divider between glyph i-1 and glyph i
+                    // Left edge of glyph i (i > 0) â€” divider between glyph i-1 and glyph i
                     const seqTokens = c.curve_manager.sequenceTokens || [];
                     const prevToken = seqTokens[divHit.seqIndex - 1];
                     leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
@@ -1958,58 +1920,140 @@ export class CanvasInputController {
             }
         }, { passive: false });
         c.addGlobalListener('window', "contextmenu", e => e.preventDefault());
-        c.addGlobalListener('window', "keydown", (e) => {
-            const tool = resolveActiveCanvasTool(c);
-            if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) e.preventDefault();
-            if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) { if (e.target.type !== 'checkbox' && e.target.type !== 'radio') return; }
-            if (c.is_restoring) { e.preventDefault(); return; }
-            if (e.ctrlKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
-                e.preventDefault(); const moveStep = 40;
-                if (e.code === "ArrowUp") c.offset.y += moveStep; if (e.code === "ArrowDown") c.offset.y -= moveStep;
-                if (e.code === "ArrowLeft") c.offset.x += moveStep; if (e.code === "ArrowRight") c.offset.x -= moveStep;
-                c.is_dirty = true; c.history.saveCurrentViewState(); return;
-            }
-            if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) {
-                let dy = (e.key === '-' || e.code === 'NumpadSubtract') ? 100 : -100;
-                c.renderer.change_canvas_size(dy, 0, 0, false, true); c.is_dirty = true; return;
-            }
-            if (e.ctrlKey && e.code === "KeyS") { e.preventDefault(); c.io.triggerSave(); return; }
-            if (e.ctrlKey && e.shiftKey && e.code === "KeyE") { e.preventDefault(); c.io.exportToUFO(); return; }
-            if (e.ctrlKey && e.code === "KeyU") { e.preventDefault(); CanvasDispatcher.requestBooleanUnion(); return; }
-            if (e.ctrlKey && (e.code === "KeyZ" || e.key === "z")) {
-                e.preventDefault();
-                if (e.shiftKey) CanvasDispatcher.requestRedo();
-                else if (tool === "DRAW" && c.current_curve) c.commands.undoDrawingStep();
-                else CanvasDispatcher.requestUndo();
-                return;
-            }
-            if (e.ctrlKey && (e.code === "KeyY" || e.key === "y")) {
-                e.preventDefault();
-                CanvasDispatcher.requestRedo();
-                return;
-            }
-            let activeContext = c.env.getActiveContext() || 'canvas';
-            const dispatchTreeAction = (action, contextId = null) => { CanvasDispatcher.requestEditorAction(action, contextId); };
-            if (activeContext === 'tree') {
-                if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
-                else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
-                else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
-                else if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); dispatchTreeAction('delete'); }
-            } else {
-                if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
-                else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
-                else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
-                else if (e.code === "Delete" || e.code === "Backspace") {
-                    e.preventDefault();
-                    if (tool === 'NODE') {
-                        c.commands.deleteSelectedNodes();
-                    } else if (tool === 'SELECT') {
-                        CanvasDispatcher.requestDeleteSelectedObjects();
-                    }
-                }
-            }
-        });
+        c.addGlobalListener('window', "keydown", (e) => handleWindowKeydown(c, e));
+        c.addGlobalListener('window', "keyup", (e) => handleWindowKeyup(c, e));
         // Flag must be set so reconnect path re-registers only global listeners
         c._inputControllerCanvasBound = true;
     }
+}
+// =============================================================================
+// Global keyboard shortcuts - shared by BOTH listener registration paths
+// (first-time bind + reconnect) so the two can never drift apart.
+// Keep the shortcut list in sync with the header comment and the Help modal.
+// =============================================================================
+
+function handleWindowKeydown(c, e) {
+    const tool = resolveActiveCanvasTool(c);
+    if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) e.preventDefault();
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) { if (e.target.type !== 'checkbox' && e.target.type !== 'radio') return; }
+    if (c.is_restoring) { e.preventDefault(); return; }
+    const noMods = !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+
+    // --- Space: temporary pan while held (space + drag). keyup clears it ---
+    if (noMods && e.code === 'Space') { e.preventDefault(); c._spaceDown = true; return; }
+
+    // --- Escape: cancel current interaction, drop uncommitted draw path, clear selection ---
+    if (e.code === 'Escape') {
+        e.preventDefault();
+        if (tool === 'DRAW' && (c.current_curve || c.commands.current_curve)) {
+            // Revert appended nodes one by one (undoDrawingStep nulls the shared
+            // current_curve once the last node is rolled back), then drop the
+            // uncommitted temp curve - it was never committed to the tree.
+            let guard = 0;
+            while ((c.commands.current_curve || c.current_curve) && (c.commands.current_curve?.startNode || c.current_curve?.startNode) && guard++ < 10000) {
+                c.commands.undoDrawingStep();
+            }
+            c.current_curve = null;
+            c.commands.current_curve = null;
+            c.last_on_curve_node_marker = null;
+            c.new_curve_handle = null;
+            c.drawing_seq_offset = undefined;
+            c.closing_path_on_mouseup = false;
+        }
+        c.current_state = 'IDLE';
+        c._spaceDown = false;
+        c.previewData = null;
+        c.is_dirty = true;
+        CanvasDispatcher.requestChangeObjectSelection("replace", { curveIds: [], refIds: [] });
+        CanvasDispatcher.requestChangeNodeSelection("replace", { markerIds: [] });
+        return;
+    }
+
+    // --- Tool switching (1-5 keys, no modifiers): 1=SELECT 2=NODE 3=DRAW 4=ELLIPSE 5=MEASURE ---
+    if (noMods) {
+        const toolMap = { Digit1: 'SELECT', Digit2: 'NODE', Digit3: 'DRAW', Digit4: 'ELLIPSE', Digit5: 'MEASURE' };
+        const targetMode = toolMap[e.code];
+        if (targetMode) { e.preventDefault(); CanvasDispatcher.requestSetToolMode(targetMode); return; }
+    }
+
+    // --- NODE-tool extras: corner/smooth/symmetric modes, insert op ---
+    if (noMods && tool === 'NODE') {
+        const modeMap = { KeyC: 0, KeyS: 1, KeyY: 2 };
+        if (modeMap[e.code] !== undefined) { e.preventDefault(); CanvasDispatcher.requestSetNodeMode(modeMap[e.code]); return; }
+        if (e.code === 'KeyI') { e.preventDefault(); CanvasDispatcher.requestInsertNode(); return; }
+        if (e.code === 'KeyD') { e.preventDefault(); c.commands.deleteSelectedNodes(); return; }
+    }
+
+    // --- Pan / zoom (unchanged) ---
+    if (e.ctrlKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        e.preventDefault(); const moveStep = 40;
+        if (e.code === "ArrowUp") c.offset.y += moveStep; if (e.code === "ArrowDown") c.offset.y -= moveStep;
+        if (e.code === "ArrowLeft") c.offset.x += moveStep; if (e.code === "ArrowRight") c.offset.x -= moveStep;
+        c.is_dirty = true; c.history.saveCurrentViewState(); return;
+    }
+    if (e.ctrlKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract')) {
+        let dy = (e.key === '-' || e.code === 'NumpadSubtract') ? 100 : -100;
+        c.renderer.change_canvas_size(dy, 0, 0, false, true); c.is_dirty = true; return;
+    }
+
+    // --- File operations (Shift variants MUST precede plain Ctrl+S: the plain
+    //     check matches any Ctrl+KeyS incl. Ctrl+Shift+S, which would otherwise
+    //     swallow the export shortcuts) ---
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyE") { e.preventDefault(); c.io.exportToUFO(); return; }
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyS") { e.preventDefault(); c.io.exportToSVG(); return; }
+    if (e.ctrlKey && e.code === "KeyS") { e.preventDefault(); c.io.triggerSave(); return; }
+    if (e.ctrlKey && e.code === "KeyN") { e.preventDefault(); CanvasDispatcher.requestNewProject(); return; }
+    if (e.ctrlKey && e.code === "KeyO") { e.preventDefault(); CanvasDispatcher.requestLoad(); return; }
+
+    // --- Boolean family: Ctrl+U union / Ctrl+Shift+U intersection /
+    //     Ctrl+Alt+U difference / Ctrl+Alt+Shift+U exclusion ---
+    if (e.ctrlKey && e.code === "KeyU") {
+        e.preventDefault();
+        if (e.altKey && e.shiftKey) CanvasDispatcher.requestBooleanExclusion();
+        else if (e.altKey) CanvasDispatcher.requestBooleanDifference();
+        else if (e.shiftKey) CanvasDispatcher.requestBooleanIntersection();
+        else CanvasDispatcher.requestBooleanUnion();
+        return;
+    }
+    // --- Expand stroke ---
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyX") { e.preventDefault(); CanvasDispatcher.requestExpandStroke(); return; }
+
+    // --- Undo / redo (unchanged) ---
+    if (e.ctrlKey && (e.code === "KeyZ" || e.key === "z")) {
+        e.preventDefault();
+        if (e.shiftKey) CanvasDispatcher.requestRedo();
+        else if (tool === "DRAW" && c.current_curve) c.commands.undoDrawingStep();
+        else CanvasDispatcher.requestUndo();
+        return;
+    }
+    if (e.ctrlKey && (e.code === "KeyY" || e.key === "y")) {
+        e.preventDefault();
+        CanvasDispatcher.requestRedo();
+        return;
+    }
+
+    // --- Clipboard / delete ---
+    // Delete/Backspace: ALWAYS delete objects (regardless of tool or context).
+    // 'd' key (no modifiers): delete selected nodes (NODE tool only, handled above).
+    let activeContext = c.env.getActiveContext() || 'canvas';
+    const dispatchTreeAction = (action, contextId = null) => { CanvasDispatcher.requestEditorAction(action, contextId); };
+    if (activeContext === 'tree') {
+        if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
+        else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
+        else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
+        else if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); dispatchTreeAction('delete'); }
+    } else {
+        if (e.ctrlKey && e.code === "KeyC") { e.preventDefault(); dispatchTreeAction('copy'); }
+        else if (e.ctrlKey && e.code === "KeyV") { e.preventDefault(); dispatchTreeAction('paste', c.getInteractionSnapshot().activeGroupId); }
+        else if (e.ctrlKey && e.code === "KeyD") { e.preventDefault(); dispatchTreeAction('duplicate'); }
+        else if (e.code === "Delete" || e.code === "Backspace") {
+            e.preventDefault();
+            CanvasDispatcher.requestDeleteSelectedObjects();
+        }
+    }
+}
+
+/** Global keyup: clears temporary-pan flag. */
+function handleWindowKeyup(c, e) {
+    if (e.code === 'Space') c._spaceDown = false;
 }

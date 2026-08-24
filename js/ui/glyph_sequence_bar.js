@@ -675,12 +675,10 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
             }
         };
+        // Header: title removed (same change as the dock glyph panel — the
+        // picker opens from many positions in the bar); close button kept.
         const header = document.createElement("div");
         header.className = "seq-menu-header";
-        const title = document.createElement("span");
-        title.className = "seq-menu-title";
-        title.textContent = "Add Glyph";
-        header.appendChild(title);
         const closeBtn = document.createElement("button");
         closeBtn.className = "seq-menu-close-btn";
         closeBtn.appendChild(this._mkSvg("M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"));
