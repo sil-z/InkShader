@@ -426,10 +426,14 @@ export class PropertyPanel extends HTMLElement {
             snapshot.propId = id;
             // Store model coordinates (convert from display) so _restoreInputSnapshot writes correct model value
             let rawVal = numberFromInput(target);
-            if (Y_PROPS.has(id)) rawVal = 0.8 * this._canvasSizeHeight - rawVal;
+            if (Y_PROPS.has(id)) rawVal = (window.__canvas?.fontSettings?.ascender ?? 800) - rawVal;
             if (id === 'prop_x' || id === 'prop_in_x' || id === 'prop_out_x') {
                 const n = marker?.id ? EditorModel.getNodeReadByMarkerId(marker.id) : null;
-                if (n?.groupId) rawVal = rawVal - (EditorModel.getSeqOffsetForGroup(n.groupId) || 0);
+                if (n?.groupId) {
+                    const seqOff = EditorModel.getSeqOffsetForGroup(n.groupId) || 0;
+                    const coordOff = window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, n.groupId) ?? 0;
+                    rawVal = rawVal - seqOff + coordOff;
+                }
             }
             snapshot.valueForProp = rawVal;
         } else if (id === 'g_advance') {
@@ -1066,7 +1070,7 @@ export class PropertyPanel extends HTMLElement {
 
     patchValues(item, selectedCurves, bounds, nodeCount, selectedIds) {
         const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
-        const ch = this._canvasSizeHeight;
+        const asc = window.__canvas?.fontSettings?.ascender ?? 800;
         const patch = (id, val, disable = false) => {
             let el = this.container.querySelector('#' + id);
             if (!el) return;
@@ -1248,8 +1252,10 @@ export class PropertyPanel extends HTMLElement {
         }
 
         if (bounds) {
-            patch('sel_prop_x', bounds.minX.toFixed(1));
-            patch('sel_prop_y', (0.8 * ch - bounds.minY).toFixed(1));
+            const _boundsCoordOff = this.interaction.activeGroupId
+                ? (window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, this.interaction.activeGroupId) ?? 0) : 0;
+            patch('sel_prop_x', (bounds.minX - _boundsCoordOff).toFixed(1));
+            patch('sel_prop_y', (asc - bounds.minY).toFixed(1));
             patch('sel_prop_w', (bounds.maxX - bounds.minX).toFixed(1));
             patch('sel_prop_h', (bounds.maxY - bounds.minY).toFixed(1));
         }
@@ -1270,17 +1276,19 @@ export class PropertyPanel extends HTMLElement {
             if (node) {
                 const multiNode = nodeCount > 1;
                 const seqOff = node.groupId ? (EditorModel.getSeqOffsetForGroup(node.groupId) || 0) : 0;
-                patch('prop_x', (node.x + seqOff).toFixed(1));
-                patch('prop_y', (0.8 * ch - node.y).toFixed(1));
+                const coordOff = window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, node.groupId) ?? 0;
+                const displayX = (v) => (v + seqOff - coordOff).toFixed(1);
+                patch('prop_x', displayX(node.x));
+                patch('prop_y', (asc - node.y).toFixed(1));
 
                 let hasC1 = !!node.control1;
-                patch('prop_in_x', multiNode ? '' : (hasC1 ? (node.control1.x + seqOff).toFixed(1) : ''), !hasC1 || multiNode);
-                patch('prop_in_y', multiNode ? '' : (hasC1 ? (0.8 * ch - node.control1.y).toFixed(1) : ''), !hasC1 || multiNode);
+                patch('prop_in_x', multiNode ? '' : (hasC1 ? displayX(node.control1.x) : ''), !hasC1 || multiNode);
+                patch('prop_in_y', multiNode ? '' : (hasC1 ? (asc - node.control1.y).toFixed(1) : ''), !hasC1 || multiNode);
                 patch('prop_in_a', multiNode ? '' : (hasC1 ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC1 || multiNode);
 
                 let hasC2 = !!node.control2;
-                patch('prop_out_x', multiNode ? '' : (hasC2 ? (node.control2.x + seqOff).toFixed(1) : ''), !hasC2 || multiNode);
-                patch('prop_out_y', multiNode ? '' : (hasC2 ? (0.8 * ch - node.control2.y).toFixed(1) : ''), !hasC2 || multiNode);
+                patch('prop_out_x', multiNode ? '' : (hasC2 ? displayX(node.control2.x) : ''), !hasC2 || multiNode);
+                patch('prop_out_y', multiNode ? '' : (hasC2 ? (asc - node.control2.y).toFixed(1) : ''), !hasC2 || multiNode);
                 patch('prop_out_a', multiNode ? '' : (hasC2 ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1) : ''), !hasC2 || multiNode);
             }
         }
@@ -1437,8 +1445,14 @@ export class PropertyPanel extends HTMLElement {
             const isValidNumber = !isNaN(numVal);
             const isSizeProp = (prop === 'w' || prop === 'h');
             const isValidSize = !isSizeProp || numVal >= 0;
-            // Convert display Y (baseline=0) to model Y (baseline=canvas_size*0.8)
-            if (prop === 'y') numVal = 0.8 * this._canvasSizeHeight - numVal;
+            // Convert display Y (baseline=0) to model Y (baseline=ascender)
+            if (prop === 'y') numVal = (window.__canvas?.fontSettings?.ascender ?? 800) - numVal;
+            // Convert display X (coord-transformed) back to model X for bounding box
+            if (prop === 'x') {
+                const _bCoordOff = this.interaction.activeGroupId
+                    ? (window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, this.interaction.activeGroupId) ?? 0) : 0;
+                numVal = numVal + _bCoordOff;
+            }
 
             if (isValidNumber && isValidSize) {
                 CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, numVal, {
@@ -1464,12 +1478,16 @@ export class PropertyPanel extends HTMLElement {
             } else {
                 marker = this._resolvePrimaryNodeMarker();
             }
-            // Convert display Y (baseline=0) to model Y (baseline=canvas_size*0.8)
-            if (Y_PROPS.has(id)) numVal = 0.8 * this._canvasSizeHeight - numVal;
+            // Convert display Y (baseline=0) to model Y (baseline=ascender)
+            if (Y_PROPS.has(id)) numVal = (window.__canvas?.fontSettings?.ascender ?? 800) - numVal;
             // Convert display X (world coordinate) to model X (group-relative)
             if (id === 'prop_x' || id === 'prop_in_x' || id === 'prop_out_x') {
                 const n = marker?.id ? EditorModel.getNodeReadByMarkerId(marker.id) : null;
-                if (n?.groupId) numVal = numVal - (EditorModel.getSeqOffsetForGroup(n.groupId) || 0);
+                if (n?.groupId) {
+                    const seqOff = EditorModel.getSeqOffsetForGroup(n.groupId) || 0;
+                    const coordOff = window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, n.groupId) ?? 0;
+                    numVal = numVal - seqOff + coordOff;
+                }
             }
             CanvasDispatcher.requestUpdateNodeProperty(marker, id, numVal, { recordHistory: e.type === 'change' });
             return;

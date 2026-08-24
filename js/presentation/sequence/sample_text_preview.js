@@ -8,8 +8,8 @@ import { appendCurveFillPath, curveGeneratesFillArea } from "../../canvas/render
  * `curveManager.kerningManager.getKerning`), wraps lines that exceed the canvas width, and renders
  * each glyph's curves with the same transform convention as sequence_group_preview:
  *
- *   model space is y-flipped (fontY = 0.8*canvasH - modelY), so the ascender line sits at
- *   model y = 0.8*canvasH - asc. The font size is the USER-SET value (px): scale = fontSize / (asc - desc),
+ *   model space: baseline = ascender, fontY = ascender - modelY, so the ascender line sits at
+ *   model y = 0. The font size is the USER-SET value (px): scale = fontSize / (asc - desc),
  *   independent of the canvas/panel size. A line break shifts the row baseline down by one
  *   (asc - desc) in model units (each row gets its own offsetY). Content taller than the canvas
  *   simply extends below it — the panel wraps the canvas in a scrollable container.
@@ -44,7 +44,7 @@ export function drawSampleTextPreview(ctx, curveManager, tokens, options = {}) {
     if (options.guides !== false) {
         const rootStyle = getComputedStyle(document.documentElement);
         const guideStyle = rootStyle.getPropertyValue('--cvs-guideline').trim() || 'rgba(249, 115, 22, 0.8)';
-        const fontYToPixel = (row, fontY) => baseOffsetY + (0.8 * canvasH - fontY + row * layout.lineH) * scale;
+        const fontYToPixel = (row, fontY) => baseOffsetY + (asc - fontY + row * layout.lineH) * scale;
         const guideFontYs = [
             { fontY: asc, key: 'ascender' },
             { fontY: 0, key: 'baseline' },
@@ -157,7 +157,7 @@ export function layoutSampleText(curveManager, tokens, options = {}) {
     const lineH = asc - desc;
     const scale = fontSize / lineH;
     const maxX = (width - PAD) / scale; // wrap threshold in MODEL units (scaled to px at draw time)
-    const baseOffsetY = PAD - (0.8 * canvasH - asc) * scale;
+    const baseOffsetY = PAD;
 
     const layout = {
         rows: 1,

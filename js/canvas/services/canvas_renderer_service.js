@@ -1098,9 +1098,10 @@ export class CanvasRendererService {
                     let advance = (group && group.advance !== undefined) ? group.advance : 1000;
                     // Viewport culling: skip char preview if group is outside visible range
                     if (seqOffsetX + advance < vpBounds.minX || seqOffsetX > vpBounds.maxX) continue;
-                    let fontH = c.canvas_size_height * c.scale;
+                    let fontH = (c.fontSettings?.ascender ?? 800) - (c.fontSettings?.descender ?? -200);
+                    fontH *= c.scale;
                     let cx = (seqOffsetX + advance / 2) * c.scale + offsetX;
-                    let baselineY = offsetY + 0.8 * fontH;
+                    let baselineY = offsetY + (c.fontSettings?.ascender ?? 800) * c.scale;
                     c.ctx.save();
                     c.ctx.font = `${fontH}px sans-serif`;
                     c.ctx.textAlign = "center";
@@ -1743,9 +1744,7 @@ export class CanvasRendererService {
         // ── Render baseline (permanent reference at design y=0, not draggable) ──
         {
             const fs = c.fontSettings || {};
-            const upm = fs.upm || 1000;
-            const fontH = c.canvas_size_height * c.scale;
-            const baselineY = offsetY + 0.8 * fontH;
+            const baselineY = offsetY + (fs.ascender ?? 800) * c.scale;
             const cw = logicalW;
             const isBaseHovered = c._hoveredMetricGuideKey === 'baseline';
             c.ctx.save();
@@ -1772,9 +1771,7 @@ export class CanvasRendererService {
             const mg = c.metric_guidelines;
             if (mg && mg.items) {
                 const fs = c.fontSettings || {};
-                const upm = fs.upm || 1000;
-                const fontH = c.canvas_size_height * c.scale;
-                const baselineY = offsetY + 0.8 * fontH;
+                const baselineY = offsetY + (fs.ascender ?? 800) * c.scale;
                 const cw = logicalW;
                 const metricTypes = [
                     { key: 'ascender',   value: fs.ascender ?? 800,   label: 'Ascender' },
@@ -1786,7 +1783,7 @@ export class CanvasRendererService {
                 for (const mt of metricTypes) {
                     const item = mg.items[mt.key];
                     if (!item || item.visible === false) continue;
-                    const sy = baselineY - (mt.value / upm) * fontH;
+                    const sy = baselineY - mt.value * c.scale;
                     const isHovered = c._hoveredMetricGuideKey === mt.key;
                     c.ctx.strokeStyle = isHovered ? p.guide_hover_stroke : p.metric_guide_color;
                     c.ctx.lineWidth = 1;
@@ -1883,10 +1880,8 @@ export class CanvasRendererService {
                         return { minX: minX === Infinity ? 0 : minX, maxX: maxX === -Infinity ? 0 : maxX };
                     };
                     const fs2 = c.fontSettings || {};
-                    const upm2 = fs2.upm || 1000;
-                    const fontH2 = c.canvas_size_height * c.scale;
-                    const baselineY2 = offsetY + 0.8 * fontH2;
-                    const descenderY = baselineY2 - ((fs2.descender ?? -200) / upm2) * fontH2;
+                    const baselineY2 = offsetY + (fs2.ascender ?? 800) * c.scale;
+                    const descenderY = baselineY2 - (fs2.descender ?? -200) * c.scale;
                     c.ctx.font = '10px sans-serif';
                     c.ctx.textBaseline = 'bottom';
                     const lx = hoveredScreenX;
@@ -1971,6 +1966,44 @@ export class CanvasRendererService {
         let precision = 0; if (step < 1) { precision = Math.ceil(-Math.log10(step)); }
         return { step, precision };
     }
+    /**
+     * Compute the X display offset for a given group based on coordTransformMode.
+     * Mode 'global': offset = 0 (current behavior)
+     * Mode 'active-group': offset = active group's seq offset
+     * Mode 'per-glyph': offset = the given group's own seq offset
+     */
+    getCoordDisplayOffset(c, groupId) {
+        const mode = c.coordTransformMode || 'global';
+        if (mode === 'global') return 0;
+        const cm = c.curve_manager;
+        if (!cm) return 0;
+        if (mode === 'active-group') {
+            let activeId = c.commandHostPort?.getStoreState?.()?.activeGroupId;
+            if (activeId) {
+                const gi = cm.treeItems.get(activeId);
+                if (!gi || gi.hidden_by_sequence) activeId = null;
+            }
+            activeId = activeId ?? cm.ensureActiveGroup();
+            if (!activeId) return 0;
+            const tokens = cm.sequenceTokens || [];
+            for (let i = 0; i < tokens.length; i++) {
+                const t = tokens[i];
+                const gid = t.isChar ? cm.getDefaultGroupForChar(t.value) : t.value;
+                if (gid === activeId) return cm.getSeqOffset(i);
+            }
+            return 0;
+        }
+        // per-glyph: return the given group's own seq offset
+        if (groupId) {
+            const tokens = cm.sequenceTokens || [];
+            for (let i = 0; i < tokens.length; i++) {
+                const t = tokens[i];
+                const gid = t.isChar ? cm.getDefaultGroupForChar(t.value) : t.value;
+                if (gid === groupId) return cm.getSeqOffset(i);
+            }
+        }
+        return 0;
+    }
     update_ruler() { this.update_ruler_horizontal(); this.update_ruler_vertical(); }
     update_ruler_horizontal() {
         const c = this.canvas;
@@ -1978,7 +2011,20 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0;
         const h = Number.isFinite(viewport.rulerHeight) ? viewport.rulerHeight : c.ruler_size;
         if (w <= 0 || h <= 0) return;
-        const stateKey = `${c.scale},${c.offset.x},${w},${themeGeneration}`;
+        // coordTransformMode affects ruler labels — include it + active group in cache key
+        const _coordMode = c.coordTransformMode || 'global';
+        let _activeRulerGroupId = null;
+        if (_coordMode !== 'global') {
+            _activeRulerGroupId = c.commandHostPort?.getStoreState?.()?.activeGroupId ?? c.curve_manager?.ensureActiveGroup?.() ?? null;
+        }
+        let _tokenSummary = '';
+        if (_coordMode === 'per-glyph') {
+            const cm = c.curve_manager;
+            const tokens = cm?.sequenceTokens || [];
+            // Include token count + last offset to detect divider changes
+            _tokenSummary = tokens.length > 0 ? `${tokens.length}_${cm.getSeqOffset(tokens.length - 1)}` : '0';
+        }
+        const stateKey = `${c.scale},${c.offset.x},${w},${themeGeneration},${_coordMode},${_activeRulerGroupId},${_tokenSummary}`;
         if (stateKey === this._rulerHState) return;
         this._rulerHState = stateKey;
         c.ruler_horizontal.replaceChildren();
@@ -1986,21 +2032,66 @@ export class CanvasRendererService {
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
         svg.classList.add("svg-ruler-overlay");
         const { step, precision } = this.getStepAndPrecision(c.scale);
-        const origin = c.offset.x;
         const theme = getCanvasTheme();
         const textColor = theme.ruler_text_color;
         const lineColor = theme.ruler_line_color;
-        let start_i = Math.floor(-10 * origin / (c.scale * step)) - 10;
-        let end_i = Math.ceil(10 * (w - origin) / (c.scale * step)) + 10;
+
+        // For per-glyph mode, build divider boundaries so each glyph section
+        // has its own zero point on the ruler.
+        const _isPerGlyph = (_coordMode === 'per-glyph');
+        let _dividerBounds = null; // array of { worldStart, worldEnd } in ascending order
+        if (_isPerGlyph) {
+            const cm = c.curve_manager;
+            const tokens = cm?.sequenceTokens || [];
+            if (tokens.length > 0) {
+                _dividerBounds = [];
+                for (let ti = 0; ti < tokens.length; ti++) {
+                    const off = cm.getSeqOffset(ti);
+                    // Right boundary = next token's offset, or offset + 2000 (generous)
+                    const nextOff = ti < tokens.length - 1 ? cm.getSeqOffset(ti + 1) : off + 2000;
+                    _dividerBounds.push({ worldStart: off, worldEnd: nextOff });
+                }
+            }
+        }
+
+        // In per-glyph mode, we render the full range of world coordinates visible
+        // on screen, computing display value per-tick based on its section.
+        // In global/active-group mode, we use a single origin offset.
+        const _rulerCoordOff = _isPerGlyph ? 0 : this.getCoordDisplayOffset(c, _activeRulerGroupId);
+        const origin = c.offset.x + _rulerCoordOff * c.scale;
+
+        // Compute the full range of world-space coordinates visible on screen
+        const worldLeft = -c.offset.x / c.scale;
+        const worldRight = (w - c.offset.x) / c.scale;
+        let start_i = Math.floor(10 * worldLeft / step) - 10;
+        let end_i = Math.ceil(10 * worldRight / step) + 10;
+
         for (let i = start_i; i <= end_i; i++) {
-            let j = i / 10; const x = origin + j * c.scale * step;
-            if (x < -c.scale * step || x > w + c.scale * step) continue;
+            let j = i / 10;
+            const worldX = j * step;
+            const screenX = worldX * c.scale + c.offset.x;
+            if (screenX < -c.scale * step || screenX > w + c.scale * step) continue;
+
+            // Compute displayed value for this tick
+            let displayVal = worldX;
+            if (_isPerGlyph && _dividerBounds) {
+                // Find which section this tick falls in (nearest left divider)
+                let sectionStart = 0;
+                for (let s = _dividerBounds.length - 1; s >= 0; s--) {
+                    if (worldX >= _dividerBounds[s].worldStart) {
+                        sectionStart = _dividerBounds[s].worldStart;
+                        break;
+                    }
+                }
+                displayVal = worldX - sectionStart;
+            }
+
             const line = c.env.createSVGElement("line");
-            line.setAttribute("x1", String(x)); line.setAttribute("y1", String(h)); line.setAttribute("x2", String(x));
+            line.setAttribute("x1", String(screenX)); line.setAttribute("y1", String(h)); line.setAttribute("x2", String(screenX));
             if (i % 10 === 0) {
                 line.setAttribute("y2", "0");
-                const text = c.env.createSVGElement("text"); text.textContent = `${(j * step).toFixed(precision)}`;
-                text.setAttribute("x", String(x + 5)); text.setAttribute("y", String(h / 3)); text.setAttribute("font-size", "10px"); text.setAttribute("fill", textColor); text.setAttribute("text-anchor", "right"); text.setAttribute("dominant-baseline", "middle");
+                const text = c.env.createSVGElement("text"); text.textContent = `${displayVal.toFixed(precision)}`;
+                text.setAttribute("x", String(screenX + 5)); text.setAttribute("y", String(h / 3)); text.setAttribute("font-size", "10px"); text.setAttribute("fill", textColor); text.setAttribute("text-anchor", "right"); text.setAttribute("dominant-baseline", "middle");
                 svg.appendChild(text);
             } else if (i % 2 === 0) { line.setAttribute("y2", String(h / 2)); } else { line.setAttribute("y2", String(h / 4 * 3)); }
             line.setAttribute("stroke", lineColor); line.setAttribute("stroke-width", "1"); svg.appendChild(line);
@@ -2013,7 +2104,7 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
         const h = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
         if (w <= 0 || h <= 0) return;
-        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h},${themeGeneration}`;
+        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h},${themeGeneration},${c.coordTransformMode || 'global'}`;
         if (stateKey === this._rulerVState) return;
         this._rulerVState = stateKey;
         c.ruler_vertical.replaceChildren();
@@ -2021,7 +2112,8 @@ export class CanvasRendererService {
         svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
         svg.classList.add("svg-ruler-overlay");
         const { step, precision } = this.getStepAndPrecision(c.scale);
-        const baselineScreenY = c.offset.y + 0.8 * c.canvas_size_height * c.scale;
+        const _asc = c.fontSettings?.ascender ?? 800;
+        const baselineScreenY = c.offset.y + _asc * c.scale;
         const theme = getCanvasTheme();
         const textColor = theme.ruler_text_color;
         const lineColor = theme.ruler_line_color;
@@ -2076,11 +2168,9 @@ export class CanvasRendererService {
         }
         // Position the white canvas (main_canvas DIV) so its top edge aligns with
         // the ascender line and bottom edge aligns with the descender line.
-        const upm = fs.upm || 1000;
-        const fontH = c.canvas_size_height * c.scale;
-        const baselineY = top + 0.8 * fontH;
-        const ascenderY = baselineY - ((fs.ascender ?? 800) / upm) * fontH;
-        const descenderY = baselineY - ((fs.descender ?? -200) / upm) * fontH;
+        const baselineY = top + (fs.ascender ?? 800) * c.scale;
+        const ascenderY = top;
+        const descenderY = baselineY - (fs.descender ?? -200) * c.scale;
         const newTop = ascenderY;
         const newH = Math.max(1, descenderY - ascenderY);
         c.main_canvas.style.transform = `translate(${left}px, ${newTop}px)`;
@@ -2100,7 +2190,7 @@ export class CanvasRendererService {
             x = (rect.width / 2) - ruler_w - c.offset.x;
             y = (rect.height / 2) - ruler_h - c.offset.y;
         } else if (fixed) {
-            x = c.canvas_size_width / 2 * c.scale; y = c.canvas_size_height / 2 * c.scale;
+            x = c.canvas_size_width / 2 * c.scale; y = ((fs.ascender ?? 800) - (fs.descender ?? -200)) / 2 * c.scale;
         }
         // Geometric zoom via zoomTicks: scale = scaleBase * factor^zoomTicks
         const oldTicks = c.zoomTicks;

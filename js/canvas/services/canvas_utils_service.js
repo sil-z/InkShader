@@ -719,10 +719,8 @@ export class CanvasUtilsService {
         const mg = c.metric_guidelines;
         if (!mg || !mg.items) return null;
         const fs = c.fontSettings || {};
-        const upm = fs.upm || 1000;
-        const fontH = c.canvas_size_height * c.scale;
         const { x: offsetX, y: offsetY } = this.getLogicalOffset();
-        const baselineY = offsetY + 0.8 * fontH;
+        const baselineY = offsetY + (fs.ascender ?? 800) * c.scale;
         const metricTypes = [
             { key: 'ascender',   value: fs.ascender ?? 800 },
             { key: 'descender',  value: fs.descender ?? -200 },
@@ -736,7 +734,7 @@ export class CanvasUtilsService {
         for (const mt of metricTypes) {
             const item = mg.items[mt.key];
             if (!item || item.visible === false) continue;
-            const sy = baselineY - (mt.value / upm) * fontH;
+            const sy = baselineY - mt.value * c.scale;
             // Horizontal line from (0, sy) to (logicalW, sy)
             const dx = mouseX - 0;
             const dy = mouseY - sy;

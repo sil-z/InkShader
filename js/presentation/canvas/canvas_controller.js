@@ -356,7 +356,7 @@ export class CanvasController {
                         Math.abs(vp.viewportWidth - viewState.vp_width) > 10) {
                         const ruler = c.ruler_size;
                         const paperW = c.canvas_size_width * c.scale;
-                        const paperH = c.canvas_size_height * c.scale;
+                        const paperH = ((c.fontSettings?.ascender ?? 800) - (c.fontSettings?.descender ?? -200)) * c.scale;
                         // Calculate center offset for save, preserving user's pan offset
                         const oldCenterX = (viewState.vp_width - ruler - paperW) / 2;
                         const oldCenterY = (viewState.vp_height - ruler - paperH) / 2;
@@ -383,6 +383,9 @@ export class CanvasController {
                 }
                 if (viewState.divider_visible !== undefined) {
                     c.divider_visible = viewState.divider_visible;
+                }
+                if (viewState.coord_transform_mode) {
+                    c.coordTransformMode = viewState.coord_transform_mode;
                 }
                 // Restore draw_tool_settings from viewState (persisted tool preferences)
                 if (viewState.draw_tool_settings) {

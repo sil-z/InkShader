@@ -59,6 +59,8 @@ class MainCanvasBase extends HTMLElement {
         this.snap_coincident_enabled = true;
         this.divider_visible = true;
         this.divider_locked = false;
+        /** Coordinate display mode: 'global' | 'active-group' | 'per-glyph' */
+        this.coordTransformMode = 'global';
         this._hoveredMetricGuideKey = null;
         this._draggingMetricGuide = null;
         /** Metric guideline state (independent of user guidelines and guideline_lock) */

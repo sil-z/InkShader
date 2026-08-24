@@ -75,7 +75,7 @@ export class CanvasInputController {
         if (!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM("#mouse_pos");
         if (c.mouse_pos_output && c.current_state !== 'PANNING') {
             const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
-            const baselineWorldY = 0.8 * c.canvas_size_height;
+            const baselineWorldY = c.fontSettings?.ascender ?? 800;
             c._pendingMouseText = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
         }
         if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
@@ -301,10 +301,12 @@ export class CanvasInputController {
                 }
                 const fs = c.fontSettings || {};
                 const upm = fs.upm || 1000;
-                const fontH = c.canvas_size_height * c.scale;
+                const asc = c.fontSettings?.ascender ?? 800;
+                const desc = c.fontSettings?.descender ?? -200;
+                const canvasH = (asc - desc) * c.scale;
                 const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
                 const deltaY = pointer.y - mg.startCanvasY;
-                const deltaValue = Math.round(-(deltaY / fontH) * upm);
+                const deltaValue = Math.round(-(deltaY / canvasH) * (asc - desc));
                 const newValue = mg.startValue + deltaValue;
                 let clamped;
                 if (mg.key === 'descender') clamped = Math.min(newValue, 0);
@@ -1092,10 +1094,12 @@ export class CanvasInputController {
             }
             const fs = c.fontSettings || {};
             const upm = fs.upm || 1000;
-            const fontH = c.canvas_size_height * c.scale;
+            const asc = c.fontSettings?.ascender ?? 800;
+            const desc = c.fontSettings?.descender ?? -200;
+            const canvasH = (asc - desc) * c.scale;
             const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
             const deltaY = pointer.y - mg.startCanvasY;
-            const deltaValue = Math.round(-(deltaY / fontH) * upm);
+            const deltaValue = Math.round(-(deltaY / canvasH) * (asc - desc));
             const newValue = mg.startValue + deltaValue;
             let clamped;
             if (mg.key === 'descender') clamped = Math.min(newValue, 0);
@@ -1571,8 +1575,8 @@ export class CanvasInputController {
             dlg.className = "user-guide-edit-dialog";
             dlg.style.left = `${clientX}px`;
             dlg.style.top = `${clientY}px`;
-            const H = c.canvas_size_height;
-            const viewY = H - guide.y;
+            const asc = c.fontSettings?.ascender ?? 800;
+            const viewY = asc - guide.y;
             dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${guide.x.toFixed(1)}" data-field="x"></div>
                 <div class="field-row"><label>Y</label><input type="number" step="1" value="${viewY.toFixed(1)}" data-field="y"></div>
                 <div class="field-row"><label>Angle</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>`;

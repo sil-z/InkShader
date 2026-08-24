@@ -504,6 +504,7 @@ export class CanvasHistoryService {
                 snap_alignment_enabled: c.snap_alignment_enabled,
                 snap_coincident_enabled: c.snap_coincident_enabled,
                 divider_visible: c.divider_visible,
+                coord_transform_mode: c.coordTransformMode || 'global',
                 selected_tree_ids: interaction.selectedTreeIds,
                 sequence_text: c.curve_manager.sequenceText
             };

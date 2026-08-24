@@ -339,6 +339,41 @@ export function initializeLayoutShell() {
                         if (c) c.history?.saveCurrentViewState?.();
                     })
                 ]
+            },
+            { separator: true },
+            {
+                label: I18nManager.t('edit.coord_transform'),
+                i18n: 'edit.coord_transform',
+                children: [
+                    { label: I18nManager.t('edit.coord_transform.section'), disabled: true },
+                    {
+                        label: ((c?.coordTransformMode || 'global') === 'global' ? '\u2713 ' : '   ') + I18nManager.t('edit.coord_transform.global'),
+                        action: () => {
+                            if (c) c.coordTransformMode = 'global';
+                            if (c) c.is_dirty = true;
+                            if (c) c.notifyPropertiesUpdate?.();
+                            if (c) c.history?.saveCurrentViewState?.();
+                        }
+                    },
+                    {
+                        label: (c?.coordTransformMode === 'active-group' ? '\u2713 ' : '   ') + I18nManager.t('edit.coord_transform.active_group'),
+                        action: () => {
+                            if (c) c.coordTransformMode = 'active-group';
+                            if (c) c.is_dirty = true;
+                            if (c) c.notifyPropertiesUpdate?.();
+                            if (c) c.history?.saveCurrentViewState?.();
+                        }
+                    },
+                    {
+                        label: (c?.coordTransformMode === 'per-glyph' ? '\u2713 ' : '   ') + I18nManager.t('edit.coord_transform.per_glyph'),
+                        action: () => {
+                            if (c) c.coordTransformMode = 'per-glyph';
+                            if (c) c.is_dirty = true;
+                            if (c) c.notifyPropertiesUpdate?.();
+                            if (c) c.history?.saveCurrentViewState?.();
+                        }
+                    }
+                ]
             }
         ];
 

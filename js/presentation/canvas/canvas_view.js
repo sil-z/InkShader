@@ -41,7 +41,9 @@ export function setupCanvasView(canvas) {
     const viewportWidth = Number.isFinite(viewport.viewportWidth) ? viewport.viewportWidth : 0;
     const viewportHeight = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
     canvas.offset.x = (viewportWidth - canvas.ruler_size - canvas.canvas_size_width * canvas.scale) / 2;
-    canvas.offset.y = (viewportHeight - canvas.ruler_size - canvas.canvas_size_height * canvas.scale) / 2;
+    const _asc = canvas.fontSettings?.ascender ?? 800;
+    const _desc = canvas.fontSettings?.descender ?? -200;
+    canvas.offset.y = (viewportHeight - canvas.ruler_size - (_asc - _desc) * canvas.scale) / 2;
 }
 export function setupCanvasResizeBehavior(canvas) {
     // Debounce ResizeObserver to prevent cascading redraws during theme

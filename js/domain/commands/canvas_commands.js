@@ -856,9 +856,9 @@ export class CanvasCommands {
 	            //    caches; this also invalidates the stable scene cache).
 	            canvas.flushSmartStrokeBooleanCache?.();
 	        }
-	        canvas.fontSettings = next;
+        canvas.fontSettings = next;
 
-	        // Sync project name with ProjectManager immediately so the brand title
+        // Sync project name with ProjectManager immediately so the brand title
 	        // and cached project list reflect the change without relying on the
 	        // EditorStore → STATE_CHANGED → syncActiveProjectNameFromCanvas pipeline
 	        // (which may not fire if recordHistory returns false for metadata-only changes).

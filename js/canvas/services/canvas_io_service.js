@@ -264,7 +264,7 @@ export class CanvasIOService {
             for (const g of guidelines) {
                 fi.push('      <dict>');
                 fi.push(`        <key>x</key><integer>${Math.round(g.x)}</integer>`);
-                fi.push(`        <key>y</key><integer>${Math.round(0.8 * c.canvas_size_height - g.y)}</integer>`);
+                fi.push(`        <key>y</key><integer>${Math.round((c.fontSettings?.ascender ?? 800) - g.y)}</integer>`);
                 if (g.angle != null && g.angle !== 0) {
                     fi.push(`        <key>angle</key><integer>${Math.round(g.angle)}</integer>`);
                 }
@@ -292,14 +292,14 @@ ${fi.join('\n')}
 
         // GlifRecorder: produces GLIF outline XML (contours + components)
         class GlifRecorder {
-            constructor(canvasHeight) {
+            constructor(ascender) {
                 this.contours = [];
                 this.components = [];
                 this.currentContour = null;
-                this.h = canvasHeight;
+                this.asc = ascender;
                 this._smoothMode = undefined;
             }
-            _fy(y) { return 0.8 * this.h - y; }
+            _fy(y) { return this.asc - y; }
             /** Persist the control_mode of the next on-curve point (GLIF smooth="yes" export). */
             setSmoothMode(mode) { this._smoothMode = mode; }
             moveTo(x, y) {
@@ -470,14 +470,14 @@ ${fi.join('\n')}
                             // flattened refs to unicode-less glyphs such as
                             // "test" and lost the reference on round-trip.)
                             const m = child.transform || new DOMMatrix();
-                            const h = c.canvas_size_height;
+                            const asc = c.fontSettings?.ascender ?? 800;
                             // Convert canvas-space transform (Y-down) to UFO Y-up space
                             const ufoA = m.a;
                             const ufoB = -m.b;
                             const ufoC = -m.c;
                             const ufoD = m.d;
-                            const ufoE = m.e + m.c * 0.8 * h;
-                            const ufoF = -m.f + 0.8 * h - m.d * 0.8 * h;
+                            const ufoE = m.e + m.c * asc;
+                            const ufoF = -m.f + asc - m.d * asc;
                             recorder.addComponent(refTarget.name, ufoA, ufoB, ufoC, ufoD, ufoE, ufoF, child.name);
                         } else if (refTarget) {
                             // Ref to non-glyph (subgroup): resolve manually with transform
@@ -525,7 +525,7 @@ ${fi.join('\n')}
                 // codePointAt (not charCodeAt): correct hex for astral characters
                 unicodeTag = `<unicode hex="${String(item.charCode).codePointAt(0).toString(16).padStart(4, "0").toUpperCase()}"/>`;
             }
-            const recorder = new GlifRecorder(c.canvas_size_height);
+            const recorder = new GlifRecorder(c.fontSettings?.ascender ?? 800);
             buildGlyphOutline(recorder, item.id, null);
 
             const outlineXML = recorder.getXML();
@@ -837,7 +837,8 @@ ${kernDict.join('\n')}
         // which the geometry classifier then read as corners (user case:
         // handles at -43.7°/136.4° are 0.1° off a mirror pair ONLY because
         // of this rounding).
-        const flipY = canvasH != null ? (y) => 0.8 * canvasH - y : null;
+        // canvasH is now the ascender value (baseline model Y)
+        const flipY = canvasH != null ? (y) => canvasH - y : null;
         const fy = (y) => flipY ? flipY(y) : Math.round(y);
 
         // Group commands into subpaths (each M starts a new subpath)
@@ -1187,7 +1188,7 @@ ${kernDict.join('\n')}
             // like A_D, unicode-only glyphs like G) must survive round-trip.
             if (d) {
                 // Parse path data into curves within this group (Y-flip to match UFO-style Y-up coords)
-                this._parseSVGPathToCurves(d, c, groupId, c.canvas_size_height);
+                this._parseSVGPathToCurves(d, c, groupId, c.fontSettings?.ascender ?? 800);
             }
 
             // data-refs: component references written by our own exportToSVG.
@@ -1357,10 +1358,8 @@ ${kernDict.join('\n')}
             // (Y-down) so they round-trip with exportToUFO
             editor_guidelines: (fontSettings.guidelines || []).map(g => ({
                 x: g.x,
-                // Flip against the imported UPM em height: the snapshot below
-                // sets canvas_size_height = upm, so the restored canvas flips
-                // exactly like exportToUFO (0.8 * canvas_size_height).
-                y: 0.8 * (fontSettings.upm || 1000) - g.y,
+                // Flip against the ascender: model Y = ascender - fontY
+                y: (fontSettings.ascender ?? 800) - g.y,
                 ...(g.angle ? { angle: g.angle } : {})
             })),
             editor_sequence: "", editor_active_indices: [],
@@ -1867,7 +1866,7 @@ ${kernDict.join('\n')}
      * @param {string} groupId - owning glyph group id
      */
     _applyGLIFComponents(components, c, groupId) {
-        const h = c.canvas_size_height;
+        const asc = c.fontSettings?.ascender ?? 800;
         for (const comp of components) {
             // Look up the target group by name
             const targetGroup = c.curve_manager.getGroupByName(comp.baseName);
@@ -1880,8 +1879,8 @@ ${kernDict.join('\n')}
                 -comp.xyScale,      // b = -ufoB
                 -comp.yxScale,      // c = -ufoC
                 comp.yScale,        // d = ufoD
-                comp.xOffset + comp.yxScale * 0.8 * h,      // e = ufoE + ufoC * 0.8h
-                0.8 * h - comp.yScale * 0.8 * h - comp.yOffset // f = 0.8h - ufoD*0.8h - ufoF
+                comp.xOffset + comp.yxScale * asc,      // e = ufoE + ufoC * asc
+                asc - comp.yScale * asc - comp.yOffset // f = asc - ufoD*asc - ufoF
             ]);
             c.curve_manager.pasteGroupRef(targetGroup.id, groupId, matrix, comp.refName);
         }
@@ -1896,9 +1895,9 @@ ${kernDict.join('\n')}
         if (ptEls.length < 2) return null;
 
         // UFO uses Y-up, canvas uses Y-down — flip Y to match canvas space.
-        // The inverse of export's _fy(y) = 0.8 * canvasH - y.
-        const canvasH = c.canvas_size_height;
-        const flipY = (y) => 0.8 * canvasH - y;
+        // Baseline model Y = ascender; font Y = ascender - modelY.
+        const asc = c.fontSettings?.ascender ?? 800;
+        const flipY = (y) => asc - y;
 
         // Collect raw point data
         const pts = [];
@@ -2240,12 +2239,12 @@ ${kernDict.join('\n')}
         };
 
         const upm = fontSettings.upm;
-        const canvasH = c.canvas_size_height;
+        const asc = fontSettings.ascender ?? 800;
 
-        // Y-flip for font layer: same convention as UFO export
-        // canvas Y=0 (top) → font Y = 0.8*canvasH (ascender line)
-        // canvas Y=0.8*canvasH (baseline) → font Y = 0
-        // canvas Y=canvasH (bottom) → font Y = -0.2*canvasH (descender)
+        // Y-flip for font layer: baseline model Y = ascender
+        // canvas Y=0 (top) → font Y = ascender
+        // canvas Y=ascender (baseline) → font Y = 0
+        // canvas Y=ascender-descender (bottom) → font Y = -descender
         // Font layer coordinates keep FULL precision (toFixed(5), NOT
         // Math.round) — the SVG import path classifies smoothness purely
         // from handle geometry (no smooth attribute), and the expanded
@@ -2258,7 +2257,7 @@ ${kernDict.join('\n')}
         // compact, lossless interchange. FontForge users can run
         // Element > Round To Int (or glyph.round() in ffpython) before
         // generating to get UFO-sized OTFs.
-        const fyFont = (y) => parseFloat((0.8 * canvasH - y).toFixed(5));
+        const fyFont = (y) => parseFloat((asc - y).toFixed(5));
         const fyVis = (y) => Math.round(y);
 
         // SvgPathRecorder: accumulates commands for a single SVG path d="..."

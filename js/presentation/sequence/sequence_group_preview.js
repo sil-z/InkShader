@@ -45,11 +45,11 @@ export function drawSequenceGroupPreview(ctx, curveManager, groupId, fontMetrics
         // Metric-frame layout: ascender pinned to top, descender to bottom of the
         // 100-unit content square (y=10..110); horizontally centered on the
         // side-bearing frame [lsb, advance - rsb] == [minX, maxX] of curve extents.
-        // Model space is y-flipped (fontY = 0.8*canvasH - modelY), so the model y
-        // of the ascender line is 0.8*canvasH - asc and of the descender 0.8*canvasH - desc.
+        // Model space: baseline = ascender, fontY = ascender - modelY
+        // Ascender line is at model Y = 0 (top of canvas)
         scale = 100 / (asc - desc);
         offsetX = 60 - (minX + w / 2) * scale;
-        offsetY = 10 - (0.8 * canvasH - asc) * scale;
+        offsetY = 10;
     } else {
         // Fallback: center the curve bounding box (legacy behavior).
         const size = Math.max(w, h, 1);

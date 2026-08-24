@@ -71,10 +71,10 @@ const PROP_MAP = {
 const POS_KEY = 'npp_pos';
 const DOCK_KEY = 'npp_docked';
 
-function _toModelY(propId, value, canvasHeight) {
+function _toModelY(propId, value, ascender) {
     // design coordinate: baseline = 0, ascender = +800, descender = -200
-    // internal node.y: baseline = 800, ascender = 0, descender = 1000
-    return Y_PROPS.has(propId) ? 0.8 * canvasHeight - value : value;
+    // internal node.y: baseline = ascender, ascender = 0, descender = ascender-descender
+    return Y_PROPS.has(propId) ? ascender - value : value;
 }
 
 export class NodePropertyPopup extends HTMLElement {
@@ -151,7 +151,7 @@ export class NodePropertyPopup extends HTMLElement {
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
             if (propId) {
-                let modelVal = _toModelY(propId, numVal, this._canvasSizeHeight);
+                let modelVal = _toModelY(propId, numVal, this._ascender ?? 800);
                 if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
                     modelVal = this._displayXToModelX(modelVal);
                 }
@@ -170,7 +170,7 @@ export class NodePropertyPopup extends HTMLElement {
             if (!marker) return;
             const propId = PROP_MAP[e.target.id];
             if (propId) {
-                let modelVal = _toModelY(propId, numVal, this._canvasSizeHeight);
+                let modelVal = _toModelY(propId, numVal, this._ascender ?? 800);
                 if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
                     modelVal = this._displayXToModelX(modelVal);
                 }
@@ -240,6 +240,8 @@ export class NodePropertyPopup extends HTMLElement {
 
         this._anchorNodeId = anchorId;
         this._canvasSizeHeight = nextState.canvasSizeHeight ?? this._canvasSizeHeight;
+        // Keep ascender in sync for _toModelY (baseline = ascender, not 0.8*canvasH)
+        this._ascender = nextState.fontSettings?.ascender ?? this._ascender ?? 800;
 
         if (this._docked) {
             this._hide();
@@ -258,13 +260,18 @@ export class NodePropertyPopup extends HTMLElement {
         return EditorModel.resolveNodeMarker(anchorId);
     }
 
+    _getCoordDisplayOffset(groupId) {
+        return window.__canvas?.services?.renderer?.getCoordDisplayOffset(window.__canvas, groupId) ?? 0;
+    }
+
     _displayXToModelX(displayX) {
         const marker = this._resolveMarker(this._anchorNodeId);
         if (!marker?.id) return displayX;
         const node = EditorModel.getNodeReadByMarkerId(marker.id);
         if (!node?.groupId) return displayX;
         const off = EditorModel.getSeqOffsetForGroup(node.groupId) || 0;
-        return displayX - off;
+        const coordOff = this._getCoordDisplayOffset(node.groupId);
+        return displayX - off + coordOff;
     }
 
     _patchValues(anchorId) {
@@ -285,21 +292,23 @@ export class NodePropertyPopup extends HTMLElement {
             }
         };
 
-        const ch = this._canvasSizeHeight;
+        const asc = window.__canvas?.fontSettings?.ascender ?? 800;
         const seqOff = node.groupId ? (EditorModel.getSeqOffsetForGroup(node.groupId) || 0) : 0;
-        patch('npp_x', (node.x + seqOff).toFixed(1));
-        patch('npp_y', (0.8 * ch - node.y).toFixed(1));
+        const coordOff = this._getCoordDisplayOffset(node.groupId);
+        const displayX = (v) => (v + seqOff - coordOff).toFixed(1);
+        patch('npp_x', displayX(node.x));
+        patch('npp_y', (asc - node.y).toFixed(1));
 
         const hasC1 = !!node.control1;
-        patch('npp_in_x', hasC1 ? (node.control1.x + seqOff).toFixed(1) : '', !hasC1);
-        patch('npp_in_y', hasC1 ? (0.8 * ch - node.control1.y).toFixed(1) : '', !hasC1);
+        patch('npp_in_x', hasC1 ? displayX(node.control1.x) : '', !hasC1);
+        patch('npp_in_y', hasC1 ? (asc - node.control1.y).toFixed(1) : '', !hasC1);
         patch('npp_in_a', hasC1
             ? (Math.atan2(node.control1.y - node.y, node.control1.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC1);
 
         const hasC2 = !!node.control2;
-        patch('npp_out_x', hasC2 ? (node.control2.x + seqOff).toFixed(1) : '', !hasC2);
-        patch('npp_out_y', hasC2 ? (0.8 * ch - node.control2.y).toFixed(1) : '', !hasC2);
+        patch('npp_out_x', hasC2 ? displayX(node.control2.x) : '', !hasC2);
+        patch('npp_out_y', hasC2 ? (asc - node.control2.y).toFixed(1) : '', !hasC2);
         patch('npp_out_a', hasC2
             ? (Math.atan2(node.control2.y - node.y, node.control2.x - node.x) * 180 / Math.PI).toFixed(1)
             : '', !hasC2);
@@ -308,7 +317,7 @@ export class NodePropertyPopup extends HTMLElement {
     _captureInputSnapshot(target) {
         const marker = this._resolveMarker(this._anchorNodeId);
         const propId = PROP_MAP[target.id];
-        let snapVal = _toModelY(propId, numberFromInput(target), this._canvasSizeHeight);
+        let snapVal = _toModelY(propId, numberFromInput(target), this._ascender ?? 800);
         if (propId === 'prop_x' || propId === 'prop_in_x' || propId === 'prop_out_x') {
             snapVal = this._displayXToModelX(snapVal);
         }
