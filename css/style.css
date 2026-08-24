@@ -3392,6 +3392,9 @@ main-canvas[data-cursor="default"]     { cursor: default     !important; }
     background: var(--ui-accent-bg) !important;
     box-shadow: none !important;
 }
+.dock-preview.visible.dock-preview-merge {
+    opacity: 0.45;
+}
 .dock-preview-insert {
     background: var(--ui-accent-hover) !important;
     box-shadow: 0 0 6px var(--ui-accent-hover) !important;
@@ -3400,6 +3403,9 @@ main-canvas[data-cursor="default"]     { cursor: default     !important; }
 .dock-preview-insert-merge {
     background: var(--ui-accent-bg) !important;
     box-shadow: none !important;
+}
+.dock-preview.visible.dock-preview-insert-merge {
+    opacity: 0.45;
 }
 /* Body resizing cursor */
 body.is-resizing-h { cursor: ew-resize !important; }

@@ -995,6 +995,23 @@ export class CanvasInputController {
                 startUserGuideDrag("v", e.clientX, e.clientY);
             });
         }
+        // Ruler wheel → canvas pan
+        if (c.ruler_horizontal) {
+            c.ruler_horizontal.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                c.offset.x -= e.deltaY * 0.5;
+                c.is_dirty = true;
+            }, { passive: false });
+        }
+        if (c.ruler_vertical) {
+            c.ruler_vertical.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                c.offset.y -= e.deltaY * 0.5;
+                c.is_dirty = true;
+            }, { passive: false });
+        }
         c.addGlobalListener('window', "mousemove", (e) => {
             if (c.current_state !== 'DRAGGING_USER_GUIDE' || !c._draggingUserGuide) return;
             const guide = c._draggingUserGuide;

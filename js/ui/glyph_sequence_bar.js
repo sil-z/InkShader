@@ -675,12 +675,13 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
             }
         };
-        // Header: title removed (same change as the dock glyph panel — the
-        // picker opens from many positions in the bar); close button kept.
-        const header = document.createElement("div");
-        header.className = "seq-menu-header";
+        // Close button: absolute-positioned so it doesn't consume layout space
         const closeBtn = document.createElement("button");
         closeBtn.className = "seq-menu-close-btn";
+        closeBtn.style.position = "absolute";
+        closeBtn.style.top = "4px";
+        closeBtn.style.right = "4px";
+        closeBtn.style.zIndex = "1";
         closeBtn.appendChild(this._mkSvg("M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"));
         closeBtn.addEventListener("click", () => {
             menu.remove();
@@ -689,8 +690,7 @@ export class GlyphSequenceBar extends HTMLElement {
             this._activeMenu = null;
             this._lastTriggerBtn = null;
         });
-        header.appendChild(closeBtn);
-        menu.appendChild(header);
+        menu.appendChild(closeBtn);
         const form = document.createElement("div");
         form.className = "seq-menu-form";
         installEnterBlurHandler(form);
