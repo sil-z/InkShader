@@ -42,7 +42,6 @@ export function pickCurveReadFields(curve, { computeWinding = false } = {}) {
         stroke_width: curve.stroke_width,
         closed: !!curve.closed,
         smart_stroke: !!curve.smart_stroke,
-        show_skeleton: !!curve.show_skeleton,
         smart_stroke_clockwise: curve.smart_stroke_clockwise !== false,
         _expandRoundCap: !!curve._expandRoundCap,
         skeletonWinding,

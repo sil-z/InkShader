@@ -4,7 +4,7 @@ import { appEventBus } from "../app/event_bus.js";
 
 export const translations = {
     en: {
-        "menu.file": "File", "menu.edit": "Edit", "menu.prefs": "Preferences", "menu.help": "Help",
+        "menu.file": "File", "menu.edit": "Edit", "menu.layout": "Layout", "menu.prefs": "Preferences", "menu.help": "Help",
         "panel.canvas": "Canvas", "panel.objects": "Objects", "panel.properties": "Properties",
         "panel.console": "Console", "panel.sample": "Sample Text",
         "panel.font": "Font", "panel.kerning": "Kerning", "panel.glyphs": "Glyphs",
@@ -22,6 +22,11 @@ export const translations = {
         "edit.paste": "Paste",
         "edit.duplicate": "Duplicate",
         "edit.delete": "Delete",
+        "edit.add_extrema": "Add Extrema",
+        "edit.simplify_path": "Simplify Path",
+        "edit.optimize_path": "Optimize Path",
+        "edit.round_nodes": "Round Coordinates",
+        "edit.smooth_curves": "Smooth Curves",
         "edit.snap_alignment": "Snap to Alignment",
         "edit.snap_coincident": "Snap to Coincident",
         "edit.guides": "Guides",
@@ -96,7 +101,7 @@ export const translations = {
         "sample.placeholder": "Type sample text, \\name\\ for non-character glyphs, Enter for new line"
     },
     zh: {
-        "menu.file": "文件", "menu.edit": "编辑", "menu.prefs": "首选项", "menu.help": "帮助",
+        "menu.file": "文件", "menu.edit": "编辑", "menu.layout": "布局", "menu.prefs": "首选项", "menu.help": "帮助",
         "panel.canvas": "画布", "panel.objects": "对象", "panel.properties": "属性",
         "panel.console": "控制台", "panel.sample": "样张",
         "panel.font": "字体", "panel.kerning": "字偶距", "panel.glyphs": "字形",
@@ -114,6 +119,11 @@ export const translations = {
         "edit.paste": "粘贴",
         "edit.duplicate": "建立副本",
         "edit.delete": "删除",
+        "edit.add_extrema": "添加极值点",
+        "edit.simplify_path": "简化路径",
+        "edit.optimize_path": "优化路径",
+        "edit.round_nodes": "坐标取整",
+        "edit.smooth_curves": "曲线平滑",
         "edit.snap_alignment": "吸附到对齐线",
         "edit.snap_coincident": "吸附到重合位置",
         "edit.guides": "辅助线",

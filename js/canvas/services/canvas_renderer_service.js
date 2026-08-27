@@ -1299,7 +1299,6 @@ export class CanvasRendererService {
                 if (cd.curve?.startNode) {
                     if (!isCurveInstanceVisible(cd.curve, i, cd.refId ?? null)) continue;
                     if (!skipViewportBoundsCheck && !this._isCurveInViewport(cd.curve, cd.matrix, seqOffsetX, vpBounds)) continue;
-                    if (!cd.curve.show_skeleton) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
                     const sp = isCurveStrokePreview(c, cd.curve.id, cd.refId ?? null);
                     const ctx = c.ctx;

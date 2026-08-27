@@ -35,7 +35,6 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
         if (t.stroke_width !== d.stroke_width) t.stroke_width = d.stroke_width;
         if (t.closed !== d.closed) t.closed = d.closed;
         if (t.smart_expand !== d.smart_expand) t.smart_expand = d.smart_expand;
-        if (t.show_skeleton !== d.show_skeleton) t.show_skeleton = d.show_skeleton;
     }
 
     if (state.ellipseToolSettings && canvas.ellipseToolSettings &&
@@ -45,7 +44,6 @@ export function applyInteractionFromStore(canvas, state, { actionType = null } =
         if (t.stroke_width !== d.stroke_width) t.stroke_width = d.stroke_width;
         if (t.closed !== d.closed) t.closed = d.closed;
         if (t.smart_expand !== d.smart_expand) t.smart_expand = d.smart_expand;
-        if (t.show_skeleton !== d.show_skeleton) t.show_skeleton = d.show_skeleton;
     }
 
     const focusedIdx = typeof state.focusedSeqIdx === "number" ? state.focusedSeqIdx : -1;
@@ -158,8 +156,7 @@ export function pickDrawToolFieldsFromCanvas(canvas) {
     return {
         stroke_width: raw.stroke_width ?? defaults.stroke_width,
         closed: raw.closed ?? defaults.closed,
-        smart_expand: raw.smart_expand ?? defaults.smart_expand,
-        show_skeleton: raw.show_skeleton ?? defaults.show_skeleton
+        smart_expand: raw.smart_expand ?? defaults.smart_expand
     };
 }
 
@@ -170,8 +167,7 @@ export function pickEllipseToolFieldsFromCanvas(canvas) {
     return {
         stroke_width: raw.stroke_width ?? defaults.stroke_width,
         closed: raw.closed ?? defaults.closed,
-        smart_expand: raw.smart_expand ?? defaults.smart_expand,
-        show_skeleton: raw.show_skeleton ?? defaults.show_skeleton
+        smart_expand: raw.smart_expand ?? defaults.smart_expand
     };
 }
 

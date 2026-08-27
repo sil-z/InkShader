@@ -117,6 +117,11 @@ export class CanvasController {
             case CANVAS_ACTIONS.BREAK_NODE: return c.commands.breakPathAtSelectedNodes();
             case CANVAS_ACTIONS.ADD_SEGMENT: return c.commands.addSegmentBetweenEndnodes();
             case CANVAS_ACTIONS.DELETE_SEGMENT: return c.commands.deleteSegmentBetweenNodes();
+            case CANVAS_ACTIONS.ADD_EXTREMA: return c.commands.addExtrema();
+            case CANVAS_ACTIONS.SIMPLIFY_PATH: return c.commands.simplifyPath();
+            case CANVAS_ACTIONS.OPTIMIZE_PATH: return c.commands.optimizePath();
+            case CANVAS_ACTIONS.ROUND_NODES: return c.commands.roundNodes();
+            case CANVAS_ACTIONS.SMOOTH_CURVES: return c.commands.smoothCurves();
             case CANVAS_ACTIONS.UNLINK: return c.commands.unlinkSelectedReferences(payload.ids || []);
             case CANVAS_ACTIONS.IMPORT_IMAGE: c.io.triggerImportImage(); return true;
             case CANVAS_ACTIONS.UNDO:

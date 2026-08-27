@@ -60,14 +60,9 @@ export const THEME_PRESETS = [
 // ── Fixed Constants ────────────────────────────────────────────
 // Control handle LINES — pure red/blue, never participate in accent switching.
 
-export const FIXED_CONSTANTS_LIGHT = {
+export const FIXED_CONSTANTS = {
     '--cvs-ctrl-back':  'rgba(220, 38, 38, 0.9)',   // pure red
     '--cvs-ctrl-ahead': 'rgba(37, 99, 235, 0.9)',    // pure blue
-};
-
-export const FIXED_CONSTANTS_DARK = {
-    '--cvs-ctrl-back':  'rgba(248, 113, 113, 0.9)',  // lighter red
-    '--cvs-ctrl-ahead': 'rgba(96, 165, 250, 0.9)',    // lighter blue
 };
 
 // ── Palette Generator ──────────────────────────────────────────
@@ -84,78 +79,45 @@ export function generateAccentPalette(hue, isDark) {
     const palette = {};
 
     if (isDark) {
-        // ── Dark mode ──
-        const h = hue + 18; // slight hue shift for dark backgrounds
-        const hh = highlightHue + 18;
-
-        // UI accent
+        // ── Dark mode: UI accent only (canvas stays light) ──
+        const h = hue + 18;
         palette['--ui-accent']       = hslToHex(h, 82, 62);
         palette['--ui-accent-hover'] = hslToHex(h, 88, 72);
         palette['--ui-accent-bg']    = hslToHex(h, 35, 22);
         palette['--ui-accent-bg-hover'] = hslToHex(h, 38, 28);
         palette['--ui-accent-text']  = '#ffffff';
-
-        // Canvas: node / control point colors (follow accent)
-        palette['--cvs-oncurve-stroke'] = hslToRgba(h, 82, 62, 1);
-        palette['--cvs-oncurve-fill']   = hslToRgba(h, 82, 62, 0.6);
-        palette['--cvs-ctrl-stroke']    = hslToRgba(h, 88, 72, 1);
-        palette['--cvs-ctrl-fill']      = hslToRgba(h, 88, 72, 0.6);
-
-        // Canvas: hover / selection / marquee / guide
-        palette['--cvs-hover-stroke']        = hslToRgba(h, 82, 62, 1);
-        palette['--cvs-select-box']          = hslToRgba(h, 88, 72, 0.5);
-        palette['--cvs-select-handle-stroke']= hslToHex(h, 82, 62);
-        palette['--cvs-marquee-stroke']      = hslToHex(h, 88, 72);
-        palette['--cvs-marquee-fill']        = hslToRgba(h, 88, 72, 0.15);
-        palette['--cvs-guide-stroke']        = hslToRgba(h, 82, 62, 0.7);
-        palette['--cvs-guide-fill']          = hslToRgba(h, 82, 62, 0.4);
-
-        // Highlight (selection / guide-hover / divider-highlight)
-        palette['--cvs-selected-fill']       = hslToRgba(hh, 80, 55, 0.3);
-        palette['--cvs-selected-stroke']     = hslToRgba(hh, 80, 55, 1);
-        palette['--cvs-guide-hover-stroke']  = hslToRgba(hh, 80, 55, 0.9);
-        palette['--cvs-guide-hover-fill']    = hslToRgba(hh, 80, 55, 0.7);
-        palette['--cvs-guide-drag-stroke']   = hslToRgba(hh, 80, 55, 0.8);
-        palette['--cvs-guide-drag-fill']     = hslToRgba(hh, 80, 55, 0.6);
-        palette['--cvs-divider-highlight']   = hslToRgba(hh, 80, 55, 0.9);
-        palette['--cvs-measure-hover']       = hslToHex(hh, 85, 60);
-        palette['--cvs-preview']             = hslToRgba(hh, 80, 55, 0.8);
-
     } else {
-        // ── Light mode ──
-        // UI accent — calibrated to match existing blue (#0284c7 = hsl(199,98%,40%))
+        // ── Light mode: UI accent ──
         palette['--ui-accent']       = hslToHex(hue, 98, 40);
         palette['--ui-accent-hover'] = hslToHex(hue, 93, 48);
         palette['--ui-accent-bg']    = hslToHex(hue, 56, 94);
         palette['--ui-accent-bg-hover'] = hslToHex(hue, 63, 88);
         palette['--ui-accent-text']  = hslToHex(hue, 98, 40);
-
-        // Canvas: node / control point colors
-        palette['--cvs-oncurve-stroke'] = hslToRgba(hue, 98, 40, 1);
-        palette['--cvs-oncurve-fill']   = hslToRgba(hue, 98, 40, 0.6);
-        palette['--cvs-ctrl-stroke']    = hslToRgba(hue, 93, 48, 1);
-        palette['--cvs-ctrl-fill']      = hslToRgba(hue, 93, 48, 0.6);
-
-        // Canvas: hover / selection / marquee / guide
-        palette['--cvs-hover-stroke']        = hslToRgba(hue, 98, 40, 1);
-        palette['--cvs-select-box']          = hslToRgba(hue, 93, 48, 0.4);
-        palette['--cvs-select-handle-stroke']= hslToHex(hue, 98, 40);
-        palette['--cvs-marquee-stroke']      = hslToHex(hue, 93, 48);
-        palette['--cvs-marquee-fill']        = hslToRgba(hue, 93, 48, 0.08);
-        palette['--cvs-guide-stroke']        = hslToRgba(hue, 98, 40, 0.6);
-        palette['--cvs-guide-fill']          = hslToRgba(hue, 98, 40, 0.4);
-
-        // Highlight (selection / guide-hover / divider-highlight)
-        palette['--cvs-selected-fill']       = hslToRgba(highlightHue, 96, 53, 0.5);
-        palette['--cvs-selected-stroke']     = hslToRgba(highlightHue, 96, 53, 1);
-        palette['--cvs-guide-hover-stroke']  = hslToRgba(highlightHue, 96, 53, 0.8);
-        palette['--cvs-guide-hover-fill']    = hslToRgba(highlightHue, 96, 53, 0.6);
-        palette['--cvs-guide-drag-stroke']   = hslToRgba(highlightHue, 96, 53, 0.7);
-        palette['--cvs-guide-drag-fill']     = hslToRgba(highlightHue, 96, 53, 0.5);
-        palette['--cvs-divider-highlight']   = hslToRgba(highlightHue, 96, 53, 0.8);
-        palette['--cvs-measure-hover']       = hslToHex(highlightHue, 96, 53);
-        palette['--cvs-preview']             = hslToRgba(highlightHue, 96, 53, 0.8);
     }
+
+    // ── Canvas variables: always light-mode values (no dark conversion) ──
+    palette['--cvs-oncurve-stroke'] = hslToRgba(hue, 98, 40, 1);
+    palette['--cvs-oncurve-fill']   = hslToRgba(hue, 98, 40, 0.6);
+    palette['--cvs-ctrl-stroke']    = hslToRgba(hue, 93, 48, 1);
+    palette['--cvs-ctrl-fill']      = hslToRgba(hue, 93, 48, 0.6);
+
+    palette['--cvs-hover-stroke']        = hslToRgba(hue, 98, 40, 1);
+    palette['--cvs-select-box']          = hslToRgba(hue, 93, 48, 0.4);
+    palette['--cvs-select-handle-stroke']= hslToHex(hue, 98, 40);
+    palette['--cvs-marquee-stroke']      = hslToHex(hue, 93, 48);
+    palette['--cvs-marquee-fill']        = hslToRgba(hue, 93, 48, 0.08);
+    palette['--cvs-guide-stroke']        = hslToRgba(hue, 98, 40, 0.6);
+    palette['--cvs-guide-fill']          = hslToRgba(hue, 98, 40, 0.4);
+
+    palette['--cvs-selected-fill']       = hslToRgba(highlightHue, 96, 53, 0.5);
+    palette['--cvs-selected-stroke']     = hslToRgba(highlightHue, 96, 53, 1);
+    palette['--cvs-guide-hover-stroke']  = hslToRgba(highlightHue, 96, 53, 0.8);
+    palette['--cvs-guide-hover-fill']    = hslToRgba(highlightHue, 96, 53, 0.6);
+    palette['--cvs-guide-drag-stroke']   = hslToRgba(highlightHue, 96, 53, 0.7);
+    palette['--cvs-guide-drag-fill']     = hslToRgba(highlightHue, 96, 53, 0.5);
+    palette['--cvs-divider-highlight']   = hslToRgba(highlightHue, 96, 53, 0.8);
+    palette['--cvs-measure-hover']       = hslToHex(highlightHue, 96, 53);
+    palette['--cvs-preview']             = hslToRgba(highlightHue, 96, 53, 0.8);
 
     return palette;
 }
@@ -175,7 +137,7 @@ export function applyAccentPalette(hue, isDark) {
 
     // Generate the full palette first
     const palette = generateAccentPalette(hue, isDark);
-    const fixed = isDark ? FIXED_CONSTANTS_DARK : FIXED_CONSTANTS_LIGHT;
+    const fixed = FIXED_CONSTANTS;
     const allProps = { ...fixed, ...palette };
 
     // For blue (199°), clear overrides so CSS :root values take effect

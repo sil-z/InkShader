@@ -142,9 +142,6 @@ export class EllipseTool {
         if (eSettings.smart_expand !== undefined) {
             c.current_curve.smart_stroke = eSettings.smart_expand;
         }
-        if (eSettings.show_skeleton !== undefined) {
-            c.current_curve.show_skeleton = eSettings.show_skeleton;
-        }
 
         for (let i = 0; i < markers.length; i++) {
             const n = cm.find_node_by_curve(markers[i]);

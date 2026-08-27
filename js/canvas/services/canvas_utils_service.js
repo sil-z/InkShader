@@ -617,20 +617,45 @@ export class CanvasUtilsService {
         return hitResult ? hitResult : null;
     }
     getClosestTOnSegment(n1, n2, wx, wy, seqOffsetX = 0) {
-        const c = this.canvas;
         let p0 = { x: n1.x + seqOffsetX, y: n1.y };
         let p1 = n1.control1 ? { x: n1.control1.x + seqOffsetX, y: n1.control1.y } : p0;
         let p2 = n2.control2 ? { x: n2.control2.x + seqOffsetX, y: n2.control2.y } : { x: n2.x + seqOffsetX, y: n2.y };
         let p3 = { x: n2.x + seqOffsetX, y: n2.y };
-        let min_dist = Infinity; let best_t = 0.5;
-        for (let i = 0; i <= 200; i++) {
-            let t = i / 200; let mt = 1 - t;
-            let bx = mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x;
-            let by = mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y;
-            let dist = Math.hypot(bx - wx, by - wy);
-            if (dist < min_dist) { min_dist = dist; best_t = t; }
+
+        // Evaluate cubic Bezier at parameter t
+        const evalAt = (t) => {
+            const mt = 1 - t;
+            return {
+                x: mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x,
+                y: mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y
+            };
+        };
+
+        // Multi-pass refinement: coarse 200-step scan, then 3 passes of local refinement
+        let best_t = 0.5;
+        let step = 1 / 200;
+        let lo = 0, hi = 1;
+        for (let pass = 0; pass < 4; pass++) {
+            let min_dist = Infinity;
+            let local_best = lo;
+            const start = Math.max(0, lo - step);
+            const end = Math.min(1, hi + step);
+            const steps = pass === 0 ? 200 : 50;
+            const dt = (end - start) / steps;
+            for (let i = 0; i <= steps; i++) {
+                const t = start + i * dt;
+                const p = evalAt(t);
+                const dist = (p.x - wx) ** 2 + (p.y - wy) ** 2; // squared dist, no sqrt needed
+                if (dist < min_dist) { min_dist = dist; local_best = t; }
+            }
+            best_t = local_best;
+            // Narrow search window around best_t for next pass
+            const half = (end - start) / 4;
+            lo = Math.max(0, best_t - half);
+            hi = Math.min(1, best_t + half);
+            step = half / 25;
         }
-        return Math.max(0.01, Math.min(0.99, best_t));
+        return best_t;
     }
     hitTestUserGuides(mouseX, mouseY) {
         const c = this.canvas;

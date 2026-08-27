@@ -11,7 +11,7 @@ export function updateThemeParams() {
     const getVar = (name, fallback) => rootStyles.getPropertyValue(name).trim() || fallback;
 
     param_set["1"] = {
-        "path_stroke_color": getVar('--cvs-path-stroke', 'rgba(127, 127, 127, 1)'),
+        "path_stroke_color": getVar('--cvs-path-stroke', 'rgba(128, 128, 128, 1)'),
         "path_fill_color": getVar('--cvs-path-fill', 'rgba(0,0,0,1)'),
         "control_ahead_color": getVar('--cvs-ctrl-ahead', 'rgba(0, 0, 255, 0.6)'),
         "control_back_color": getVar('--cvs-ctrl-back', 'rgba(255, 0, 0, 0.6)'),

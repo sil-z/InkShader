@@ -263,7 +263,6 @@ export class SnapshotSerializer {
                             "stroke_width": curve.stroke_width,
                             "smart_stroke": curve.smart_stroke,
                             "smart_stroke_clockwise": curve.smart_stroke_clockwise !== false,
-                            "show_skeleton": curve.show_skeleton,
                             "expand_round_cap": curve._expandRoundCap ?? false,
                             "visible": curve.visible !== false,
                             "locked": curve.locked === true,

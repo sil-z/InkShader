@@ -194,7 +194,7 @@ export function drawCurveStroke(
         canFillSmartStrokeWithPath2D(curve, { strokePreview })
     ) {
         fillSmartStrokePath2D(ctx, curve, viewport, theme.path_fill_color);
-        if (!skipSkeleton && curve.show_skeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
+        if (!skipSkeleton && !strokePreview && (renderMode === "stroke" || renderMode === "all")) {
             ctx.beginPath();
             emitSkeletonReferencePath(ctx, curve, createViewportTransform(viewport));
             ctx.lineWidth = 1;
@@ -240,7 +240,7 @@ export function drawCurveStroke(
         }
     }
 
-    if (!skipSkeleton && curve.show_skeleton && (renderMode === "stroke" || renderMode === "all")) {
+    if (!skipSkeleton && (renderMode === "stroke" || renderMode === "all")) {
         ctx.beginPath();
         if (strokePreview && curve.smart_stroke && curve.stroke_width > 0) {
             // During drag, skip boolean cache (too expensive) and render the

@@ -453,7 +453,6 @@ export class CurveManager {
             if (pathProps.stroke_width !== undefined) curve.stroke_width = pathProps.stroke_width;
             if (pathProps.closed !== undefined) curve.closed = pathProps.closed;
             if (pathProps.smart_stroke !== undefined) curve.smart_stroke = pathProps.smart_stroke;
-            if (pathProps.show_skeleton !== undefined) curve.show_skeleton = pathProps.show_skeleton;
         }
         return curve;
     }
@@ -743,7 +742,6 @@ export class CurveManager {
         newCurve.stroke_width = curve.stroke_width;
         newCurve.smart_stroke = curve.smart_stroke;
         newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise !== false;
-        newCurve.show_skeleton = curve.show_skeleton;
         newCurve.visible = curve.visible !== false;
         newCurve.locked = curve.locked === true;
 

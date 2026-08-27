@@ -48,7 +48,12 @@ export const EDITOR_ACTIONS = Object.freeze({
     ADD_SEGMENT: "ADD_SEGMENT",
     DELETE_SEGMENT: "DELETE_SEGMENT",
     UNLINK: "UNLINK",
-    IMPORT_IMAGE: "IMPORT_IMAGE"
+    IMPORT_IMAGE: "IMPORT_IMAGE",
+    ADD_EXTREMA: "ADD_EXTREMA",
+    SIMPLIFY_PATH: "SIMPLIFY_PATH",
+    OPTIMIZE_PATH: "OPTIMIZE_PATH",
+    ROUND_NODES: "ROUND_NODES",
+    SMOOTH_CURVES: "SMOOTH_CURVES"
 });
 
 export function createEditorAction(type, payload = {}, meta = {}) {

@@ -140,7 +140,6 @@ export class PenToolPopup extends HTMLElement {
         patch('pen_popup_stroke', t.stroke_width);
         patch('pen_popup_closed', t.closed);
         patch('pen_popup_smart_stroke', t.smart_expand);
-        patch('pen_popup_show_skel', t.show_skeleton);
     }
 
     _dispatchChange(target, recordHistory = true) {
@@ -150,8 +149,7 @@ export class PenToolPopup extends HTMLElement {
         const propMap = {
             'pen_popup_stroke': 'stroke_width',
             'pen_popup_closed': 'closed',
-            'pen_popup_smart_stroke': 'smart_expand',
-            'pen_popup_show_skel': 'show_skeleton'
+            'pen_popup_smart_stroke': 'smart_expand'
         };
         const prop = propMap[id];
         if (prop) {

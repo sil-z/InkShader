@@ -299,7 +299,6 @@ export class PathPropertyPopup extends HTMLElement {
         if (curves.length === 1) {
             patch('ppp_closed', curve.closed);
             patch('ppp_smart_stroke', curve.smart_stroke);
-            patch('ppp_show_skel', curve.show_skeleton);
             patch('ppp_expand_round_cap', curve._expandRoundCap === true);
 
             const item = getTreeItem();
@@ -382,11 +381,10 @@ export class PathPropertyPopup extends HTMLElement {
             return;
         }
 
-        if (['ppp_closed', 'ppp_smart_stroke', 'ppp_show_skel', 'ppp_expand_round_cap'].includes(id)) {
+        if (['ppp_closed', 'ppp_smart_stroke', 'ppp_expand_round_cap'].includes(id)) {
             const propMap = {
                 'ppp_closed': 'closed',
                 'ppp_smart_stroke': 'smart_stroke',
-                'ppp_show_skel': 'show_skeleton',
                 'ppp_expand_round_cap': 'expand_round_cap'
             };
             const prop = propMap[id];

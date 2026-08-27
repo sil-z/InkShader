@@ -871,7 +871,6 @@ ${kernDict.join('\n')}
             curve.closed = closed;
             curve.stroke_width = 0;
             curve.smart_stroke = false; // imported paths are raw geometry
-            curve.show_skeleton = true;
 
             let lastMarker = null;
             let firstNodeMarker = null;
@@ -1993,7 +1992,6 @@ ${kernDict.join('\n')}
         curve.closed = !isOpen;
         curve.stroke_width = 0;
         curve.smart_stroke = false;
-        curve.show_skeleton = true;
 
         // PASS 1: Create vertex nodes for all on-curve points
         const vertexData = []; // { marker, node }

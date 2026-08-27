@@ -178,6 +178,12 @@ export class GlyphPopup extends HTMLElement {
                 refreshSections();
             }
         });
+        // Also refresh previews after any committed command (e.g. canvas edits
+        // that change curve data within a group without altering the tree).
+        appEventBus.on('COMMAND_COMMITTED', () => {
+            if (this.dataset.panelHidden) return;
+            refreshSections();
+        });
 
         // Scrollbar visibility on hover (same contract as the old popup).
         menu.addEventListener("mouseenter", () => menu.classList.add("show-scrollbar"));

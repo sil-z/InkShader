@@ -14,6 +14,42 @@ import {
 } from "./command_runtime.js";
 import { resolveMarkersFromCanvas } from "../selection/marker_resolution.js";
 
+/**
+ * Solve quadratic equation at^2 + bt + c = 0, adding valid (0,1) roots to result set.
+ */
+function _solveQuadratic(a, b, c, result) {
+    const EPS = 1e-8;
+    if (Math.abs(a) < EPS) {
+        // Linear: bt + c = 0
+        if (Math.abs(b) > EPS) {
+            const t = -c / b;
+            if (t > EPS && t < 1 - EPS) result.add(t);
+        }
+        return;
+    }
+    const disc = b * b - 4 * a * c;
+    if (disc < -EPS) return;
+    const sqrtDisc = Math.sqrt(Math.max(0, disc));
+    const t1 = (-b + sqrtDisc) / (2 * a);
+    const t2 = (-b - sqrtDisc) / (2 * a);
+    if (t1 > EPS && t1 < 1 - EPS) result.add(t1);
+    if (t2 > EPS && t2 < 1 - EPS) result.add(t2);
+}
+
+/**
+ * Check if a node is redundant: nearly collinear with its neighbors and
+ * close to the line between them (within tolerance).
+ */
+function _isRedundant(prev, curr, next, tolerance) {
+    // Distance from curr to line(prev→next)
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-10) return false; // degenerate segment
+    const dist = Math.abs((curr.x - prev.x) * dy - (curr.y - prev.y) * dx) / Math.sqrt(lenSq);
+    return dist < tolerance;
+}
+
 function snapshotString(snapshot, key, fallback, defaultValue = "") {
     return Object.prototype.hasOwnProperty.call(snapshot, key) ? snapshot[key] : fallback ?? defaultValue;
 }
@@ -182,6 +218,10 @@ export class CanvasCommands {
         if (!segment) return null;
 
         let best_t = this.utils.getClosestTOnSegment(segment.startNode, segment.nextNode, localX, localY, 0);
+        const n1 = segment.startNode, n2 = segment.nextNode;
+        const d1 = Math.hypot(localX - n1.x, localY - n1.y);
+        const d2 = Math.hypot(localX - n2.x, localY - n2.y);
+        if (d1 < 1e-6 || d2 < 1e-6) return null;
 
         if (segment.startNode && segment.startNode.control_mode === 2) {
             segment.startNode.control_mode = 1;
@@ -220,8 +260,7 @@ export class CanvasCommands {
         const curve = this.curve_manager.startAddingPath(activeGroupId, {
             stroke_width: this.drawToolSettings.stroke_width,
             closed: this.drawToolSettings.closed,
-            smart_stroke: this.drawToolSettings.smart_expand,
-            show_skeleton: this.drawToolSettings.show_skeleton
+            smart_stroke: this.drawToolSettings.smart_expand
         });
         if (!curve) return false;
 
@@ -721,7 +760,7 @@ export class CanvasCommands {
     setEllipseProperties(updates = {}, options = {}) {
         if (!updates || typeof updates !== 'object') return false;
         let changed = false;
-        const allowed = ['stroke_width', 'closed', 'smart_expand', 'show_skeleton'];
+        const allowed = ['stroke_width', 'closed', 'smart_expand'];
         for (const key of allowed) {
             if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
             const nextVal = updates[key];
@@ -752,7 +791,7 @@ export class CanvasCommands {
     setPenProperties(updates = {}, options = {}) {
         if (!updates || typeof updates !== 'object') return false;
         let changed = false;
-        const allowed = ['stroke_width', 'closed', 'smart_expand', 'show_skeleton'];
+        const allowed = ['stroke_width', 'closed', 'smart_expand'];
         for (const key of allowed) {
             if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
             const nextVal = updates[key];
@@ -1139,7 +1178,6 @@ export class CanvasCommands {
                 newCurve.stroke_width = 0;
                 newCurve.smart_stroke = true;
                 newCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise !== false;
-                newCurve.show_skeleton = curve.show_skeleton;
 
                 let last_main_node = null;
 
@@ -1545,7 +1583,6 @@ export class CanvasCommands {
                 target.stroke_width = curve.stroke_width;
                 target.smart_stroke = curve.smart_stroke;
                 target.smart_stroke_clockwise = curve.smart_stroke_clockwise;
-                target.show_skeleton = curve.show_skeleton;
                 target.visible = curve.visible !== false;
                 target.locked = curve.locked === true;
             };
@@ -2038,7 +2075,6 @@ export class CanvasCommands {
             rightCurve.stroke_width = curve.stroke_width;
             rightCurve.smart_stroke = curve.smart_stroke;
             rightCurve.smart_stroke_clockwise = curve.smart_stroke_clockwise;
-            rightCurve.show_skeleton = curve.show_skeleton;
 
             leadNode.nextOnCurve = null;
             curve.endNode = leadNode;
@@ -2159,5 +2195,448 @@ export class CanvasCommands {
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         return true;
+    }
+
+    /**
+     * Command: add extrema points to all selected curves.
+     * For each cubic bezier segment, finds parameter values where dx/dt=0 or dy/dt=0
+     * (horizontal/vertical tangent) and inserts on-curve nodes at those positions.
+     *
+     * Strategy: collect all extrema per segment, then use insertNodeAt in
+     * reverse segment order (high t first) to avoid parameter-space shift.
+     */    addExtrema() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+
+        const CLOSE_THRESHOLD = 0.005;
+        let changed = false;
+
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+
+            const segments = curve.getSkeletonBezierSegments();
+            if (segments.length === 0) continue;
+
+            for (let si = 0; si < segments.length; si++) {
+                const seg = segments[si];
+                const { p0, p1, p2, p3 } = seg;
+
+                // Derivative of cubic bezier B'(t)/3: at^2 + bt + c
+                const ax = -p0.x + 3*p1.x - 3*p2.x + p3.x;
+                const bx =  2*p0.x - 4*p1.x + 2*p2.x;
+                const cx =  p1.x - p0.x;
+                const ay = -p0.y + 3*p1.y - 3*p2.y + p3.y;
+                const by =  2*p0.y - 4*p1.y + 2*p2.y;
+                const cy =  p1.y - p0.y;
+
+                const ts = new Set();
+                _solveQuadratic(ax, bx, cx, ts);
+                _solveQuadratic(ay, by, cy, ts);
+                const extrema = [...ts]
+                    .filter(t => t > 0 && t < 1)
+                    .sort((a, b) => a - b);
+
+                if (extrema.length === 0) continue;
+
+                // Warn about extrema very close to endpoints
+                for (const t of extrema) {
+                    if (t < CLOSE_THRESHOLD || t > 1 - CLOSE_THRESHOLD) {
+                        console.warn(
+                            `[Add Extrema] Extremum at t=${t.toFixed(4)} is very close to ` +
+                            `${t < 0.5 ? 'start' : 'end'} of segment ${si}. Inserting anyway.`
+                        );
+                    }
+                }
+
+                // Insert from highest t to lowest. Each insertNodeAt splits
+                // the segment at seg.node, so the next call operates on the
+                // sub-segment [0, prevT]. Local t = tOrig / prevT.
+                // Always pass seg.node — insertNodeAt updates its control1
+                // for the sub-curve, keeping subsequent splits correct.
+                let prevT = 1;
+                for (let i = extrema.length - 1; i >= 0; i--) {
+                    const tOrig = extrema[i];
+                    const tLocal = tOrig / prevT;
+                    const result = curve.insertNodeAt(seg.node, tLocal, cm);
+                    if (result) changed = true;
+                    prevT = tOrig;
+                }
+            }
+        }
+
+        if (changed) {
+            cm.notifyModelUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            cm.rebuildSpatialGrid();
+            canvas.renderer?.invalidateStableSceneCache?.();
+            this._commitHistory("addExtrema");
+        }
+        return changed;
+    }
+
+    /**
+     * Command: simplify path by removing redundant nodes.
+     * For each selected curve, removes on-curve nodes that are nearly collinear
+     * with their neighbors and lie close to the line between them.
+     * Tolerance is adaptive: 0.5% of the curve's bounding box diagonal.
+     */
+    simplifyPath() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+
+        let changed = false;
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+
+            const vertices = curve.getSkeletonVertices();
+            if (vertices.length < 3) continue;
+
+            // Compute bounding box for adaptive tolerance
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of vertices) {
+                if (v.x < minX) minX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y > maxY) maxY = v.y;
+            }
+            const diag = Math.hypot(maxX - minX, maxY - minY);
+            const tolerance = Math.max(0.5, diag * 0.005);
+
+            // Multi-pass removal: each pass may expose new redundancies
+            for (let pass = 0; pass < 10; pass++) {
+                const verts = curve.getSkeletonVertices();
+                if (verts.length < 3) break;
+
+                let removedInPass = false;
+                const candidates = [];
+                if (curve.closed) {
+                    for (let i = 0; i < verts.length; i++) {
+                        const prev = verts[(i - 1 + verts.length) % verts.length];
+                        const curr = verts[i];
+                        const next = verts[(i + 1) % verts.length];
+                        if (_isRedundant(prev, curr, next, tolerance)) candidates.push(curr);
+                    }
+                } else {
+                    for (let i = 1; i < verts.length - 1; i++) {
+                        if (_isRedundant(verts[i - 1], verts[i], verts[i + 1], tolerance))
+                            candidates.push(verts[i]);
+                    }
+                }
+
+                for (const node of candidates) {
+                    // Verify node is still in the curve (may have been removed in this pass)
+                    if (curve.getSkeletonVertices().indexOf(node) === -1) continue;
+                    // remove_node_by_dom expects the marker (main_node), not the node itself
+                    if (curve.remove_node_by_dom(node.main_node)) {
+                        removedInPass = true;
+                    }
+                }
+                if (!removedInPass) break;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            cm.notifyModelUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            cm.rebuildSpatialGrid();
+            this._commitHistory("simplifyPath");
+        }
+        return changed;
+    }
+
+    /**
+     * Optimize Path: clean up selected paths without changing shape.
+     * 1. Remove micro control handles (handle length < epsilon)
+     * 2. Remove orphaned endpoint control handles (open paths)
+     * 3. Merge coincident adjacent nodes
+     * 4. Remove collinear redundant nodes
+     */
+    optimizePath() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+
+        const HANDLE_EPSILON = 0.5;
+        const COLLIN_TOL = 0.5;
+        let changed = false;
+
+        // Helper: collect on-curve nodes via nextOnCurve chain
+        function collectNodes(start) {
+            const nodes = [];
+            let n = start;
+            while (n) { nodes.push(n); n = n.nextOnCurve; }
+            return nodes;
+        }
+
+        // Helper: point-to-line-segment distance
+        function distToSeg(px, py, ax, ay, bx, by) {
+            const dx = bx - ax, dy = by - ay;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq < 1e-10) return Math.hypot(px - ax, py - ay);
+            let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+        }
+
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+
+            // Pass 1: Remove micro control handles
+            let node = curve.startNode;
+            while (node) {
+                if (node.control1 && Math.hypot(node.control1.x - node.x, node.control1.y - node.y) < HANDLE_EPSILON) {
+                    node.control1 = null;
+                    changed = true;
+                }
+                if (node.control2 && Math.hypot(node.control2.x - node.x, node.control2.y - node.y) < HANDLE_EPSILON) {
+                    node.control2 = null;
+                    changed = true;
+                }
+                node = node.nextOnCurve;
+            }
+
+            // Pass 2: Remove orphaned endpoint control handles (open paths)
+            if (!curve.closed && curve.startNode !== curve.endNode) {
+                if (curve.startNode.control2) {
+                    curve.startNode.control2 = null;
+                    changed = true;
+                }
+                if (curve.endNode.control1) {
+                    curve.endNode.control1 = null;
+                    changed = true;
+                }
+            }
+
+            // Collect nodes for passes 3 and 4
+            let allNodes = collectNodes(curve.startNode);
+
+            // Pass 3: Merge coincident adjacent nodes (iterate backwards)
+            for (let i = allNodes.length - 1; i >= 1; i--) {
+                const a = allNodes[i - 1], b = allNodes[i];
+                if (Math.hypot(a.x - b.x, a.y - b.y) < COLLIN_TOL) {
+                    if (curve.remove_node_by_dom(b.main_node)) {
+                        allNodes.splice(i, 1);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Pass 4: Remove collinear redundant nodes (iterate backwards)
+            // Skip endpoints for open paths
+            const start = curve.closed ? 0 : 1;
+            const end = curve.closed ? allNodes.length : allNodes.length - 1;
+            for (let i = end - 1; i >= start; i--) {
+                if (allNodes.length <= 2) break;
+                const prev = allNodes[i - 1] || allNodes[allNodes.length - 1];
+                const curr = allNodes[i];
+                const next = allNodes[i + 1] || allNodes[0];
+                if (!prev || !next) continue;
+                const d = distToSeg(curr.x, curr.y, prev.x, prev.y, next.x, next.y);
+                if (d < COLLIN_TOL) {
+                    if (curve.remove_node_by_dom(curr.main_node)) {
+                        allNodes.splice(i, 1);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed) {
+            cm.notifyModelUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            cm.rebuildSpatialGrid();
+            this._commitHistory("optimizePath");
+        }
+        return changed;
+    }
+
+    /**
+     * Round Node Coordinates: round all selected path node coordinates to integers.
+     */
+    roundNodes() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+
+        let changed = false;
+
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+
+            let node = curve.startNode;
+            while (node) {
+                const rx = Math.round(node.x);
+                const ry = Math.round(node.y);
+                if (rx !== node.x || ry !== node.y) {
+                    node.x = rx;
+                    node.y = ry;
+                    changed = true;
+                }
+                if (node.control1) {
+                    const cx = Math.round(node.control1.x);
+                    const cy = Math.round(node.control1.y);
+                    if (cx !== node.control1.x || cy !== node.control1.y) {
+                        node.control1.x = cx;
+                        node.control1.y = cy;
+                        changed = true;
+                    }
+                }
+                if (node.control2) {
+                    const cx = Math.round(node.control2.x);
+                    const cy = Math.round(node.control2.y);
+                    if (cx !== node.control2.x || cy !== node.control2.y) {
+                        node.control2.x = cx;
+                        node.control2.y = cy;
+                        changed = true;
+                    }
+                }
+                node = node.nextOnCurve;
+            }
+        }
+        if (changed) {
+            cm.notifyModelUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            cm.rebuildSpatialGrid();
+            this._commitHistory("roundNodes");
+        }
+        return changed;
+    }
+
+    /**
+     * Smooth Curves: adjust handle lengths at each joint to achieve C2
+     * (curvature) continuity. Node positions and handle directions are
+     * unchanged — only the magnitude of each handle is adjusted.
+     *
+     * At a joint where two cubic Bezier segments meet (C1 already satisfied),
+     * C2 requires:  |h_in| / |h_out| = sin(out_angle) / sin(in_angle)
+     * where h_in is the incoming handle and h_out is the outgoing handle.
+     */
+    smoothCurves() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        const selectedIds = selectedTreeIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+
+        let changed = false;
+        const ITERATIONS = 3;
+
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+
+            // Collect all nodes in order
+            const nodes = [];
+            const seen = new Set();
+            let cur = curve.startNode;
+            while (cur && !seen.has(cur.main_node)) {
+                seen.add(cur.main_node);
+                nodes.push(cur);
+                cur = cur.nextOnCurve;
+            }
+            if (nodes.length < 3) continue;
+
+            const isClosed = curve.closed;
+            const count = nodes.length;
+
+            for (let iter = 0; iter < ITERATIONS; iter++) {
+                for (let i = 0; i < count; i++) {
+                    const n = nodes[i];
+
+                    // Determine predecessor and successor (with wrapping)
+                    let prevIdx, nextIdx;
+                    if (isClosed) {
+                        prevIdx = (i - 1 + count) % count;
+                        nextIdx = (i + 1) % count;
+                    } else {
+                        // Open path: skip endpoints (only one handle)
+                        if (i === 0 || i === count - 1) continue;
+                        prevIdx = i - 1;
+                        nextIdx = i + 1;
+                    }
+
+                    const prev = nodes[prevIdx];
+                    const next = nodes[nextIdx];
+
+                    // Current handle lengths
+                    const hIn  = n.control2 ? Math.hypot(n.control2.x - n.x, n.control2.y - n.y) : 0;
+                    const hOut = n.control1 ? Math.hypot(n.control1.x - n.x, n.control1.y - n.y) : 0;
+
+                    if (hIn < 0.01 || hOut < 0.01) continue;
+
+                    // Vectors: from prev to n, from n to next
+                    const dxIn  = n.x - prev.x;
+                    const dyIn  = n.y - prev.y;
+                    const dxOut = next.x - n.x;
+                    const dyOut = next.y - n.y;
+
+                    // Handle direction vectors (unit)
+                    const hInDx  = (n.control2.x - n.x) / hIn;
+                    const hInDy  = (n.control2.y - n.y) / hIn;
+                    const hOutDx = (n.control1.x - n.x) / hOut;
+                    const hOutDy = (n.control1.y - n.y) / hOut;
+
+                    // Angle between handle and chord
+                    const sinIn  = Math.abs(dxIn  * hInDy  - dyIn  * hInDx);
+                    const sinOut = Math.abs(dxOut * hOutDy - dyOut * hOutDx);
+
+                    // If either sin is near zero, handle is parallel to chord — skip
+                    if (sinIn < 1e-6 || sinOut < 1e-6) continue;
+
+                    // C2 target ratio: |h_in| / |h_out| = sinOut / sinIn
+                    const targetRatio = sinOut / sinIn;
+
+                    // New lengths (preserve total length, adjust ratio)
+                    const total = hIn + hOut;
+                    const newHOut = total * targetRatio / (1 + targetRatio);
+                    const newHIn  = total / (1 + targetRatio);
+
+                    // Apply new lengths, keep directions
+                    if (n.control1) {
+                        n.control1.x = n.x + hOutDx * newHOut;
+                        n.control1.y = n.y + hOutDy * newHOut;
+                    }
+                    if (n.control2) {
+                        n.control2.x = n.x + hInDx * newHIn;
+                        n.control2.y = n.y + hInDy * newHIn;
+                    }
+
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            cm.notifyModelUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            cm.rebuildSpatialGrid();
+            this._commitHistory("smoothCurves");
+        }
+        return changed;
     }
 }

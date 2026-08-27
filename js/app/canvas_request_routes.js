@@ -72,6 +72,11 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_ADD_SEGMENT, action: CANVAS_ACTIONS.ADD_SEGMENT, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_DELETE_SEGMENT, action: CANVAS_ACTIONS.DELETE_SEGMENT, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_UNLINK, action: CANVAS_ACTIONS.UNLINK, mapPayload: (d) => ({ ids: d?.ids || [] }) },
+    { event: CANVAS_EVENTS.REQUEST_ADD_EXTREMA, action: CANVAS_ACTIONS.ADD_EXTREMA, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_SIMPLIFY_PATH, action: CANVAS_ACTIONS.SIMPLIFY_PATH, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_OPTIMIZE_PATH, action: CANVAS_ACTIONS.OPTIMIZE_PATH, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_ROUND_NODES, action: CANVAS_ACTIONS.ROUND_NODES, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_SMOOTH_CURVES, action: CANVAS_ACTIONS.SMOOTH_CURVES, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_IMPORT, action: CANVAS_ACTIONS.IMPORT_IMAGE, mapPayload: () => ({}) }
 ];
 

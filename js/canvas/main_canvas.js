@@ -47,7 +47,7 @@ class MainCanvasBase extends HTMLElement {
         this.transform_mode = 'scale'; /* 'scale' | 'rotate_shear' */
         this.new_curve_handle = null; this.dragging_node_marker = null; this.last_on_curve_node_marker = null;
         this.hovered_node_marker = null; this.hovered_curve_segment = null;
-        this.scale_min = 0.001; this.scale_max = 500; this.scale = 0.4;
+        this.scale_min = 0.001; this.scale_max = 200; this.scale = 0.4;
         this.zoomFactor = 1.1;         // Geometric zoom factor per tick
         this.zoomTicks = 0;            // Tick counter (incremented on zoom-in, decremented on zoom-out)
         this.scaleBase = this.scale;   // Scale at zoomTicks = 0 (initially 0.4, matched to current default)
@@ -136,10 +136,10 @@ class MainCanvasBase extends HTMLElement {
         /** false: disallow undo/redo from silently calling loadFromSnapshotObject (restore/open-file only) */
         this.history_allow_snapshot_fallback = false;
         this.drawToolSettings = {
-            stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
+            stroke_width: 0, closed: true, smart_expand: true
         };
         this.ellipseToolSettings = {
-            stroke_width: 0, closed: true, smart_expand: true, show_skeleton: true
+            stroke_width: 0, closed: true, smart_expand: true
         };
         this.fontSettings = {
             family: "InkShader Default Font",

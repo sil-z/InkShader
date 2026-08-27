@@ -1,6 +1,10 @@
 *.txt
 *.py
 
+# InkShader backend (see BACKEND_RESEARCH.md): track source + requirements
+!backend/requirements*.txt
+!backend/**/*.py
+
 # OpenCode working data
 .omo/
 .codegraph

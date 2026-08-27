@@ -404,6 +404,34 @@ export class Curve {
         return segments;
     }
 
+    /**
+     * Evaluate a point on the segment starting at startNode at parameter t.
+     * Uses cubic Bezier evaluation with Bernstein basis.
+     */
+    evaluateSegmentAt(startNode, t) {
+        let nextNode = startNode.nextOnCurve;
+        if (!nextNode && this.closed && this.endNode === startNode) {
+            nextNode = this.startNode;
+        }
+        if (!nextNode) return { x: startNode.x, y: startNode.y };
+
+        const p0 = { x: startNode.x, y: startNode.y };
+        const p1 = startNode.control1 ? { x: startNode.control1.x, y: startNode.control1.y } : p0;
+        const p2 = nextNode.control2 ? { x: nextNode.control2.x, y: nextNode.control2.y } : { x: nextNode.x, y: nextNode.y };
+        const p3 = { x: nextNode.x, y: nextNode.y };
+
+        const mt = 1 - t;
+        const b0 = mt * mt * mt;
+        const b1 = 3 * mt * mt * t;
+        const b2 = 3 * mt * t * t;
+        const b3 = t * t * t;
+
+        return {
+            x: b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x,
+            y: b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y
+        };
+    }
+
     computeExpandedStrokeOutlineNew(halfWidth) {
         let current = this.startNode;
 

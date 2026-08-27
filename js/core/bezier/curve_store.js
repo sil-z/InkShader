@@ -429,7 +429,6 @@ export class CurveStore {
         curve.stroke_width = pData.stroke_width;
         curve.smart_stroke = pData.smart_stroke !== undefined ? pData.smart_stroke : true;
         curve.smart_stroke_clockwise = pData.smart_stroke_clockwise !== undefined ? pData.smart_stroke_clockwise : false;
-        curve.show_skeleton = pData.show_skeleton !== undefined ? pData.show_skeleton : true;
         curve._expandRoundCap = pData.expand_round_cap ?? false;
         curve.visible = pData.visible !== undefined ? pData.visible : true;
         curve.locked = pData.locked !== undefined ? pData.locked : false;

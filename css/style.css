@@ -3320,6 +3320,35 @@ font-popup .pen-tool-row select {
 .pref_button_secondary:hover { background: var(--ui-hover-bg); border-color: var(--ui-border-light); }
 
 /* Per-row color reset button in preferences popup */
+/* ── Preferences color swatch ── */
+.pref-color-swatch {
+    width: 28px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid var(--ui-border);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.pref-color-swatch-checker {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+.pref-color-swatch-fill {
+    position: absolute;
+    inset: 0;
+}
+.pref-color-swatch:hover {
+    border-color: var(--ui-accent);
+}
 preferences-popup .pref-color-reset-btn {
     width: 22px;
     height: 22px;
@@ -3798,3 +3827,4 @@ sample-text-panel {
     display: block;
     width: 100%;
 }
+

@@ -113,8 +113,8 @@ try {
             titles
         };
     })()`);
-    assert(JSON.stringify(A.items) === JSON.stringify(["menu.file", "menu.edit", "menu.prefs", "menu.help"]),
-        "A1 menubar = File/Edit/Preferences/Help only", A.items);
+    assert(JSON.stringify(A.items) === JSON.stringify(["menu.file", "menu.edit", "menu.layout", "menu.prefs", "menu.help"]),
+        "A1 menubar = File/Edit/Layout/Preferences/Help", A.items);
     assert(!A.menuKern && !A.menuGlyphs, "A2 #menu_kerning / #menu_glyphs removed from DOM");
     assert(A.hidden.every(Boolean), "A3 all three panels hidden by default", A.hidden);
     assert(A.leaves.every(l => !l), "A4 no font/kerning/glyphs dock leaves", A.leaves);
@@ -133,7 +133,7 @@ try {
 
     // ── Phase B: Edit menu toggles ──
     const B1 = await evalJs(ws, `(() => {
-        document.getElementById('menu_edit').click();
+        document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
         const labels = [...dd.querySelectorAll('.save-dropdown-label')].map(e => e.textContent);
         return { visible: dd._visible, labels };
@@ -164,7 +164,7 @@ try {
     assert(B3.pos === "static" && B3.disp === "flex", "B6 docked font-popup styled static/flex", { pos: B3.pos, disp: B3.disp });
 
     const B7 = await evalJs(ws, `(() => {
-        document.getElementById('menu_edit').click();
+        document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
         const labels = [...dd.querySelectorAll('.save-dropdown-label')].map(e => e.textContent);
         return { font: labels.find(l => l.includes('Font')), kern: labels.find(l => l.includes('Kerning')) };
@@ -173,7 +173,7 @@ try {
 
     // Toggle Font back off (menu auto-hides after an item click).
     await evalJs(ws, `(() => {
-        document.getElementById('menu_edit').click();
+        document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
         const item = [...dd.querySelectorAll('.save-dropdown-item')]
             .find(d => (d.querySelector('.save-dropdown-label')?.textContent || '').includes('Font'));
@@ -199,7 +199,7 @@ try {
     // Show all three for content checks.
     await evalJs(ws, `(async () => {
         for (const label of ['Font', 'Kerning', 'Glyphs']) {
-            document.getElementById('menu_edit').click();
+            document.getElementById('menu_layout').click();
             const dd = document.querySelector('dropdown-menu');
             const item = [...dd.querySelectorAll('.save-dropdown-item')]
                 .find(d => (d.querySelector('.save-dropdown-label')?.textContent || '').includes(label));
@@ -277,7 +277,7 @@ try {
     // Hide all three, reload, expect all hidden.
     await evalJs(ws, `(async () => {
         for (const label of ['Font', 'Kerning', 'Glyphs']) {
-            document.getElementById('menu_edit').click();
+            document.getElementById('menu_layout').click();
             const dd = document.querySelector('dropdown-menu');
             const item = [...dd.querySelectorAll('.save-dropdown-item')]
                 .find(d => (d.querySelector('.save-dropdown-label')?.textContent || '').includes(label));
@@ -323,25 +323,25 @@ try {
     })()`);
     assert(C5.real.length === 0, "C5 zero app errors during the whole session", C5);
 
-    // ── Phase D: Session 24 — 8-panel Edit menu, core hide/show, resize
+    // ── Phase D: Session 24 — 8-panel Layout menu, core hide/show, resize
     // ── no-drift, min-size auto-tab, restore normalization ──
-    // D1: menu now toggles ALL eight panels.
+    // D1: Layout menu now toggles ALL eight panels.
     const D1 = await evalJs(ws, `(() => {
-        document.getElementById('menu_edit').click();
+        document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
         const labels = [...dd.querySelectorAll('.save-dropdown-label')].map(e => e.textContent);
         const has = (s) => !!labels.find(l => l.includes(s));
-        { document.getElementById('menu_edit').click(); } // close again
+        { document.getElementById('menu_layout').click(); } // close again
         return { canvas: has('Canvas'), objects: has('Objects'), properties: has('Properties'),
                  console: has('Console'), sample: has('Sample'), font: has('Font'),
                  kern: has('Kerning'), glyphs: has('Glyphs') };
     })()`);
     assert(D1.canvas && D1.objects && D1.properties && D1.console && D1.sample && D1.font && D1.kern && D1.glyphs,
-        "D1 Edit menu has 8 panel toggles", D1);
+        "D1 Layout menu has 8 panel toggles", D1);
 
     const D2 = await evalJs(ws, `(() => {
         window.I18n.setLang('zh');
-        document.getElementById('menu_edit').click();
+        document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
         const labels = [...dd.querySelectorAll('.save-dropdown-label')].map(e => e.textContent);
         const has = (s) => !!labels.find(l => l.includes(s));

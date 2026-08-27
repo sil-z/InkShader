@@ -1,0 +1,6 @@
+# InkShader 后端打包依赖（构建期，见 BACKEND_RESEARCH.md）
+# pywebview 仅 desktop（pywebview 模式）产物需要，web（浏览器模式）产物不需要。
+# 两份产物共用同一份 PyInstaller 配置入口，由 packaging/web.spec 与 packaging/desktop.spec 决定打包内容。
+
+pyinstaller>=6.22.2        # 单 exe 打包（onefile）
+pywebview>=6.2.1           # 类 Electron 桌面窗口（Windows 使用 Edge WebView2）

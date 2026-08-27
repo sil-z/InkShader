@@ -6,11 +6,11 @@ import { appendCurveFillPath, curveGeneratesFillArea } from "../../canvas/render
  * @param {CanvasRenderingContext2D} ctx 120x120 preview context (content square: 100x100 at (10,10)-(110,110))
  * @param {object} curveManager
  * @param {string} groupId
- * @param {{ascender?: number, descender?: number, canvasSizeHeight?: number}|null} [fontMetrics]
+ * @param {{ascender?: number, descender?: number, canvasSizeHeight?: number, advance?: number}|null} [fontMetrics]
  *        Font metrics for the metric-frame layout. When valid (asc > desc, canvasH > 0) the preview
  *        pins the ascender to the top and the descender to the bottom of the content square and centers
- *        horizontally on the side-bearing frame [lsb, advance - rsb]; anything outside the square is
- *        clipped by the canvas bounds. Falls back to bbox centering when metrics are unavailable.
+ *        horizontally on the divider midpoint (advance/2). Width expands symmetrically from that center.
+ *        Falls back to bbox centering when metrics are unavailable.
  */
 export function drawSequenceGroupPreview(ctx, curveManager, groupId, fontMetrics = null) {
     if (!ctx || !curveManager) return;
@@ -41,14 +41,17 @@ export function drawSequenceGroupPreview(ctx, curveManager, groupId, fontMetrics
     const asc = fontMetrics?.ascender;
     const desc = fontMetrics?.descender;
     const canvasH = fontMetrics?.canvasSizeHeight;
+    const adv = fontMetrics?.advance;
     if (Number.isFinite(asc) && Number.isFinite(desc) && asc > desc && Number.isFinite(canvasH) && canvasH > 0) {
         // Metric-frame layout: ascender pinned to top, descender to bottom of the
         // 100-unit content square (y=10..110); horizontally centered on the
-        // side-bearing frame [lsb, advance - rsb] == [minX, maxX] of curve extents.
+        // divider midpoint (advance/2) — the midpoint between the left and right
+        // divider lines. Width expands symmetrically from that center.
         // Model space: baseline = ascender, fontY = ascender - modelY
         // Ascender line is at model Y = 0 (top of canvas)
         scale = 100 / (asc - desc);
-        offsetX = 60 - (minX + w / 2) * scale;
+        const centerX = Number.isFinite(adv) ? adv / 2 : (minX + w / 2);
+        offsetX = 60 - centerX * scale;
         offsetY = 10;
     } else {
         // Fallback: center the curve bounding box (legacy behavior).

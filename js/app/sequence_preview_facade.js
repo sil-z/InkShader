@@ -13,10 +13,15 @@ export function drawSequenceGroupPreviewOnContext(ctx, groupId) {
     const fs = canvas.fontSettings || {};
     // Pass font metrics so the preview pins ascender/descender to the content square
     // (fallback to bbox centering when metrics are absent).
+    // Pass advance so the preview centers on the divider midpoint (advance/2)
+    // rather than the geometric center of the path bounding box.
+    const groupItem = cm.treeItems.get(groupId);
+    const advance = groupItem?.advance ?? null;
     drawSequenceGroupPreview(ctx, cm, groupId, {
         ascender: fs.ascender,
         descender: fs.descender,
-        canvasSizeHeight: canvas.canvas_size_height
+        canvasSizeHeight: canvas.canvas_size_height,
+        advance
     });
 }
 

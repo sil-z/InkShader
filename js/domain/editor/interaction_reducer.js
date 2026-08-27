@@ -4,8 +4,7 @@ export function defaultDrawToolSettings() {
     return {
         stroke_width: 0,
         closed: true,
-        smart_expand: true,
-        show_skeleton: true
+        smart_expand: true
     };
 }
 
@@ -13,8 +12,7 @@ export function defaultEllipseToolSettings() {
     return {
         stroke_width: 0,
         closed: true,
-        smart_expand: true,
-        show_skeleton: true
+        smart_expand: true
     };
 }
 import { deriveTreeFieldsFromState } from "../selection/derive_tree_fields.js";
@@ -177,8 +175,7 @@ export function reduceInteractionState(state, action, curveManager = null) {
                 drawToolSettings: {
                     stroke_width: patch.stroke_width ?? prev.stroke_width,
                     closed: patch.closed ?? prev.closed,
-                    smart_expand: patch.smart_expand ?? prev.smart_expand,
-                    show_skeleton: patch.show_skeleton ?? prev.show_skeleton
+                    smart_expand: patch.smart_expand ?? prev.smart_expand
                 }
             };
         }
@@ -190,8 +187,7 @@ export function reduceInteractionState(state, action, curveManager = null) {
                 ellipseToolSettings: {
                     stroke_width: epatch.stroke_width ?? eprev.stroke_width,
                     closed: epatch.closed ?? eprev.closed,
-                    smart_expand: epatch.smart_expand ?? eprev.smart_expand,
-                    show_skeleton: epatch.show_skeleton ?? eprev.show_skeleton
+                    smart_expand: epatch.smart_expand ?? eprev.smart_expand
                 }
             };
         }

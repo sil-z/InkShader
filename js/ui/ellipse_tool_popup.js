@@ -137,7 +137,6 @@ export class EllipseToolPopup extends HTMLElement {
         };
         patch('ellipse_popup_stroke', t.stroke_width);
         patch('ellipse_popup_smart_stroke', t.smart_expand);
-        patch('ellipse_popup_show_skel', t.show_skeleton);
     }
 
     _dispatchChange(target, recordHistory = true) {
@@ -146,8 +145,7 @@ export class EllipseToolPopup extends HTMLElement {
         const numVal = numberFromInput(target);
         const propMap = {
             'ellipse_popup_stroke': 'stroke_width',
-            'ellipse_popup_smart_stroke': 'smart_expand',
-            'ellipse_popup_show_skel': 'show_skeleton'
+            'ellipse_popup_smart_stroke': 'smart_expand'
         };
         const prop = propMap[id];
         if (prop) {

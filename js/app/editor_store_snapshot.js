@@ -28,15 +28,13 @@ const SCALAR_KEYS = Object.freeze([
 const DRAW_TOOL_KEYS = Object.freeze([
     "stroke_width",
     "closed",
-    "smart_expand",
-    "show_skeleton"
+    "smart_expand"
 ]);
 
 const ELLIPSE_TOOL_KEYS = Object.freeze([
     "stroke_width",
     "closed",
-    "smart_expand",
-    "show_skeleton"
+    "smart_expand"
 ]);
 
 function arraysShallowEqual(a, b) {

@@ -432,7 +432,7 @@ export class TreeStore {
             const curve = this._curveStore.curveById.get(item.curveId);
             if (!curve) return false;
 
-            const directProps = ['stroke_width', 'closed', 'smart_stroke', 'show_skeleton', 'smart_stroke_clockwise', 'visible', 'locked'];
+            const directProps = ['stroke_width', 'closed', 'smart_stroke', 'smart_stroke_clockwise', 'visible', 'locked'];
             for (const key of directProps) {
                 if (key === 'stroke_width') {
                     if (!Object.prototype.hasOwnProperty.call(props, key) || props[key] === '') continue;

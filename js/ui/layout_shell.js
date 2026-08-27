@@ -253,29 +253,18 @@ export function initializeLayoutShell() {
             label: (checked ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
             action
         });
-        // Dock panel visibility toggles. The checkmark is read from the dock at
-        // menu-build time (items are rebuilt on every click), so it always
-        // matches the panel's current visibility.
-        const makePanelToggle = (i18nKey, panelId) => {
-            const d = window.__dock;
-            const visible = d ? !d.isPanelHidden(panelId) : true;
-            return {
-                label: (visible ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
-                action: () => {
-                    const dock = window.__dock;
-                    if (!dock) return;
-                    if (dock.isPanelHidden(panelId)) dock.showPanel(panelId);
-                    else dock.hidePanel(panelId);
-                }
-            };
-        };
 
         const items = [
             makeItem('edit.copy', 'Ctrl+C', () => CanvasDispatcher.requestCopySelectedObjects()),
             makeItem('edit.paste', 'Ctrl+V', () => CanvasDispatcher.requestEditorAction('paste', c?.getInteractionSnapshot()?.activeGroupId ?? null)),
             makeItem('edit.duplicate', 'Ctrl+D', () => CanvasDispatcher.requestDuplicateSelectedObjects()),
             makeItem('edit.delete', 'Del', () => CanvasDispatcher.requestDeleteSelectedObjects()),
-            makeItem('edit.delete_nodes', 'D', () => { const c2 = canvas(); if (c2) c2.commands?.deleteSelectedNodes(); }),
+            { separator: true },
+            makeItem('edit.add_extrema', null, () => CanvasDispatcher.requestAddExtrema()),
+            makeItem('edit.simplify_path', null, () => CanvasDispatcher.requestSimplifyPath()),
+            makeItem('edit.optimize_path', null, () => CanvasDispatcher.requestOptimizePath()),
+            makeItem('edit.round_nodes', null, () => CanvasDispatcher.requestRoundNodes()),
+            makeItem('edit.smooth_curves', null, () => CanvasDispatcher.requestSmoothCurves()),
             { separator: true },
             makeToggle('edit.snap_alignment', c?.snap_alignment_enabled !== false, () => {
                 if (c) c.snap_alignment_enabled = !c.snap_alignment_enabled;
@@ -285,19 +274,6 @@ export function initializeLayoutShell() {
                 if (c) c.snap_coincident_enabled = !c.snap_coincident_enabled;
                 if (c) c.history?.saveCurrentViewState?.();
             }),
-            { separator: true },
-            // Show/Hide for EVERY dock panel (Session 24): the core five
-            // (canvas/objects/properties/console/sample) plus the optional
-            // trio (font/kerning/glyphs — Session 23). All are generic toggles
-            // over the dock's hidden set.
-            makePanelToggle('panel.canvas', 'canvas'),
-            makePanelToggle('panel.objects', 'objects'),
-            makePanelToggle('panel.properties', 'properties'),
-            makePanelToggle('panel.console', 'console'),
-            makePanelToggle('panel.sample', 'sample'),
-            makePanelToggle('panel.font', 'font'),
-            makePanelToggle('panel.kerning', 'kerning'),
-            makePanelToggle('panel.glyphs', 'glyphs'),
             { separator: true },
             {
                 label: I18nManager.t('edit.guides'),
@@ -381,10 +357,72 @@ export function initializeLayoutShell() {
         btnEdit.classList.add('active');
     });
 
-    // Font/Kerning/Glyphs are dock panels now — shown/hidden via the Edit menu
-    // (the makePanelToggle items above) instead of menu-bar popups. The popup
-    // components resolve the canvas lazily via document.querySelector, so no
+    // Font/Kerning/Glyphs are dock panels now — shown/hidden via the Layout menu.
+    // The popup components resolve the canvas lazily via document.querySelector, so no
     // setCanvas/setProjectManager wiring is needed here anymore.
+
+    // ── Layout menu dropdown ──
+    const btnLayout = document.getElementById("menu_layout");
+    if (btnLayout) {
+        // Wrap dropdown.hide() so the 'active' class is cleared when the menu closes
+        // (either by item click or outside click). The dropdown-menu element doesn't
+        // know about top-bar buttons, so we monkey-patch hide once per show cycle.
+        let _layoutMenuPatched = false;
+        const _origLayoutHide = null; // not needed — we patch per-show
+
+        btnLayout.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const menu = document.querySelector('dropdown-menu');
+            if (!menu) return;
+
+            if (btnLayout.classList.contains('active')) {
+                closeAnyOpenMenu();
+                return;
+            }
+
+            closeAnyOpenMenu();
+
+            // Patch hide once so it also clears our button's active class
+            if (!_layoutMenuPatched) {
+                const origHide = menu.hide.bind(menu);
+                menu.hide = function() {
+                    btnLayout.classList.remove('active');
+                    return origHide();
+                };
+                _layoutMenuPatched = true;
+            }
+
+            const I18nManager = window.I18n || { t: (k) => k };
+
+            const makePanelToggle = (i18nKey, panelId) => {
+                const d = window.__dock;
+                const visible = d ? !d.isPanelHidden(panelId) : true;
+                return {
+                    label: (visible ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
+                    action: () => {
+                        const dock = window.__dock;
+                        if (!dock) return;
+                        if (dock.isPanelHidden(panelId)) dock.showPanel(panelId);
+                        else dock.hidePanel(panelId);
+                    }
+                };
+            };
+
+            const items = [
+                makePanelToggle('panel.canvas', 'canvas'),
+                makePanelToggle('panel.objects', 'objects'),
+                makePanelToggle('panel.properties', 'properties'),
+                makePanelToggle('panel.console', 'console'),
+                makePanelToggle('panel.sample', 'sample'),
+                makePanelToggle('panel.font', 'font'),
+                makePanelToggle('panel.kerning', 'kerning'),
+                makePanelToggle('panel.glyphs', 'glyphs'),
+            ];
+
+            menu.show(btnLayout, items);
+            btnLayout.classList.add('active');
+        });
+    }
 
     // ── Preferences popup active class sync ──
     const prefPopup = document.querySelector('preferences-popup');
