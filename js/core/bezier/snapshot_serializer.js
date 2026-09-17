@@ -190,6 +190,9 @@ export class SnapshotSerializer {
             "editor_guidelines": (editorState.guidelines || []).map(g => ({
                 id: g.id, x: g.x, y: g.y, angle: g.angle, type: g.type
             })),
+            "editor_rulers": (editorState.rulers || []).map(r => ({
+                id: r.id, x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2
+            })),
             "editor_sequence": this._sequenceService.sequenceText,
             "editor_active_indices": Array.from(this._sequenceService.activeSequenceIndices),
 

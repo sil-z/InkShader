@@ -57,6 +57,11 @@ export class PropertyPanel extends HTMLElement {
         this._renderPending = false;
         this._inputSnapshots = new WeakMap();
         this._canvasSizeHeight = 1000;
+        this._lastSelectionSig = undefined;
+        this._realtimeApplied = null;
+        // Text the panel itself last wrote into each input. Used to recognise a
+        // field the user never typed into (see the 'change' listener).
+        this._renderedInputValues = new Map();
     }
 
     _loadSectionDockState() {
@@ -97,6 +102,14 @@ export class PropertyPanel extends HTMLElement {
             this.appendChild(temp.content.cloneNode(true));
 
             this.container = this.querySelector('#property_container');
+            // WebView2 treats the panel's name/coordinate fields as an address
+            // form and decorates them with "saved info" autofill popups. There
+            // is no form data worth saving here, so mark every input (and the
+            // container as an invisible form) as autocomplete=off.
+            this.container.setAttribute('autocomplete', 'off');
+            this.container.querySelectorAll('input').forEach(inp => {
+                inp.setAttribute('autocomplete', 'off');
+            });
 
             installEnterBlurHandler(this.container);
 
@@ -125,6 +138,11 @@ export class PropertyPanel extends HTMLElement {
 
             this.container.addEventListener('input', (e) => {
                 if (realtimeIds.includes(e.target.id)) {
+                    // Mark that the realtime path already applied this field's
+                    // value to the model. The subsequent 'change' (blur) must
+                    // then only commit history — re-applying would move the
+                    // object a second time (props drifting with every edit).
+                    this._realtimeApplied = e.target.id;
                     this.handlePropertyChange(e);
                 }
             });
@@ -136,6 +154,33 @@ export class PropertyPanel extends HTMLElement {
             });
 
             this.container.addEventListener('change', (e) => {
+                // Pristine-value guard: a field the user never typed into holds the
+                // panel's own display text, which is FORMATTED (x/y and angles are
+                // rendered with toFixed(1); X additionally passes through the
+                // sequence/coordinate display offset). Committing it wrote those
+                // rounded numbers back into the model, so merely clicking through
+                // the panel could nudge a handle off its exact constrained angle —
+                // two handles meant to be exactly opposite then ended up a fraction
+                // of a degree apart and the join showed a hairline kink. Only user
+                // edits may write to the model.
+                if (e.target.type !== 'checkbox'
+                    && realtimeIds.includes(e.target.id)
+                    && this._realtimeApplied !== e.target.id
+                    && this._renderedInputValues.get(e.target.id) === e.target.value) {
+                    return;
+                }
+                if (realtimeIds.includes(e.target.id) && this._realtimeApplied === e.target.id) {
+                    // Realtime 'input' already applied the same field's value:
+                    // re-run would double-apply (bounds edits moved the object
+                    // twice). Only record history for the applied value.
+                    this._realtimeApplied = null;
+                    if (e.target.type === 'checkbox') {
+                        this.handlePropertyChange(e);
+                    } else {
+                        this.handlePropertyChange({ type: 'change-commit', target: e.target });
+                    }
+                    return;
+                }
                 this.handlePropertyChange(e);
             });
 
@@ -205,7 +250,7 @@ export class PropertyPanel extends HTMLElement {
             // dataset so patchValues (microtask) picks them up instead of the
             // possibly-stale model value.
             const detail = e?.detail;
-            const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+            const t = (k, defaultStr) => window.I18n ? window.I18n.t(k, defaultStr) : defaultStr;
             if (detail?.winding) {
                 const revBtn = this.container.querySelector('#path_reverse_dir_toggle');
                 if (revBtn) {
@@ -284,7 +329,37 @@ export class PropertyPanel extends HTMLElement {
         if (nextState.drawToolSettings) {
             this._drawToolSettings = nextState.drawToolSettings;
         }
+        this._releaseFocusOnSelectionChange();
         this.render();
+    }
+
+    /**
+     * Signature of the current object + node selection (order-independent).
+     */
+    _selectionSignature() {
+        const ids = [...(this.interaction.selectedTreeIds || [])].sort().join(',');
+        const nodes = [...(this.interaction.selectedNodeMarkerIds || [])].sort().join(',');
+        return `${ids}|${nodes}`;
+    }
+
+    /**
+     * Committing on selection change.
+     * Clicking another node/object on the canvas does not blur a focused panel
+     * input (the canvas suppresses the default mousedown), so the pending edit
+     * stayed "open" and its eventual commit was applied to the NEW selection — which
+     * therefore inherited an unrelated value. Blurring here fires the normal
+     * change event, which commits the edit to the node/object it was started on
+     * (see _captureInputSnapshot) and then repaints with the new selection's values.
+     */
+    _releaseFocusOnSelectionChange() {
+        const sig = this._selectionSignature();
+        const prev = this._lastSelectionSig;
+        this._lastSelectionSig = sig;
+        if (prev === undefined || prev === sig) return;
+        const el = this._focusedInput;
+        if (!el) return;
+        if (el.isConnected) el.blur();
+        else this._focusedInput = null;
     }
 
     _loadSectionOrder() {
@@ -392,6 +467,12 @@ export class PropertyPanel extends HTMLElement {
         const id = target.id;
         const selectedIds = [...this.interaction.selectedTreeIds];
         const snapshot = { value: readInputValue(target), kind: null };
+        // Bind this edit to the selection it STARTED on. If the selection changes
+        // while the field still has focus (clicking another node/object does not
+        // blur a panel input), the pending commit must go to the original
+        // target — otherwise the new selection silently inherits the value.
+        snapshot.selIds = selectedIds;
+        snapshot.nodeMarkerIds = [...(this.interaction.selectedNodeMarkerIds || [])];
 
         if (id === 'path_stroke') {
             snapshot.kind = 'pathStroke';
@@ -585,7 +666,7 @@ export class PropertyPanel extends HTMLElement {
     }
 
     buildDOM(hasRef, hasGroup, hasPath, pathCount, hasBounds, nodeCount, rebuildPath = true) {
-        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k, defaultStr) : defaultStr;
         const activeGroupId = this.interaction.activeGroupId;
 
         const sections = {};
@@ -966,10 +1047,10 @@ export class PropertyPanel extends HTMLElement {
                     <div class="property_group_title npp-drag-handle">${t('prop.node_props', 'Node Properties')}</div>
                     ${countHtml}
                     <div class="npp-fields">
-                        <div class="npp-row"><label>Pos</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div></div>
-                        <div class="npp-row"><label>In</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div></div>
-                        <div class="npp-row"><label>Out</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div></div>
-                        <div class="npp-row"><label>Angle</label><div class="npp-input-group"><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div></div>
+                        <div class="npp-row"><label>${t('prop.pos', 'Pos')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div></div>
+                        <div class="npp-row"><label>${t('prop.in', 'In')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div></div>
+                        <div class="npp-row"><label>${t('prop.out', 'Out')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div></div>
+                        <div class="npp-row"><label>${t('prop.angle', 'Angle')}</label><div class="npp-input-group"><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div></div>
                     </div>
                 </div>`;
         }
@@ -983,9 +1064,9 @@ export class PropertyPanel extends HTMLElement {
                 <div data-section="ppp">
                     <div class="property_group_title npp-drag-handle">${t('prop.path_props', 'Path Properties')}</div>
                     <div class="npp-fields">
-                        <div class="ppp-row ppp-path-field"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.weight', 'Width')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
-                        <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
+                        <div class="ppp-row ppp-path-field"><label>${t('prop.smart', 'Live Stroke')}</label><input type="checkbox" id="path_smart_stroke"></div>
                         <div class="ppp-row ppp-path-field"><label>${t('prop.expand_round_cap', 'Round Cap')}</label><input type="checkbox" id="path_expand_round_cap"></div>
                         <div class="ppp-row ppp-single-path"><label>${t('prop.name', 'Name')}</label><input type="text" id="c_name"${multiAttr}></div>
                         <div class="ppp-row ppp-single-path">
@@ -996,14 +1077,14 @@ export class PropertyPanel extends HTMLElement {
                             </div>
                         </div>
                         <div class="ppp-row ppp-single-path">
-                            <label>${t('prop.smart_expand_direction', 'Smart Expand Direction')}</label>
+                            <label>${t('prop.smart_expand_direction', 'Stroke Direction')}</label>
                             <div class="prop_direction_text_toggle" id="path_smart_winding_wrapper">
                                 <input type="text" readonly class="prop_direction_input" id="path_smart_winding_text" value="" tabindex="-1">
                                 <button type="button" id="path_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
                             </div>
                         </div>
-                        <div class="npp-row"><label>Pos</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div></div>
-                        <div class="npp-row"><label>Size</label><div class="npp-input-group"><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div></div>
+                        <div class="npp-row"><label>${t('prop.pos', 'Pos')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div></div>
+                        <div class="npp-row"><label>${t('prop.size', 'Size')}</label><div class="npp-input-group"><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div></div>
                     </div>
                 </div>`;
         } else if (pathCount > 1) {
@@ -1011,12 +1092,12 @@ export class PropertyPanel extends HTMLElement {
                 <div data-section="ppp">
                     <div class="property_group_title npp-drag-handle">${t('prop.multiple_paths', 'Multiple Paths')}</div>
                     <div class="npp-fields">
-                        <div class="ppp-row"><label>${t('prop.weight', 'Weight')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
+                        <div class="ppp-row"><label>${t('prop.weight', 'Width')}</label><input type="number" min="0" step="1" id="path_stroke"></div>
                         <div class="ppp-row"><label>${t('prop.closed', 'Closed')}</label><input type="checkbox" id="path_closed"></div>
-                        <div class="ppp-row"><label>${t('prop.smart', 'Smart')}</label><input type="checkbox" id="path_smart_stroke"></div>
+                        <div class="ppp-row"><label>${t('prop.smart', 'Live Stroke')}</label><input type="checkbox" id="path_smart_stroke"></div>
                         <div class="ppp-row"><label>${t('prop.expand_round_cap', 'Round Cap')}</label><input type="checkbox" id="path_expand_round_cap"></div>
-                        <div class="npp-row"><label>Pos</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div></div>
-                        <div class="npp-row"><label>Size</label><div class="npp-input-group"><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div></div>
+                        <div class="npp-row"><label>${t('prop.pos', 'Pos')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="sel_prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="sel_prop_y"></div></div>
+                        <div class="npp-row"><label>${t('prop.size', 'Size')}</label><div class="npp-input-group"><span class="npp-axis">W</span><input type="number" step="0.1" id="sel_prop_w"><span class="npp-axis">H</span><input type="number" step="0.1" id="sel_prop_h"></div></div>
                     </div>
                 </div>`;
         }
@@ -1037,19 +1118,6 @@ export class PropertyPanel extends HTMLElement {
             </div>`;
     }
 
-    _buildGroupProps(t) {
-        return `
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.group_spacing', 'Group Spacing')}</div>
-                <div class="property_single_row"><label>${t('prop.advance', 'Advance')}</label><input type="number" id="g_advance"></div>
-            </div>
-            <div class="property_group">
-                <div class="property_group_title">${t('prop.group_details', 'Group Details')}</div>
-                <div class="property_single_row"><label>${t('prop.name', 'Name')}</label><input type="text" id="g_name"></div>
-                <div class="property_single_row"><label>${t('prop.char', 'Char')}</label><input type="text" id="g_char" placeholder="Ligatures allowed"></div>
-            </div>`;
-    }
-
     _buildGroupSection(groupId, t) {
         const item = EditorModel.getTreeItem(groupId);
         if (!item || item.type !== 'group' || item.isRef) return '';
@@ -1060,14 +1128,14 @@ export class PropertyPanel extends HTMLElement {
                     <div class="npp-row"><label>${t('prop.name', 'Name')}</label><input type="text" id="g_name"></div>
                     <div class="npp-row"><label>${t('prop.char', 'Char')}</label><input type="text" id="g_char"></div>
                     <div class="npp-row"><label>${t('prop.advance', 'Advance')}</label><input type="number" id="g_advance"></div>
-                    <div class="npp-row"><label>LSB</label><input type="number" id="g_lsb"></div>
-                    <div class="npp-row"><label>RSB</label><input type="number" id="g_rsb"></div>
+                    <div class="npp-row"><label>${t('prop.lsb', 'LSB')}</label><input type="number" id="g_lsb"></div>
+                    <div class="npp-row"><label>${t('prop.rsb', 'RSB')}</label><input type="number" id="g_rsb"></div>
                 </div>
             </div>`;
     }
 
     patchValues(item, selectedCurves, bounds, nodeCount, selectedIds) {
-        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k, defaultStr) : defaultStr;
         const asc = window.__canvas?.fontSettings?.ascender ?? 800;
         const patch = (id, val, disable = false) => {
             let el = this.container.querySelector('#' + id);
@@ -1091,6 +1159,10 @@ export class PropertyPanel extends HTMLElement {
                     let sVal = String(val);
                     if (el.value !== sVal) el.value = sVal;
                     el.placeholder = '';
+                    // Remember exactly what we displayed: if the field is later
+                    // blurred without the user typing, this text must NOT be
+                    // written back (see the pristine-value guard).
+                    this._renderedInputValues.set(id, el.value);
                 }
             }
         };
@@ -1325,7 +1397,7 @@ export class PropertyPanel extends HTMLElement {
                 }
             });
             if (updates.length > 0) {
-                CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: e.type === 'change' });
+                CanvasDispatcher.requestSetSingleObjectProperties(updates, { recordHistory: e.type === 'change' || e.type === 'change-commit' });
             }
             return;
         }
@@ -1391,7 +1463,7 @@ export class PropertyPanel extends HTMLElement {
                 }
                 CanvasDispatcher.requestSetSingleObjectProperties(
                     [{ id: selId, props: { ref_pos_x: posX, ref_pos_y: posY, ref_scale_x: scaleX, ref_scale_y: scaleY, ref_rotation: rotation, ref_shear: shear } }],
-                    { recordHistory: e.type === 'change' }
+                    { recordHistory: e.type === 'change' || e.type === 'change-commit' }
                 );
             }
             return;
@@ -1410,7 +1482,7 @@ export class PropertyPanel extends HTMLElement {
                 item = selId ? EditorModel.getTreeItem(selId) : null;
             }
             if (item) {
-                CanvasDispatcher.requestSetGroupAdvance(selId, numVal, { recordHistory: e.type === 'change' });
+                CanvasDispatcher.requestSetGroupAdvance(selId, numVal, { recordHistory: e.type === 'change' || e.type === 'change-commit' });
             }
             return;
         }
@@ -1432,7 +1504,7 @@ export class PropertyPanel extends HTMLElement {
                 const currentVal = id === 'g_lsb' ? grpLr.lsb : grpLr.rsb;
                 const delta = numVal - currentVal;
                 const newAdv = Math.max(0, advance + delta);
-                CanvasDispatcher.requestSetGroupAdvance(gid, newAdv, { recordHistory: e.type === 'change' });
+                CanvasDispatcher.requestSetGroupAdvance(gid, newAdv, { recordHistory: e.type === 'change' || e.type === 'change-commit' });
             }
             return;
         }
@@ -1453,11 +1525,13 @@ export class PropertyPanel extends HTMLElement {
 
             if (isValidNumber && isValidSize) {
                 CanvasDispatcher.requestChangeSelectedObjectsBounds(prop, numVal, {
-                    recordHistory: e.type === 'change',
+                    // 'change-commit' = realtime 'input' already applied this exact
+                    // value; this call only records history (no second apply).
+                    recordHistory: e.type === 'change' || e.type === 'change-commit',
                     useBoundsSession: isSizeProp,
-                    commitBoundsSession: isSizeProp && e.type === 'change'
+                    commitBoundsSession: isSizeProp && (e.type === 'change' || e.type === 'change-commit')
                 });
-            } else if (e.type === 'change') {
+            } else if (e.type === 'change' || e.type === 'change-commit') {
                 this._restoreInputSnapshot(target);
             }
             return;
@@ -1469,7 +1543,13 @@ export class PropertyPanel extends HTMLElement {
                 return;
             }
             let marker;
-            if (this._nodePropsDocked && this._nodePropsAnchorId) {
+            // Prefer the node captured when the field was focused (see
+            // _captureInputSnapshot) so a commit that lands after the node
+            // selection changed still edits the node the user typed into.
+            const snap = this._inputSnapshots?.get(target);
+            if (snap?.kind === 'nodeProp' && snap.propId === id && snap.marker) {
+                marker = snap.marker;
+            } else if (this._nodePropsDocked && this._nodePropsAnchorId) {
                 marker = EditorModel.resolveNodeMarker(this._nodePropsAnchorId);
                 if (!marker) return;
             } else {
@@ -1486,7 +1566,7 @@ export class PropertyPanel extends HTMLElement {
                     numVal = numVal - seqOff + coordOff;
                 }
             }
-            CanvasDispatcher.requestUpdateNodeProperty(marker, id, numVal, { recordHistory: e.type === 'change' });
+            CanvasDispatcher.requestUpdateNodeProperty(marker, id, numVal, { recordHistory: e.type === 'change' || e.type === 'change-commit' });
             return;
         }
     }

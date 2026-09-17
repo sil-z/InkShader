@@ -40,8 +40,11 @@ export function storeInteractionFromHistoryMeta(meta = {}) {
         activeSequenceIndices: [...(meta.activeIndices || [])],
         activeGroupId: meta.activeGroupId ?? null
     };
-    if (meta.currentTool !== undefined && meta.currentTool !== null) {
-        patch.currentTool = meta.currentTool;
-    }
+    // NOTE: currentTool is deliberately NOT restored on undo/redo.
+    // The active tool is editor state (which tool the user holds), independent of
+    // the document history. beforeMeta.currentTool is captured at command time, so
+    // restoring it would snap the tool back to whatever was active when the undone
+    // command was recorded — and it goes stale after a tool switch (tool changes
+    // are never recorded in history), making the snap wrong on the very next undo.
     return patch;
 }

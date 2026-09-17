@@ -68,11 +68,18 @@ export class NodeTool extends BaseTool {
         let isAlreadySelected = snapshotIncludesNodeMarker(c.getInteractionSnapshot(), parentMarker);
         const refId = hitResult.refId || null;
         c.ctrl_click_added_selection = false;
+        c.ctrl_deferred_select = null;
         if (isMainNode) {
             if (isCtrlKey) {
                 if (!isAlreadySelected) {
-                    this.requestNodeSelection("toggle", [parentMarker], refId);
-                    c.ctrl_click_added_selection = true;
+                    // Ctrl multi-select is DEFERRED to mouseup: adding the node to
+                    // the selection on mousedown made a Ctrl-drag move the whole
+                    // previous selection instead of the grabbed node, and the
+                    // selection changed before the user had even dragged. A drag
+                    // with Ctrl held therefore stays a single-node (angle-snapped)
+                    // drag, and the selection only changes if the gesture ends as
+                    // a click.
+                    c.ctrl_deferred_select = { marker: parentMarker, refId };
                 }
             } else if (isShiftKey) {
                 this.requestNodeSelection("add", [parentMarker], refId);
@@ -88,7 +95,9 @@ export class NodeTool extends BaseTool {
 
         c.drag_initial_mouse = { x: mouseX, y: mouseY };
         c.drag_initial_nodes.clear();
-        const resolvedMarkers = resolveMarkersFromStore(c);
+        // A deferred Ctrl click drags ONLY the grabbed node (it is not part of
+        // the current selection yet); every other gesture drags the selection.
+        const resolvedMarkers = c.ctrl_deferred_select ? [parentMarker] : resolveMarkersFromStore(c);
         const selectedCount = resolvedMarkers.length;
         for (const marker of resolvedMarkers) {
             const n = c.curve_manager.find_node_by_curve(marker);
@@ -245,13 +254,19 @@ export class NodeTool extends BaseTool {
                 if (c.current_state !== "DRAGGING_NODE" && !e.ctrlKey) {
                     this.requestNodeSelection("replace", [parentMarker], c.dragging_node_refId || null);
                 } else if (e.ctrlKey && c.current_state !== "DRAGGING_NODE") {
-                    if (!c.ctrl_click_added_selection && snapshotIncludesNodeMarker(c.getInteractionSnapshot(), parentMarker)) {
-                        this.requestNodeSelection("toggle", [parentMarker], c.dragging_node_refId || null);
+                    if (!c.ctrl_click_added_selection) {
+                        // Click (no drag) with Ctrl: toggle the node the gesture
+                        // started on — add it when it was not selected, remove it
+                        // when it was. Never runs after a drag.
+                        const target = c.ctrl_deferred_select?.marker || parentMarker;
+                        const targetRefId = c.ctrl_deferred_select?.refId ?? (c.dragging_node_refId || null);
+                        this.requestNodeSelection("toggle", [target], targetRefId);
                     }
                 }
             }
             c.new_selected_temp = null;
             c.ctrl_click_added_selection = false;
+            c.ctrl_deferred_select = null;
         }
 
         if (isStateChangingAction && isMainNode) {
@@ -358,9 +373,14 @@ export class NodeTool extends BaseTool {
             candidateAngles.push(c.drag_initial_target.angle);
 
         let oppositeControl = parentNode.control1?.main_node === c.dragging_node_marker ? parentNode.control2 : parentNode.control1;
+        // The opposite handle's direction is collected separately as well: it is the
+        // ONLY direction that makes the two segments join smoothly, so it must win
+        // over the 5° grid whenever the pointer is near it (see below).
+        const collinearAngles = [];
         if (oppositeControl) {
             let oppAng = Math.atan2(oppositeControl.y - py, oppositeControl.x - px);
             candidateAngles.push(oppAng); candidateAngles.push(oppAng + Math.PI);
+            collinearAngles.push(oppAng, oppAng + Math.PI);
         }
 
         // Collect control handle angles from other main nodes nearby
@@ -393,6 +413,24 @@ export class NodeTool extends BaseTool {
                 while (diff > Math.PI) diff = Math.abs(diff - 2 * Math.PI);
                 if (diff < minDiff) { minDiff = diff; bestAngle = ang; }
             }
+            // Exact-collinearity preference: when the pointer is (nearly) aligned
+            // with the opposite handle, snap to its EXACT angle rather than to the
+            // nearest 5° grid point. The grid point wins in a near-tie otherwise,
+            // which leaves the join a few hundredths of a degree off — invisible
+            // per handle, but a visible hairline kink where two segments meet. This
+            // is what makes "set the two handle angles opposite" actually line up.
+            if (collinearAngles.length > 0) {
+                const COLLINEAR_TOL = Math.PI / 180; // 1°
+                for (const ang of collinearAngles) {
+                    let diff = Math.abs(currentAngle - ang);
+                    while (diff > Math.PI) diff = Math.abs(diff - 2 * Math.PI);
+                    if (diff <= minDiff + COLLINEAR_TOL) { bestAngle = ang; minDiff = diff; }
+                }
+            }
+            // The constrained quantity here is the ANGLE, so the handle position is
+            // derived from that exact angle (length = pointer distance). Nothing may
+            // re-round the resulting x/y afterwards (see the panel's pristine-value
+            // guard), otherwise the constrained angle is silently degraded.
             snapped_x = px + dist * Math.cos(bestAngle); snapped_y = py + dist * Math.sin(bestAngle);
         }
         return { x: snapped_x, y: snapped_y };

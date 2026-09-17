@@ -145,6 +145,23 @@ export class CanvasUtilsService {
                 }
             }
         }
+        // 1c. Node selection INSIDE a ref: selecting a node of a reference clears
+        // the object selection, so selectedRefIds is empty and the ref is only
+        // recorded as the store's node-selection ref id. The renderer checks that
+        // field (see _renderScene), so the handles of a reference's source curves
+        // were DRAWN here but never added to the hit-test's handle set — which made
+        // the control points of a reference object impossible to hover or drag,
+        // while its main nodes (which only need the spatial grid) still worked.
+        const nodeSelectionRefId = c.editorStore?.getState?.()?._nodeSelectionRefId ?? null;
+        if (nodeSelectionRefId) {
+            const refItem = c.curve_manager?.treeItems?.get(nodeSelectionRefId);
+            if (refItem && refItem.isRef && refItem.refId) {
+                const sourceCurves = c.curve_manager.getCurvesForGroup(refItem.refId);
+                for (const cd of sourceCurves) {
+                    if (cd.curve) addAllNodes(cd.curve);
+                }
+            }
+        }
         // 2. Current drawing curve: show handles on all its nodes
         if (c.current_curve) addAllNodes(c.current_curve);
         // 3. Node-selected markers: show handles on individual nodes + neighbors
@@ -631,17 +648,21 @@ export class CanvasUtilsService {
             };
         };
 
-        // Multi-pass refinement: coarse 200-step scan, then 3 passes of local refinement
+        // Multi-pass refinement: coarse 200-step scan, then iteratively narrow the
+        // search window so the t resolution is far below one screen pixel even at
+        // maximum zoom. The inserted node is placed at the curve point for best_t,
+        // so a coarse t grid leaves an along-curve offset that is constant in world
+        // units but grows into many screen pixels at high zoom.
         let best_t = 0.5;
-        let step = 1 / 200;
-        let lo = 0, hi = 1;
-        for (let pass = 0; pass < 4; pass++) {
-            let min_dist = Infinity;
-            let local_best = lo;
-            const start = Math.max(0, lo - step);
-            const end = Math.min(1, hi + step);
-            const steps = pass === 0 ? 200 : 50;
+        let window = 1; // current search width around best_t
+        for (let pass = 0; pass < 8; pass++) {
+            const start = Math.max(0, best_t - window / 2);
+            const end = Math.min(1, best_t + window / 2);
+            const steps = pass === 0 ? 200 : 64;
             const dt = (end - start) / steps;
+            if (dt <= 1e-7) break; // resolved far below any meaningful screen delta
+            let min_dist = Infinity;
+            let local_best = start;
             for (let i = 0; i <= steps; i++) {
                 const t = start + i * dt;
                 const p = evalAt(t);
@@ -649,11 +670,8 @@ export class CanvasUtilsService {
                 if (dist < min_dist) { min_dist = dist; local_best = t; }
             }
             best_t = local_best;
-            // Narrow search window around best_t for next pass
-            const half = (end - start) / 4;
-            lo = Math.max(0, best_t - half);
-            hi = Math.min(1, best_t + half);
-            step = half / 25;
+            // Narrow window to a few cells around the new best for the next pass
+            window = Math.max(dt * 4, 1e-8);
         }
         return best_t;
     }

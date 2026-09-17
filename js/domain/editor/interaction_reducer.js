@@ -242,6 +242,7 @@ export function reduceInteractionState(state, action, curveManager = null) {
                 activeSequenceIndices: [...(runtime.activeSequenceIndices || [])],
                 commandStackSize: runtime.commandStackSize ?? 0,
                 redoStackSize: runtime.redoStackSize ?? 0,
+                historyTopCommandId: runtime.historyTopCommandId ?? null,
                 isRestoring: runtime.isRestoring === true,
                 drawToolSettings: runtime.drawToolSettings
                     ? { ...runtime.drawToolSettings }

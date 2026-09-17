@@ -103,7 +103,116 @@ export class TransformTool {
         }
 
         c._pendingTransformCurveContexts = null;
+        // Remember which curve instances this drag moves so object-drag node
+        // snapping can tell moved nodes from snap targets (paths and refs alike).
+        c._transformDragInstanceKeys = this._dragInstanceKeys(curveContexts);
+        // Per-drag snap scratch: rebuilt on the first mouse-move of this drag.
+        c._snapDragSources = null;
         c.is_dirty = true;
+    }
+
+    /**
+     * Instance keys (`curveId|seqIdx|refId`, matching spatial-grid entries) for
+     * every curve instance moved by the current drag. Refs contribute every
+     * source curve under the dragged ref instance.
+     */
+    _dragInstanceKeys(curveContexts = []) {
+        const c = this.canvas;
+        const cm = c.curve_manager;
+        const keys = new Set();
+        const keyOf = (curveId, seqIdx, refId) =>
+            `${curveId}|${seqIdx == null || seqIdx === -1 ? '' : seqIdx}|${refId ?? ''}`;
+        for (const info of curveContexts) {
+            const cid = info?.curve?.id;
+            if (!cid) continue;
+            const seqIdx = c.utils.getSeqIdxForGroupId(info.curve.groupId);
+            keys.add(keyOf(cid, seqIdx, info.previewRefId ?? ''));
+        }
+        for (const snap of c.transform_snapshot_refs || []) {
+            const ref = snap?.ref;
+            if (!ref?.id) continue;
+            const sourceGroup = ref.refId;
+            if (ref.type === 'image' || !sourceGroup) continue;
+            const parentId = ref.parentId || cm.getRootGroupId(ref.id);
+            const seqIdx = c.utils.getSeqIdxForGroupId(parentId);
+            const groupCurves = cm.getCurvesForGroup?.(sourceGroup) || [];
+            for (const cd of groupCurves) {
+                const cid = cd?.curve?.id;
+                if (cid) keys.add(keyOf(cid, seqIdx, ref.id));
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * Node snapping for whole-object drags (Edit ▸ Snap Nodes while Dragging Objects).
+     * The moved nodes' drag-start world positions come from the spatial grid (it
+     * is only rebuilt on gesture end), targets are every node outside the moved
+     * instances. Returns the extra (dx, dy) that lands a moved node on a target
+     * node (coincident mode) or on its X/Y alignment line (alignment mode).
+     */
+    computeObjectDragSnapDelta(dx, dy) {
+        const c = this.canvas;
+        const alignEnabled = c.snap_alignment_enabled !== false;
+        const coincidentEnabled = c.snap_coincident_enabled !== false;
+        if (!alignEnabled && !coincidentEnabled) return { dx: 0, dy: 0 };
+        const grid = c.curve_manager?.spatialGrid;
+        if (!grid || typeof grid.forEach !== 'function' || grid.size === 0) return { dx: 0, dy: 0 };
+        const movedKeys = c._transformDragInstanceKeys;
+        if (!movedKeys || movedKeys.size === 0) return { dx: 0, dy: 0 };
+
+        const threshold = Math.min(5 / c.scale, 250);
+        const keyOf = (entry) =>
+            `${entry.curve?.id ?? ''}|${entry.seqIdx == null || entry.seqIdx === -1 ? '' : entry.seqIdx}|${entry.refId ?? ''}`;
+        // The moved-node list is a property of the DRAG, not of the frame, and the
+        // spatial grid is only rebuilt when the gesture ends — so collect it once
+        // per drag. Scanning the whole grid here (and building a key string per
+        // entry) on every mouse-move is O(all nodes of the font) per frame, which
+        // is what made object drags stutter on large projects.
+        let sources = c._snapDragSources;
+        if (!sources) {
+            const moved = [];
+            grid.forEach((entry) => {
+                if (!entry?.node) return;
+                if (!movedKeys.has(keyOf(entry))) return;
+                moved.push(entry);
+            });
+            // Guard: never let snapping cost scale with a huge selection.
+            const MAX_SOURCES = 200;
+            sources = moved.length > MAX_SOURCES
+                ? moved.filter((_, i) => i % Math.ceil(moved.length / MAX_SOURCES) === 0)
+                : moved;
+            c._snapDragSources = sources;
+        }
+
+        let bestDist = Infinity, coincidentAdj = null;
+        let bestXDist = Infinity, adjX = 0;
+        let bestYDist = Infinity, adjY = 0;
+        for (const src of sources) {
+            const candX = src.worldX + dx;
+            const candY = src.worldY + dy;
+            const nearby = grid.queryProximity(candX, candY, threshold + 1);
+            for (const t of nearby) {
+                if (!t?.node) continue;
+                if (movedKeys.has(keyOf(t))) continue;
+                const ddx = t.worldX - candX;
+                const ddy = t.worldY - candY;
+                if (coincidentEnabled) {
+                    const d = Math.hypot(ddx, ddy);
+                    if (d < threshold && d < bestDist) {
+                        bestDist = d;
+                        coincidentAdj = { dx: ddx, dy: ddy };
+                    }
+                }
+                if (alignEnabled) {
+                    const ax = Math.abs(ddx), ay = Math.abs(ddy);
+                    if (ax < threshold && ax < bestXDist) { bestXDist = ax; adjX = ddx; }
+                    if (ay < threshold && ay < bestYDist) { bestYDist = ay; adjY = ddy; }
+                }
+            }
+        }
+        if (coincidentAdj) return coincidentAdj;
+        return { dx: alignEnabled ? adjX : 0, dy: alignEnabled ? adjY : 0 };
     }
 
     previewKeysFromTransformContexts(curveContexts = []) {
@@ -142,6 +251,13 @@ export class TransformTool {
             let currentDy = (clientY - anchor.y) / c.scale;
             if (isCtrlPressed) {
                 if (Math.abs(currentDx) > Math.abs(currentDy)) currentDy = 0; else currentDx = 0;
+            } else if (c.snap_nodes_enabled !== false) {
+                // Node-level snapping of the dragged object(s): adjust the drag
+                // delta so a node of the moved object lands on another node (or
+                // on its X/Y alignment line).
+                const adj = this.computeObjectDragSnapDelta(currentDx, currentDy);
+                currentDx += adj.dx;
+                currentDy += adj.dy;
             }
             c.curve_manager.applyTransformPreview({
                 action: 'drag', snapshots: c.transform_snapshot,
@@ -288,6 +404,8 @@ export class TransformTool {
         c.current_state = 'IDLE'; c.transform_action = null;
         c.transform_snapshot = null; c.transform_snapshot_refs = null;
         c.transform_start_bounds = null; c.transform_anchor_client = null;
+        c._transformDragInstanceKeys = null;
+        c._snapDragSources = null;
         c.clearInteractiveStrokePreview?.();
         // Click-to-select (no drag) must not invalidate smart-expand boolean cache —
         // that forced a multi-second Paper rebuild on the next paint.

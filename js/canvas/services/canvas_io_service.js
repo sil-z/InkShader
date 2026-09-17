@@ -1,9 +1,10 @@
 import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
 import { StorageUtils } from "../../services/storage.js";
+import { desktopApi, isDesktop } from "../../app/app_mode.js";
 import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/curve_renderer.js";
 import { generateMarker } from "../../core/bezier/utils.js";
 import { CurveNode } from "../../core/bezier/node.js";
-import svgpath from "../../vendor/svgpath.min.js";
+import svgpath from "../../vendor/svgpath.js";
 export class CanvasIOService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -43,13 +44,124 @@ export class CanvasIOService {
             guidelines: (c.guidelines || []).filter(g => !g._temp).map(g => ({
                 id: g.id, x: g.x, y: g.y, angle: g.angle
             })),
+            rulers: (c.rulers || []).map(r => ({
+                id: r.id, x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2
+            })),
             font_settings: c.fontSettings || {},
             canvas_size_width: c.canvas_size_width,
             canvas_size_height: c.canvas_size_height
         }, extraState);
     }
-    triggerLoad() {
+    /**
+     * 桌面模式「是否应新开窗口」：当前文档是磁盘上有根的文件，或是无根但
+     * 已修改/有内容的项目时，打开/导入/新建都不能销毁它，必须开新窗口；
+     * 只有「没有改过的空壳文件」（无根 + 未修改 + 空白无历史）才可原位复用。
+     */
+    _needsNewWindow() {
+        const pm = this.canvas.projectManager;
+        if (!pm) return true;
+        if (pm.getOpenedFilePath()) return true;
+        if (pm.isDirty()) return true;
+        return !pm.isProjectPristine();
+    }
+
+    /**
+     * 桌面模式：把待打开/导入的内容暂存到本地后端，然后开一个新窗口，
+     * 新窗口启动时经 consumePendingImport() 取回并执行对应导入流程。
+     * @param {string} type - "json" | "ufo" | "svg"
+     * @param {string} name - 文件名（建议名/提示用）
+     * @param {string|ArrayBuffer|Uint8Array} data - 文件内容
+     * @param {string} [path] - json 打开时保留的磁盘路径（Ctrl+S 直接写回）
+     * @returns {Promise<boolean>} 是否成功移交并已开新窗口
+     */
+    async _handoffToNewWindow(type, name, data, path = "") {
+        try {
+            const payload = typeof data === "string"
+                ? new TextEncoder().encode(data)
+                : data;
+            const qs = new URLSearchParams({ import_type: type, name, path }).toString();
+            const res = await fetch(`/api/pending_import?${qs}`, {
+                method: "POST",
+                body: payload
+            });
+            if (!res.ok) {
+                console.error("[IO] pending import handoff failed:", res.status);
+                return false;
+            }
+            desktopApi()?.open_new_project();
+            return true;
+        } catch (e) {
+            console.error("[IO] pending import handoff error:", e);
+            return false;
+        }
+    }
+
+    /**
+     * 新窗口启动时消费一次待导入内容（由 canvas_controller.initialize 调用）。
+     * 存在待导入文件则执行对应导入流程并清空，返回 true；否则返回 false。
+     */
+    async consumePendingImport() {
+        try {
+            const metaRes = await fetch("/api/pending_import");
+            if (!metaRes.ok) return false;
+            const meta = await metaRes.json();
+            if (!meta || !meta.exists) return false;
+            const dataRes = await fetch("/api/pending_import/data");
+            if (!dataRes.ok) return false;
+            const buf = await dataRes.arrayBuffer();
+            const c = this.canvas;
+            if (meta.type === "json") {
+                const text = new TextDecoder("utf-8").decode(buf);
+                await c.projectManager?.loadFromFile(text, { filePath: meta.path || null });
+            } else if (meta.type === "ufo") {
+                await this.importUFOFromBytes(buf, meta.name || "import.ufo.zip");
+            } else if (meta.type === "svg") {
+                const text = new TextDecoder("utf-8").decode(buf);
+                await this.importSVGFromText(text, meta.name || "import.svg");
+            } else {
+                return false;
+            }
+            await fetch("/api/pending_import", { method: "DELETE" }).catch(() => {});
+            return true;
+        } catch (e) {
+            console.error("[IO] consume pending import failed:", e);
+            return false;
+        }
+    }
+
+    async triggerLoad() {
         const c = this.canvas;
+        // 桌面模式：原生打开对话框 -> 后端读取文件并返回路径（供 Ctrl+S 直接写回）
+        if (isDesktop()) {
+            const res = await desktopApi().file_open();
+            if (!res || !res.path || res.content == null) return;
+            const pm = c.projectManager;
+            if (this._needsNewWindow()) {
+                // 当前文档有根/已修改：所选文件在新窗口打开，当前窗口不动
+                const ok = await this._handoffToNewWindow("json", res.path, res.content, res.path);
+                if (ok) return;
+                // 移交失败退回原位打开
+            }
+            if (pm) {
+                await pm.loadFromFile(res.content, { filePath: res.path });
+            } else {
+                try {
+                    await c.commands.loadSnapshotCommand(res.content);
+                    c.commandStack = [];
+                    c.redoCommandStack = [];
+                    c.currentStateObj = c.history.getHistoryState();
+                    if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+                    c.history.saveCurrentViewState(true);
+                    c.notifyPropertiesUpdate();
+                    c.is_dirty = true;
+                    c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
+                } catch (err) {
+                    console.error("[CanvasIO] Critical error during file loading:", err);
+                    alert("Critical error during file loading: " + err.message);
+                }
+            }
+            return;
+        }
         const input = c.env.createDOMElement("input");
         input.type = "file";
         input.accept = ".json";
@@ -62,7 +174,7 @@ export class CanvasIOService {
                 // Use ProjectManager to handle save-before-switch and name conflict
                 const pm = c.projectManager;
                 if (pm) {
-                    const result = await pm.loadFromFile(jsonStr);
+                    await pm.loadFromFile(jsonStr);
                 } else {
                     // Fallback: direct load (no ProjectManager)
                     try {
@@ -85,13 +197,85 @@ export class CanvasIOService {
         };
         input.click();
     }
-    triggerSave() {
+
+    /**
+     * Save（Ctrl+S / 菜单 Save）。
+     * 桌面模式：打开的项目直接写回磁盘对应文件；新建/导入项目转 save as json。
+     * 浏览器模式：直接转 save as json（下载）。
+     * @returns {Promise<boolean>} 是否保存成功（取消/失败为 false）
+     */
+    async triggerSave() {
+        const c = this.canvas;
+        this._blurFontInput();
+        if (isDesktop()) {
+            const pm = c.projectManager;
+            const path = pm ? pm.getOpenedFilePath() : null;
+            if (path) {
+                const jsonStr = c.io.save_file();
+                const ok = await desktopApi().file_save(path, jsonStr);
+                if (ok) {
+                    c.currentStateObj = c.history.getHistoryState();
+                    if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+                    pm?.markSaved();
+                }
+                return ok;
+            }
+            // 新建项目 / UFO/SVG 导入的项目：无磁盘对应文件 -> 转 save as json 入口
+            return this.saveAsJson();
+        }
+        return this.saveAsJson();
+    }
+
+    /**
+     * Save As JSON（菜单 / Ctrl+Shift+J / Save 的浏览器模式行为）。
+     * 桌面模式走原生另存为对话框并记住路径；浏览器模式为下载。
+     * @returns {Promise<boolean>} 是否成功
+     */
+    async saveAsJson() {
+        const c = this.canvas;
+        const pm = c.projectManager;
+        this._blurFontInput();
+        const jsonStr = c.io.save_file();
+        if (isDesktop()) {
+            const suggested = this._suggestedFileName(pm?.getActiveProjectName());
+            const res = await desktopApi().file_save_as(jsonStr, suggested);
+            if (res && res.ok) {
+                // 记住路径：之后的 Save（Ctrl+S）直接写回
+                pm?.setOpenedFilePath(res.path);
+                pm?.markSaved();
+                c.currentStateObj = c.history.getHistoryState();
+                if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+                return true;
+            }
+            return false; // 用户取消或写入失败
+        }
+        this._downloadJSON(jsonStr);
+        pm?.markSaved();
+        c.currentStateObj = c.history.getHistoryState();
+        if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
+        return true;
+    }
+
+    /** 关闭窗口警告选「保存并退出」时由后端调用；成功后才发起退出。 */
+    async triggerSaveAndQuit() {
+        return (await this.triggerSave()) === true;
+    }
+
+    _blurFontInput() {
         const c = this.canvas;
         const active = document.activeElement;
         if (active && document.querySelector('font-popup')?.contains(active)) {
             active.blur();
         }
-        const jsonStr = c.io.save_file();
+    }
+
+    _suggestedFileName(projectName) {
+        const base = (projectName || "InkShader_project").trim() || "InkShader_project";
+        return base.replace(/[^\w.-]+/g, "_") + ".json";
+    }
+
+    _downloadJSON(jsonStr) {
+        const c = this.canvas;
         const blob = new Blob([jsonStr], { type: "application/json" });
         const url = c.env.createObjectURL(blob);
         const a = c.env.createDOMElement("a");
@@ -105,8 +289,6 @@ export class CanvasIOService {
             bodyDOM.removeChild(a);
         }
         c.env.revokeObjectURL(url);
-        c.currentStateObj = c.history.getHistoryState();
-        if (typeof c.history._flushRuntimeStateSave === "function") c.history._flushRuntimeStateSave();
     }
     // Escape XML special characters for safe plist string content
     _escXml(s) {
@@ -169,7 +351,11 @@ export class CanvasIOService {
         return full;
     }
 
-    exportToUFO() {
+    /**
+     * 构建当前项目的 UFO ZIP Blob（fonttools 后端操作的通用输入）。
+     * @returns {Promise<Blob>}
+     */
+    async _buildUfoZipBlob() {
         const c = this.canvas;
         const active = document.activeElement;
         if (active && document.querySelector('font-popup')?.contains(active)) {
@@ -214,7 +400,12 @@ export class CanvasIOService {
         fiKV('copyright', 'string', fontSettings.copyright);
         fiKV('descender', 'integer', fontSettings.descender);
         fiKV('familyName', 'string', fontSettings.family);
-        fiKV('postscriptFontName', 'string', fontSettings.postscript_name);
+        // Only write postscriptFontName when non-empty: an empty string would
+        // override ufo2ft's fallback (which derives a valid PS name from
+        // family+style), leaving nameID 6 missing from the compiled font.
+        if (fontSettings.postscript_name) {
+            fiKV('postscriptFontName', 'string', fontSettings.postscript_name);
+        }
         fiKV('postscriptFullName', 'string', (fontSettings.family + ' ' + fontSettings.style).trim());
         // Custom field: preserve InkShader project_name through round-trip
         fiKV('com.inkshader.projectName', 'string', fontSettings.project_name);
@@ -236,8 +427,18 @@ export class CanvasIOService {
         fiKV('openTypeNameVersion', 'string', fontSettings.version);
         fiKV('openTypeNameDescription', 'string', fontSettings.description);
         fiKV('openTypeNameSampleText', 'string', fontSettings.sample_text);
-        fiKV('openTypeNamePreferredFamilyName', 'string', fontSettings.preferred_family);
-        fiKV('openTypeNamePreferredSubfamilyName', 'string', fontSettings.preferred_subfamily);
+        // Only write preferred names when non-empty. ufo2ft's name-table
+        // fallback chain (styleMapFamilyName → openTypeNamePreferred* →
+        // familyName) only triggers on missing (None) values; empty strings
+        // short-circuit it, producing a font with NO family name (nameID 1)
+        // and a garbage fullName — Windows Font Viewer rejects it as
+        // "not a valid font file".
+        if (fontSettings.preferred_family) {
+            fiKV('openTypeNamePreferredFamilyName', 'string', fontSettings.preferred_family);
+        }
+        if (fontSettings.preferred_subfamily) {
+            fiKV('openTypeNamePreferredSubfamilyName', 'string', fontSettings.preferred_subfamily);
+        }
         // Only write styleMapFamilyName when non-empty so compilers fall back to familyName
         if (fontSettings.style_map_family) {
             fiKV('styleMapFamilyName', 'string', fontSettings.style_map_family);
@@ -658,7 +859,12 @@ ${kernDict.join('\n')}
         // (UFO readers apply both kerning.plist and fea kern rules, doubling values).
         ufoFolder.file("features.fea", feaContent);
 
-        zip.generateAsync({ type: "blob" }).then((content) => {
+        return await zip.generateAsync({ type: "blob" });
+    }
+
+    exportToUFO() {
+        const c = this.canvas;
+        this._buildUfoZipBlob().then((content) => {
             const url = c.env.createObjectURL(content);
             const a = c.env.createDOMElement("a");
             a.href = url;
@@ -672,6 +878,118 @@ ${kernDict.join('\n')}
             }
             c.env.revokeObjectURL(url);
         });
+    }
+
+    /**
+     * 保存二进制文件：桌面模式走原生另存对话框（base64 桥），浏览器模式走下载。
+     */
+    async _saveBinary(data, suggestedName) {
+        if (isDesktop()) {
+            try {
+                // pywebview 桥按 JSON 序列化参数：ArrayBuffer 需转 base64
+                const bytes = new Uint8Array(data);
+                let bin = "";
+                for (let i = 0; i < bytes.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                }
+                const b64 = btoa(bin);
+                const res = await desktopApi().file_save_binary(b64, suggestedName);
+                if (res && res.cancelled) return false;
+                return true;
+            } catch (e) {
+                console.error("[IO] file_save_binary failed:", e);
+                alert("Save failed: " + (e?.message || e));
+                return false;
+            }
+        }
+        const c = this.canvas;
+        const blob = new Blob([data], { type: "application/octet-stream" });
+        const url = c.env.createObjectURL(blob);
+        const a = c.env.createDOMElement("a");
+        a.href = url;
+        a.download = suggestedName;
+        const bodyDOM = c.env.queryDOM("body");
+        if (bodyDOM) {
+            bodyDOM.appendChild(a);
+            a.click();
+            bodyDOM.removeChild(a);
+        }
+        c.env.revokeObjectURL(url);
+        return true;
+    }
+
+    /**
+     * 后端可用性探测（缓存结果）：纯前端静态部署时 /api/health 不可达。
+     */
+    async backendAvailable() {
+        if (this._backendAvailable != null) return this._backendAvailable;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1500);
+        try {
+            const res = await fetch("/api/health", { signal: controller.signal });
+            this._backendAvailable = res.ok;
+        } catch (e) {
+            this._backendAvailable = false;
+        } finally {
+            clearTimeout(timer);
+        }
+        return this._backendAvailable;
+    }
+
+    /**
+     * 导出为 OTF / TTF：构建 UFO ZIP 提交后端（ufo2ft 编译），保存结果。
+     * @param {"otf"|"ttf"} fmt
+     */
+    async exportBinaryFont(fmt) {
+        if (!(await this.backendAvailable())) {
+            alert("This feature requires the local backend (fonttools). "
+                + "It is unavailable in the frontend-only build.");
+            return;
+        }
+        if (typeof JSZip === "undefined") {
+            alert("JSZip library is not loaded.");
+            return;
+        }
+        try {
+            const blob = await this._buildUfoZipBlob();
+            const res = await fetch(`/api/font/export?fmt=${fmt}`, { method: "POST", body: blob });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("Export failed: " + (err?.error || res.status));
+                return;
+            }
+            const buf = await res.arrayBuffer();
+            const base = (this.canvas.projectManager?.getActiveProjectName?.() || "InkShader").replace(/[\\/:*?"<>|]/g, "_");
+            await this._saveBinary(buf, `${base}.${fmt}`);
+        } catch (e) {
+            console.error("[IO] exportBinaryFont failed:", e);
+            alert("Export failed: " + (e?.message || e));
+        }
+    }
+
+    /**
+     * 选中路径级操作（correct_direction / remove_overlap）：只把选中的路径
+     * 顶点 JSON 发给后端，后端逐条处理并返回结果，绝不做整文件往返。
+     * 由 canvas_commands 调用，并在应用结果后以历史命令提交（可撤销）。
+     * @param {"correct_direction"|"remove_overlap"} opName
+     * @param {Array} paths 每条 {closed, vertices:[{x,y,control_1,control_2,control_mode}]}
+     * @returns {Promise<{paths: Array}>} 后端返回的结果路径列表
+     */
+    async callPathOp(opName, paths) {
+        if (!(await this.backendAvailable())) {
+            throw new Error("This feature requires the local backend (fonttools). "
+                + "It is unavailable in the frontend-only build.");
+        }
+        const res = await fetch(`/api/font/paths/${opName}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paths })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || `HTTP ${res.status}`);
+        }
+        return res.json();
     }
 
     /**
@@ -1023,22 +1341,31 @@ ${kernDict.join('\n')}
         const input = c.env.createDOMElement("input");
         input.type = "file";
         input.accept = ".svg";
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const svgText = event.target.result;
-                // Quick check: does it contain a <font> element?
-                if (/<font[\s>]/i.test(svgText) && /<glyph[\s>]/i.test(svgText)) {
-                    await this._importSVGFontFromString(svgText);
-                } else {
-                    this._importSVGImageFromString(svgText, file.name);
+                // 桌面模式：当前文档有根/已修改时，导入内容应在新窗口进行
+                if (isDesktop() && this._needsNewWindow()) {
+                    const ok = await this._handoffToNewWindow("svg", file.name, svgText);
+                    if (ok) return;
                 }
+                await this.importSVGFromText(svgText, file.name);
             };
             reader.readAsText(file);
         };
         input.click();
+    }
+
+    /** 供新窗口启动时从暂存文本执行 SVG 导入（与 triggerImportSVGAuto 同一路径）。 */
+    async importSVGFromText(svgText, fileName) {
+        // Quick check: does it contain a <font> element?
+        if (/<font[\s>]/i.test(svgText) && /<glyph[\s>]/i.test(svgText)) {
+            return await this._importSVGFontFromString(svgText);
+        }
+        return this._importSVGImageFromString(svgText, fileName);
     }
 
     // ── SVG Font Import ──────────────────────────────────────────
@@ -1287,26 +1614,51 @@ ${kernDict.join('\n')}
         const input = c.env.createDOMElement("input");
         input.type = "file";
         input.accept = ".zip,.ufo";
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                try {
-                    const zip = await JSZip.loadAsync(event.target.result);
-                    await this._importUFOFromZip(zip);
-                } catch (err) {
-                    console.error("[UFO Import] Error:", err);
-                    alert("Failed to import UFO: " + err.message);
-                }
-            };
-            reader.readAsArrayBuffer(file);
+            const arrayBuffer = await file.arrayBuffer();
+            // 桌面模式：当前文档有根/已修改时，导入内容应在新窗口进行
+            if (isDesktop() && this._needsNewWindow()) {
+                const ok = await this._handoffToNewWindow("ufo", file.name, arrayBuffer);
+                if (ok) return;
+            }
+            try {
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                await this._importUFOFromZip(zip);
+            } catch (err) {
+                console.error("[UFO Import] Error:", err);
+                alert("Failed to import UFO: " + err.message);
+            }
         };
         input.click();
     }
 
-    async _importUFOFromZip(zip) {
+    /** 供新窗口启动时从暂存字节执行 UFO 导入（与 triggerImportUFO 同一路径）。 */
+    async importUFOFromBytes(arrayBuffer, fileName, opts = {}) {
+        if (typeof JSZip === "undefined") {
+            alert("JSZip library is not loaded. Cannot import UFO.");
+            return false;
+        }
+        try {
+            const zip = await JSZip.loadAsync(arrayBuffer);
+            return await this._importUFOFromZip(zip, opts);
+        } catch (err) {
+            console.error("[UFO Import] Error:", err);
+            alert("Failed to import UFO: " + err.message);
+            return false;
+        }
+    }
+
+    async _importUFOFromZip(zip, opts = {}) {
         const c = this.canvas;
+        // 原位操作（correct direction / remove overlap）：记住序列与活动字形，
+        // 导入完成后恢复——批量字形操作不应清空用户正在编辑的序列。
+        const seqService = c.curve_manager?.seqService;
+        const savedSequence = opts?.inPlace && seqService ? seqService.sequenceText : null;
+        const savedIndices = opts?.inPlace && seqService
+            ? new Set(seqService.activeIndices || [])
+            : null;
 
         // 1. Parse fontinfo.plist
         const fiStr = zip.file("font.ufo/fontinfo.plist")?.async?.("string")
@@ -1342,7 +1694,8 @@ ${kernDict.join('\n')}
         }
 
         // 5. Check cache for duplicate project name (same pattern as loadFromFile)
-        if (await StorageUtils.projectExists(projectName)) {
+        // 原位操作跳过确认：项目名不变，处理结果直接覆盖缓存。
+        if (!opts?.inPlace && await StorageUtils.projectExists(projectName)) {
             const msg = `Project "${projectName}" already exists in cache. Overwrite?`;
             if (!confirm(msg)) {
                 return false; // User cancelled
@@ -1440,7 +1793,9 @@ ${kernDict.join('\n')}
             // groups survive cleanup via is_modified: true (set on each
             // group during creation).
             const seqService = c.curve_manager.seqService;
-            seqService.sequenceText = '';
+            // 原位操作（correct direction / remove overlap）恢复原序列；
+            // 否则保持导入惯例（空序列）
+            seqService.sequenceText = savedSequence != null ? savedSequence : '';
             seqService._prevInTextIds = null;   // Force full sweep on next syncTreeWithSequence
             seqService.rebuildDefaultGlyphs();
 
@@ -1466,13 +1821,19 @@ ${kernDict.join('\n')}
             seqService.syncTreeWithSequence(null, null, null, () => c.curve_manager.notifyTreeUpdate());
 
             // Activate all sequence positions (all imported glyphs should be active)
-            seqService.setActiveIndices(new Set(seqService.sequenceTokens.map((_, i) => i)));
-
+            if (savedIndices && savedIndices.size > 0) {
+                seqService.setActiveIndices(savedIndices);
+            } else {
+                seqService.setActiveIndices(new Set(seqService.sequenceTokens.map((_, i) => i)));
+            }
             c.curve_manager.notifyTreeUpdate();
             // Seed editor store with imported glyphs (like loadFromFile does after snapshot load)
             c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
             c.bumpEditorStoreTreeRevision?.();
             c.is_dirty = true;
+            // 原位操作（correct direction / remove overlap）：文档内容已变，
+            // 标记未保存（标题星号 / 关闭警告），与真实文件修改一致。
+            if (opts?.inPlace && pm) pm.markModified();
         }
 
         // History baseline: capture the FULLY imported document (not the

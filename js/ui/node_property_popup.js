@@ -16,10 +16,10 @@ export const NODE_PROPS_DOCKED = 'npp:docked';
 export const NODE_PROPS_UNDOCKED = 'npp:undocked';
 
 const POPUP_HTML = `
-<div class="property_group_title npp-drag-handle" id="npp_drag_handle">Node Properties</div>
+<div class="property_group_title npp-drag-handle" id="npp_drag_handle" data-i18n="prop.node_props">Node Properties</div>
 <div class="npp-fields">
     <div class="npp-row">
-        <label>Pos</label>
+        <label data-i18n="prop.pos">Pos</label>
         <div class="npp-input-group">
             <span class="npp-axis">X</span>
             <input type="number" step="0.1" id="npp_x">
@@ -28,7 +28,7 @@ const POPUP_HTML = `
         </div>
     </div>
     <div class="npp-row">
-        <label>In</label>
+        <label data-i18n="prop.in">In</label>
         <div class="npp-input-group">
             <span class="npp-axis">X</span>
             <input type="number" step="0.1" id="npp_in_x">
@@ -37,7 +37,7 @@ const POPUP_HTML = `
         </div>
     </div>
     <div class="npp-row">
-        <label>Out</label>
+        <label data-i18n="prop.out">Out</label>
         <div class="npp-input-group">
             <span class="npp-axis">X</span>
             <input type="number" step="0.1" id="npp_out_x">
@@ -46,7 +46,7 @@ const POPUP_HTML = `
         </div>
     </div>
     <div class="npp-row">
-        <label>Angle</label>
+        <label data-i18n="prop.angle">Angle</label>
         <div class="npp-input-group">
             <span class="npp-axis">In</span>
             <input type="number" step="1" id="npp_in_a">
@@ -95,6 +95,11 @@ export class NodePropertyPopup extends HTMLElement {
         this._inputSnapshot = null;
         this._skipCommitTarget = null;
         this._lastDraggingNodeId = null;
+        // Text this popup last wrote into each input — recognises fields the user
+        // never typed into (see the pristine-value guard in 'change').
+        this._renderedInputValues = new Map();
+        /** Input the user actually typed into during the current focus. */
+        this._editedInput = null;
     }
 
     get docked() { return this._docked; }
@@ -131,6 +136,7 @@ export class NodePropertyPopup extends HTMLElement {
         this.container.addEventListener('focusout', (e) => {
             if (e.target.tagName === 'INPUT') {
                 this._focusedInput = null;
+                this._editedInput = null;
                 if (this._skipCommitTarget === e.target) {
                     this._skipCommitTarget = null;
                     return;
@@ -145,6 +151,7 @@ export class NodePropertyPopup extends HTMLElement {
 
         this.container.addEventListener('input', (e) => {
             if (!REALTIME_IDS.includes(e.target.id)) return;
+            this._editedInput = e.target;
             const numVal = numberFromInput(e.target);
             if (!isValidNumber(numVal)) return;
             const marker = this._resolveMarker(this._anchorNodeId);
@@ -161,6 +168,15 @@ export class NodePropertyPopup extends HTMLElement {
 
         this.container.addEventListener('change', (e) => {
             if (!REALTIME_IDS.includes(e.target.id)) return;
+            // Pristine-value guard: without a user edit the field only holds this
+            // popup's FORMATTED display text (x/y/angle use toFixed(1)), and
+            // committing it rounded the model — a handle set to an exact
+            // constrained angle could drift by a hundredth of a degree, so two
+            // handles meant to be exactly opposite failed to line up.
+            if (e.target !== this._editedInput
+                && this._renderedInputValues.get(e.target.id) === e.target.value) {
+                return;
+            }
             const numVal = numberFromInput(e.target);
             if (!isValidNumber(numVal)) {
                 this._restoreInput(e.target);
@@ -290,6 +306,9 @@ export class NodePropertyPopup extends HTMLElement {
                 el.disabled = false;
                 el.value = val;
             }
+            // Remember exactly what was displayed so a later blur without a user
+            // edit cannot write this formatted text back into the model.
+            this._renderedInputValues.set(id, el.value);
         };
 
         const asc = window.__canvas?.fontSettings?.ascender ?? 800;

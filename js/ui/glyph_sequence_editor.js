@@ -5,10 +5,10 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 
 const TEMPLATE_HTML = `
-    <div class="glyph-sequence-wrapper" tabindex="0" title="Click to edit text, press Enter to finish">
+    <div class="glyph-sequence-wrapper" tabindex="0" data-i18n-tip="seq.edit_tip" title="Click to edit text, press Enter to finish">
         <div class="glyph-sequence-static"></div>
         <input class="glyph-sequence-input" type="text" data-i18n-placeholder="seq.placeholder" placeholder="Type characters here..." />
-        <div class="glyph-seq-add-btn" data-i18n-tip="seq.add_tip" data-tip="Add created group" title="">
+        <div class="glyph-seq-add-btn" data-i18n-tip="seq.add_tip" data-tip="Add Glyph" title="">
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         </div>
     </div>
@@ -164,7 +164,7 @@ export class GlyphSequenceEditor extends HTMLElement {
     }
 
     renderStatic() {
-        const t = (k, defaultStr) => (window.I18n ? window.I18n.t(k) : defaultStr);
+        const t = (k, defaultStr) => (window.I18n ? window.I18n.t(k, defaultStr) : defaultStr);
         if (this.text.length === 0) {
             this.staticDiv.replaceChildren();
             const hint = document.createElement("div");
@@ -231,7 +231,7 @@ export class GlyphSequenceEditor extends HTMLElement {
 
         const renderMenu = () => {
             menu.replaceChildren();
-            const t = (k, defaultStr) => (window.I18n ? window.I18n.t(k) : defaultStr);
+            const t = (k, defaultStr) => (window.I18n ? window.I18n.t(k, defaultStr) : defaultStr);
             const groups = EditorModel.listSequenceMenuGroups();
 
             if (groups.length === 0) {

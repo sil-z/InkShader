@@ -1,5 +1,6 @@
 import { StorageUtils } from "../../services/storage.js";
 import { ProjectManager } from "../../services/project_manager.js";
+import { desktopApi, isDesktop, isDesktopAsync } from "../../app/app_mode.js";
 import { updateThemeParams } from "../../services/theme.js";
 import { CANVAS_ACTIONS, CANVAS_EVENTS, createCanvasAction } from "../../app/canvas_events.js";
 import { REQUEST_ACTION_ROUTES, REQUEST_IO_ROUTES, TOOL_ACTION_ROUTES } from "../../app/canvas_request_routes.js";
@@ -77,6 +78,7 @@ export class CanvasController {
                 return c.commands.changeSelectedObjectsBounds(payload.prop, payload.value, payload.options || {});
             case CANVAS_ACTIONS.RENAME_TREE_ITEM: return c.commands.renameTreeItem(payload.id, payload.newName);
             case CANVAS_ACTIONS.SET_GROUP_ADVANCE: return c.commands.setGroupAdvance(payload.id, payload.value, payload.options || {});
+            case CANVAS_ACTIONS.MARK_GROUP_EXPLICIT: return c.commands.markGroupExplicit(payload.id);
             case CANVAS_ACTIONS.SET_KERNING_PAIRS: return c.commands.setKerningPairs(payload.pairs || [], payload.options || {});
 
             case CANVAS_ACTIONS.UPDATE_NODE_PROPERTY:
@@ -122,6 +124,8 @@ export class CanvasController {
             case CANVAS_ACTIONS.OPTIMIZE_PATH: return c.commands.optimizePath();
             case CANVAS_ACTIONS.ROUND_NODES: return c.commands.roundNodes();
             case CANVAS_ACTIONS.SMOOTH_CURVES: return c.commands.smoothCurves();
+            case CANVAS_ACTIONS.CORRECT_DIRECTION: return c.commands.correctDirectionSelected();
+            case CANVAS_ACTIONS.REMOVE_OVERLAP: return c.commands.removeOverlapSelected();
             case CANVAS_ACTIONS.UNLINK: return c.commands.unlinkSelectedReferences(payload.ids || []);
             case CANVAS_ACTIONS.IMPORT_IMAGE: c.io.triggerImportImage(); return true;
             case CANVAS_ACTIONS.UNDO:
@@ -392,6 +396,8 @@ export class CanvasController {
                 if (viewState.coord_transform_mode) {
                     c.coordTransformMode = viewState.coord_transform_mode;
                 }
+                // Restore canvas view rotation (0 when a project saved before this feature)
+                c.setViewRotation?.(viewState.view_rotation || 0);
                 // Restore draw_tool_settings from viewState (persisted tool preferences)
                 if (viewState.draw_tool_settings) {
                     Object.assign(c.drawToolSettings, viewState.draw_tool_settings);
@@ -406,7 +412,9 @@ export class CanvasController {
                 // See restoreState for dock_layout deserialization. CSS .right.dock-container already has flex: 1.
                 // Guard: only deserialize if the saved tree includes the canvas panel.
                 // Old cached data (pre-dock-integration) may lack canvas, causing it to disappear.
-                if (viewState.dock_layout && window.__dock && _treeHasLeaf(viewState.dock_layout, 'canvas')) {
+                // 版本门：仅恢复当前版本（v3 新默认）保存的布局；旧版本布局已被
+                // 新默认取代，恢复它会覆盖用户期望的新默认布局
+                if (viewState.dock_layout_version === 3 && viewState.dock_layout && window.__dock && _treeHasLeaf(viewState.dock_layout, 'canvas')) {
                     window.__dock.deserialize(viewState.dock_layout);
                 }
                 c.is_dirty = true;
@@ -414,13 +422,43 @@ export class CanvasController {
 
             await StorageUtils.migrateIfNeeded();
 
+            // 桌面模式（pywebview 窗口）或 ?new=1 新标签：不恢复浏览器缓存项目，
+            // 作为全新会话启动（随后 initialize() 会自动创建新项目）。
+            const freshStart = isDesktop() || new URLSearchParams(window.location.search).has("new");
+            // pywebview 桥可能在页面加载早期尚未注入，等注入判定稳定后再决定
+            const desktop = await isDesktopAsync();
+            const effectiveFreshStart = freshStart || desktop;
+
             const pm = c.projectManager;
-            const activeName = pm ? pm.getActiveProjectName() : StorageUtils.loadActiveProject();
+
+            // 全新会话：清掉其它会话通过 localStorage 留下的活动项目名，
+            // 否则 initialize() 误以为已有项目而不会自动新建。
+            if (effectiveFreshStart && pm && pm.getActiveProjectName()) {
+                pm.setActiveProjectName(null);
+            }
+
+            let activeName = pm ? pm.getActiveProjectName() : StorageUtils.loadActiveProject();
+            let projectData = null;
+
+            // 活动项目槽位可能已不存在（被改名/清理/其他标签覆盖）：
+            // 回退到缓存项目栈顶（MRU，最后保存/加载的项目）。
+            if (activeName && !effectiveFreshStart) {
+                projectData = await StorageUtils.loadProject(activeName);
+                if (!projectData && pm) {
+                    const mru = await StorageUtils.latestCachedProject();
+                    if (mru && mru !== activeName) {
+                        activeName = mru;
+                        pm.setActiveProjectName(mru);
+                        projectData = await StorageUtils.loadProject(mru);
+                    } else if (!mru) {
+                        pm.setActiveProjectName(null);
+                        activeName = null;
+                    }
+                }
+            }
 
             let loaded = false;
-            if (activeName) {
-                const projectData = await StorageUtils.loadProject(activeName);
-                if (projectData) {
+            if (activeName && !effectiveFreshStart && projectData) {
                     try {
                         let snapshotStr = "";
                         let data = null;
@@ -455,10 +493,9 @@ export class CanvasController {
                         console.error(`[Restore] Failed to load project "${activeName}":`, loadError);
                         // Fall through to !loaded path below
                     }
-                }
             }
 
-            if (!loaded) {
+            if (!loaded && !effectiveFreshStart && !activeName) {
                 const savedState = await StorageUtils.load();
                 if (savedState) {
                     let snapshotStr = "";
@@ -495,6 +532,13 @@ export class CanvasController {
                         { source: "restore-state" }
                     );
                 }
+            } else if (effectiveFreshStart && !loaded) {
+                // 全新会话（桌面 / ?new=1）：初始化空的序列状态
+                this.dispatchAction(
+                    CANVAS_ACTIONS.SET_SEQUENCE_EDITOR_STATE,
+                    { payload: { text: '', activeIndices: [] }, options: { recordHistory: false } },
+                    { source: "restore-state" }
+                );
             }
 
             c.is_dirty = true;
@@ -541,7 +585,23 @@ export class CanvasController {
         const pm = new ProjectManager(this.canvas);
         this.canvas.projectManager = pm;
         window.__canvas = this.canvas;
-        await pm.init();
+        // 新标签页（?new=1）：作为全新项目启动，不继承其他会话的活动项目
+        const isFreshTab = new URLSearchParams(window.location.search).has("new");
+        // 关闭窗口警告选「保存并退出」时由桌面后端调用（window.__inkshader_save_and_quit）。
+        // 保存成功后请求退出；用户取消保存则留在编辑器中。
+        if (typeof window !== "undefined" && !window.__inkshader_save_and_quit) {
+            window.__inkshader_save_and_quit = async () => {
+                try {
+                    const ok = await this.canvas.io.triggerSaveAndQuit();
+                    if (ok) {
+                        desktopApi()?.request_quit();
+                    }
+                } catch (err) {
+                    console.error("[InkShader] save-and-quit failed:", err);
+                }
+            };
+        }
+        await pm.init(isFreshTab);
 
         // Show brand title immediately from cached project name (localStorage),
         // before restoreState() which does heavy IndexedDB reads + snapshot
@@ -563,11 +623,22 @@ export class CanvasController {
 
         await this.restoreState();
 
-        // Auto-create a default project on fresh startup (no name, no cached data)
+        // 桌面模式：从其他窗口移交来的待打开/导入文件（打开或导入需要新窗口时，
+        // 由父窗口暂存到本地后端，本窗口启动时消费）
+        let pendingHandled = false;
         if (!pm.getActiveProjectName()) {
-            await pm.createNewProject();
+            pendingHandled = !!(await this.canvas.io.consumePendingImport());
+            // Auto-create a default project on fresh startup (no name, no cached data)
+            if (!pendingHandled) {
+                await pm.createNewProject();
+            }
         }
 
+        // 启动完成后记录保存点：新建/恢复的项目初始均为「已保存」状态；
+        // 从暂存导入的项目保持「未保存」（无磁盘根，首次 Save 走 save-as-json）
+        if (!pendingHandled) {
+            pm.markSaved();
+        }
         this.canvas.currentStateObj = this.canvas.history.getHistoryState();
     }
 }

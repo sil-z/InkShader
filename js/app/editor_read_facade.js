@@ -57,6 +57,18 @@ export function getEditorStoreState() {
     return storeState();
 }
 
+/**
+ * Current sequence text (the string of glyphs shown on the canvas).
+ *
+ * This accessor must exist: UI that built a "next text" from a guess like
+ * `EditorModel.getSequenceText?.() ?? ""` silently got an empty string and ended
+ * up REPLACING the whole sequence instead of extending it — which then made the
+ * prune pass delete glyphs that were still meant to exist.
+ */
+export function getSequenceText() {
+    return storeState()?.sequenceText ?? "";
+}
+
 export function parseSequenceText(text) {
     const st = storeState();
     const snap = st?.treeSnapshot;

@@ -10,6 +10,7 @@ import {
     drawCurveStroke,
     isCurveStrokePreview,
     canFillSmartStrokeWithPath2D,
+    isGeometryGestureActive,
     emitSkeletonReferencePath,
     isCurveClosedRing
 } from "../rendering/curve_renderer.js";
@@ -1229,6 +1230,14 @@ export class CanvasRendererService {
 
         _panLog('showHandlesSet');
 
+        // Boolean (smart-stroke expand) caches may only be rebuilt while no
+        // pointer gesture is running: a drag changes the geometry hash every
+        // frame, so rebuilding costs a full Paper.js boolean per frame and makes
+        // dragging smart objects stutter (a plain stroke never touches it).
+        // Curves whose cache went stale mid-gesture render as skeleton for that
+        // frame and are rebuilt once on gesture end.
+        const allowSmartRebuild = !isGeometryGestureActive(c);
+
         // ── PASS 1: Curve fill + stroke ──
         // skipPathLayer: stable blit already has path pixels (avoid covering guides/chrome).
         if (!skipPathLayer && !nodesOnly) {
@@ -1256,14 +1265,15 @@ export class CanvasRendererService {
                     if (!shouldBatchFillCurve(cd.curve, { strokePreview })) continue;
                     const viewport = { scale: c.scale, offsetX, offsetY, seqOffsetX, matrix: cd.matrix };
 
-                    if (canFillSmartStrokeWithPath2D(cd.curve, { strokePreview })) {
+                    if (canFillSmartStrokeWithPath2D(cd.curve, { strokePreview, allowRebuild: allowSmartRebuild })) {
                         combinedPath.addPath(cd.curve._booleanPath2D, booleanViewportDOMMatrix(viewport));
                         hasFill = true;
                         continue;
                     }
                     appendCurveFillPath(combinedPath, cd.curve, viewport, {
                         refId,
-                        strokePreview
+                        strokePreview,
+                        allowRebuild: allowSmartRebuild
                     });
                     hasFill = true;
                 }
@@ -1282,7 +1292,8 @@ export class CanvasRendererService {
                         renderMode: "stroke",
                         refId,
                         strokePreview: isCurveStrokePreview(c, cd.curve.id, refId),
-                        skipSkeleton: true
+                        skipSkeleton: true,
+                        allowRebuild: allowSmartRebuild
                     });
                 }
             }
@@ -1307,7 +1318,7 @@ export class CanvasRendererService {
                         emitCubicBezierSegments(ctx, cd.curve.getSkeletonBezierSegments(),
                             createViewportTransform(viewport), { close: isCurveClosedRing(cd.curve) });
                     } else {
-                        emitSkeletonReferencePath(ctx, cd.curve, createViewportTransform(viewport));
+                        emitSkeletonReferencePath(ctx, cd.curve, createViewportTransform(viewport), { allowRebuild: allowSmartRebuild });
                     }
                     ctx.lineWidth = 1;
                     ctx.strokeStyle = p.path_stroke_color;
@@ -2103,7 +2114,12 @@ export class CanvasRendererService {
         const w = Number.isFinite(viewport.rulerWidth) ? viewport.rulerWidth : c.ruler_size;
         const h = Number.isFinite(viewport.viewportHeight) ? viewport.viewportHeight : 0;
         if (w <= 0 || h <= 0) return;
-        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h},${themeGeneration},${c.coordTransformMode || 'global'}`;
+        // stateKey MUST include ascender: the vertical ruler's design values
+        // are measured from the baseline (model y=ascender). Editing ascender
+        // without changing scale/offset/canvas_size used to hit this cache and
+        // the ruler kept the OLD baseline (reported bug).
+        const _ascForRulerKey = c.fontSettings?.ascender ?? 800;
+        const stateKey = `${c.scale},${c.offset.y},${c.canvas_size_height},${h},${themeGeneration},${c.coordTransformMode || 'global'},${_ascForRulerKey}`;
         if (stateKey === this._rulerVState) return;
         this._rulerVState = stateKey;
         c.ruler_vertical.replaceChildren();
@@ -2153,6 +2169,13 @@ export class CanvasRendererService {
         const canvasKey = `${c.scale},${left},${top},${tokenSummary},${c.canvas_size_height},${fs.ascender},${fs.descender},${fs.upm}`;
         if (canvasKey === this._canvasState) return;
         this._canvasState = canvasKey;
+        // 序列为空：不显示白色画布纸（main_canvas 白底 div）。空序列没有
+        // 可编辑的字形，空白白纸会误导用户；tokenSummary 变化会触发重算。
+        if (tokens.length === 0) {
+            c.main_canvas.style.display = "none";
+            return;
+        }
+        c.main_canvas.style.display = "";
         let w;
         if (tokens.length > 0) {
             const lastIdx = tokens.length - 1;
@@ -2178,6 +2201,7 @@ export class CanvasRendererService {
     }
     change_canvas_size(dy, x, y, fixed, viewportCenter = false) {
         const c = this.canvas;
+        const fs = c.fontSettings || {};
         if (viewportCenter) {
             const viewport = c.viewportConfig || {};
             const rect = {
@@ -2189,7 +2213,11 @@ export class CanvasRendererService {
             x = (rect.width / 2) - ruler_w - c.offset.x;
             y = (rect.height / 2) - ruler_h - c.offset.y;
         } else if (fixed) {
-            x = c.canvas_size_width / 2 * c.scale; y = ((fs.ascender ?? 800) - (fs.descender ?? -200)) / 2 * c.scale;
+            // Alt + wheel: zoom about the em-box center (a fixed point in the document)
+            // instead of the mouse position. x/y are distances from the canvas origin
+            // (offset) in logical px, which is what the anchor correction below expects.
+            x = c.canvas_size_width / 2 * c.scale;
+            y = ((fs.ascender ?? 800) - (fs.descender ?? -200)) / 2 * c.scale;
         }
         // Geometric zoom via zoomTicks: scale = scaleBase * factor^zoomTicks
         const oldTicks = c.zoomTicks;

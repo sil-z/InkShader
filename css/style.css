@@ -43,6 +43,7 @@
 
     /* 非色调结构色（不随色调变化） */
     --cvs-path-stroke: #808080;
+    --cvs-handle-line: #b0b0b0;
     --cvs-path-fill: #000000;
     --cvs-preview: rgba(202, 138, 4, 0.8);
     --cvs-selected-fill: rgba(250, 204, 21, 0.5);
@@ -111,47 +112,18 @@
     --ui-accent-bg: #273752;
     --ui-accent-bg-hover: #2f456c;
     --ui-accent-text: #ffffff;
-    --cvs-oncurve-stroke: rgba(56, 189, 248, 1);
-    --cvs-oncurve-fill: rgba(56, 189, 248, 0.6);
-    --cvs-ctrl-stroke: rgba(125, 211, 252, 1);
-    --cvs-ctrl-fill: rgba(125, 211, 252, 0.6);
-    --cvs-ctrl-ahead: rgba(96, 165, 250, 0.9);  /* fixed: pure blue (dark) */
-    --cvs-ctrl-back: rgba(248, 113, 113, 0.9);  /* fixed: pure red (dark) */
-    --cvs-hover-stroke: rgba(56, 189, 248, 1);
-    --cvs-select-box: rgba(13, 153, 255, 0.6);
-    --cvs-select-handle-stroke: #38bdf8;
-    --cvs-marquee-stroke: #38bdf8;
-    --cvs-marquee-fill: rgba(13, 153, 255, 0.15);
-    --cvs-guide-stroke: rgba(56, 189, 248, 0.7);
-    --cvs-guide-fill: rgba(56, 189, 248, 0.4);
 
-    /* 非色调结构色（不随色调变化） */
-    --cvs-path-stroke: #808080;
-    --cvs-path-fill: #000000;
-    --cvs-preview: rgba(250, 204, 21, 0.9);
-    --cvs-selected-fill: rgba(253, 224, 71, 0.3);
-    --cvs-selected-stroke: rgba(250, 204, 21, 1);
-    --cvs-body-bg: #1e1e1e;
-    --cvs-canvas-base: #252526;
-    --cvs-ruler-text: #888888;
-    --cvs-ruler-line: #555555;
-    --cvs-guideline: rgba(255, 150, 50, 0.8);
-    --cvs-measure: #ff6b6b;
-    --cvs-measure-text-bg: rgba(40, 40, 40, 0.85);
-    --cvs-select-handle-fill: #333333;
-    --cvs-divider-line: rgba(255, 255, 255, 0.2);
-    --cvs-grid-dot: #52525b;
-    --cvs-char-preview-color: rgba(160, 160, 160, 0.3);
-    --cvs-guide-hover-stroke: rgba(250, 204, 21, 0.9);
-    --cvs-guide-hover-fill: rgba(250, 204, 21, 0.7);
-    --cvs-guide-drag-stroke: rgba(250, 204, 21, 0.8);
-    --cvs-guide-drag-fill: rgba(250, 204, 21, 0.6);
-    --cvs-divider-highlight: rgba(250, 204, 21, 0.9);
-    --cvs-metric-guide: rgba(180, 180, 180, 0.4);
-    --cvs-metric-label: #bbbbbb;
-    --cvs-measure-hover: #fde047;
-    --cvs-preview-fallback: rgba(128, 128, 128, 0.4);
-    --cvs-boolean-fill: #f8fafc;
+    /* 画布（设计区）颜色刻意不在此重定义：深色模式只改变界面外壳，
+       画布底色 / 网格 / 节点 / 控制柄 / 标尺 / 辅助线 / 参考线一律沿用
+       :root 的浅色值（与 theme_generator.js 的约定一致："Dark mode: UI
+       accent only (canvas stays light)" / "Canvas variables: always
+       light-mode values"）。
+
+       此前这里把 canvas 变量改成了深色：结果是默认蓝色调下画布纸变暗、
+       黑色字形看不见，而切换到其它色调时 generateAccentPalette() 又会用
+       浅色值覆盖（它无条件写入浅色），同一主题下画布颜色取决于色调，
+       既不一致也不符合字形编辑器「深色界面 + 浅色画布」的惯例。
+       这里全部删除，让画布相关变量从 :root 继承，两种主题下完全一致。 */
 }
 /* 红色调 × 暗色 — 切换节点高亮、选中高亮、UI 主色；控制柄标记跟随主节点，控制柄线段跟随蓝色基底 */
 [data-theme="dark"][data-accent-hue="red"] {
@@ -455,14 +427,22 @@ glyph-sequence-bar {
 .seq-bar-name, .seq-bar-code {
     height: 20px;
     min-width: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    max-width: 100%;
+    /* 一个 flex 容器 + white-space: nowrap 的标签在空间变紧时会被压窄，但两个
+       都没有 overflow 裁剪：文字就直接画出虚线标签框之外（长字形名最明显）。
+       改成 block 容器（flex 子项不受影响）+ line-height 垂直居中，才能真正让
+       overflow:hidden / text-overflow:ellipsis 生效（text-overflow 对
+       display:flex 无效）。 */
+    display: block;
+    line-height: 18px;
+    text-align: center;
     padding: 0 4px;
     border-radius: 4px;
     font-size: 10px;
     font-family: ui-monospace, monospace;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     box-sizing: border-box;
     pointer-events: none;
     /* 默认样式与其他动作按钮一致：白底（透明）、虚线边框、弱化文字 */
@@ -477,19 +457,21 @@ glyph-sequence-bar {
 .seq-bar-pos.active .seq-bar-name,
 .seq-bar-popup .seq-bar-name.active {
     background: var(--ui-accent);
-    border: none;
+    /* 透明而非 none：标签的垂直居中靠 line-height:18px + 1px 边框（content-box
+       恰好 18px）。把边框整个去掉会让内容盒变成 20px，文字偏离中心 1px。 */
+    border-color: transparent;
     color: #fff;
 }
 .seq-bar-pos.active .seq-bar-code,
 .seq-bar-popup .seq-bar-code.active {
     background: var(--ui-accent-hover);
-    border: none;
+    border-color: transparent;
     color: #fff;
 }
 .seq-bar-pos.active .seq-bar-code.seq-bar-code-missing,
 .seq-bar-popup .seq-bar-code.active.seq-bar-code-missing {
     background: #f43f5e; /* 原为 #e11d48，改为玫瑰红 */
-    border: none;
+    border-color: transparent;
     color: #fff;
 }
 .seq-bar-add-btn {
@@ -508,7 +490,10 @@ glyph-sequence-bar {
     color: var(--ui-text-muted);
     box-sizing: border-box;
     flex-shrink: 0;
-    transition: all 0.15s;
+    /* 不能 transition: all：平移画布时 _updatePositions 会逐帧改 style.left，
+       all 会把 left 也做 0.15s 过渡，按钮就出现延迟移动/弹来弹去；
+       只保留悬停颜色过渡。 */
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .seq-bar-add-btn:hover {
     background: var(--ui-hover-bg);
@@ -1394,7 +1379,25 @@ object-tree {
     width: 100%;
     height: 100%;
     background-color: var(--cvs-canvas-base); 
+    /* The sheet layer grows past the panel box while the view is rotated (it is sized
+       to the panel's rotated bounding box), so the painting area clips it — it must not
+       spill over the neighbouring dock panels. */
+    overflow: hidden;
 }
+/* Panel-sized box holding the upright chrome (guideline lock button, ruler strips and
+   their markers) together with the drawing sheet layer. The stage itself is NEVER
+   transformed: view rotation is applied to .main_canvas_large alone, and pointer
+   coordinates are mapped back at the single input entry point — see
+   CanvasViewportService.getViewportMousePosition / getPanelLocalPoint. */
+.canvas_stage {
+    position: absolute;
+    inset: 0;
+}
+/* The SHEET layer: dot grid + white paper + the drawing canvas. View rotation turns
+   only this layer (see MainCanvas.applyViewRotationTransform), so the rulers, the
+   sequence bar and the tool strip stay upright. While rotated the layer is enlarged to
+   the rotated bounding box of the panel, so the rotated sheet still covers the panel
+   instead of leaving empty corners. */
 .main_canvas_large {
     position: absolute;
     top: 0;
@@ -1403,7 +1406,8 @@ object-tree {
     height: 100%;
     background-color: var(--cvs-canvas-base);
     background-image: radial-gradient(var(--cvs-grid-dot) 1px, transparent 1px);
-    background-size: 20px 20px; 
+    background-size: 20px 20px;
+    transform-origin: 50% 50%;
 }
 .main_canvas {
     position: absolute;
@@ -2680,7 +2684,13 @@ expand-stroke-popup .npp-row input[type="checkbox"] {
     width: 44px;
     height: 44px;
     object-fit: contain;
-    background: var(--ui-bg-panel);
+    /* Glyph previews are mini canvases: the glyph inside is painted with the
+       CANVAS palette (--cvs-path-fill = black, always light-mode values), so the
+       surface behind it must be the light paper colour too. Using --ui-bg-panel
+       here made the thumbnail follow the dark UI, which turned every preview into
+       a black glyph on a dark square — i.e. invisible — while the canvas itself
+       stayed light. Preview surfaces therefore follow the canvas, not the shell. */
+    background: var(--cvs-body-bg);
     border: 1px solid var(--ui-border);
     border-radius: 4px;
     margin-bottom: 2px;
@@ -2697,7 +2707,8 @@ expand-stroke-popup .npp-row input[type="checkbox"] {
 .seq-menu-preview {
     width: 52px;
     height: 52px;
-    background: var(--ui-bg-panel);
+    /* Light paper surface, same reason as .seq-menu-char-preview above. */
+    background: var(--cvs-body-bg);
     border: 1px solid var(--ui-border);
     border-radius: 4px;
     margin-bottom: 4px;
@@ -2821,6 +2832,14 @@ font-popup .pen-tool-row label {
     margin-left: 4px;
 }
 .save-dropdown-item:hover .save-dropdown-arrow { opacity: 0.8; }
+preferences-popup .pref_section_title {
+    color: var(--ui-text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 4px 8px 2px 8px;
+    flex-shrink: 0;
+}
 .save-dropdown-separator,
 preferences-popup .pen-tool-separator,
 font-popup .pen-tool-separator {
@@ -3379,6 +3398,7 @@ preferences-popup .pref-color-reset-btn img {
 .help_modal_body { flex-direction: column; padding: 20px; }
 .help_title { margin: 0 0 16px 0; color: var(--ui-text-main); }
 .help_list { list-style: none; padding: 0; margin: 0; color: var(--ui-text-muted); font-size: 14px; line-height: 2; }
+.help_note { margin: 16px 0 0 0; color: var(--ui-text-muted); font-size: 12px; line-height: 1.5; opacity: 0.8; }
 /* 修改: 确保日志终端文本可复制 */
 .logger-output, .logger-input, .log-entry {
     user-select: text;
@@ -3754,7 +3774,11 @@ sample-text-panel {
     overflow-x: auto; /* canvas keeps at least one full line wide; narrow panels scroll horizontally */
     border: 1px solid var(--ui-border);
     border-radius: 4px;
-    background: var(--ui-bg-base);
+    /* The sample text inside is drawn with the CANVAS palette (--cvs-path-fill is
+       black in both themes), so this surface is a piece of paper, not panel
+       chrome. With --ui-bg-base it went almost black in dark mode and the
+       preview text became invisible while the canvas itself stayed light. */
+    background: var(--cvs-body-bg);
 }
 /* Sample panel scrollbars: same values as the shared panel scrollbar group
    (.dock-content / #property_container / .placeholder) — 6px, transparent
@@ -3828,3 +3852,99 @@ sample-text-panel {
     width: 100%;
 }
 
+
+/* ── 可复制错误对话框（js/services/error_log.js）─────────────────────────
+   原生 alert 的文本无法选中复制，而故障报告需要原文（几何哈希 / patch
+   路径 / 诊断 JSON）。这里用纯 DOM 对话框代替：正文放进只读 textarea，
+   可全选、Ctrl+C，并带“复制”按钮（Clipboard API，失败回退 execCommand）。
+   overlay 自己声明 pointer-events:auto —— 历史应用期间 body 会被设成
+   pointer-events:none，否则对话框会跟着失去交互。 */
+.ink-error-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    pointer-events: auto;
+}
+.ink-error-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(760px, 100%);
+    max-height: 100%;
+    padding: 16px 18px 14px;
+    background: var(--ui-bg-panel, #ffffff);
+    color: var(--ui-text-main, #334155);
+    border: 1px solid var(--ui-border, #e2e8f0);
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    pointer-events: auto;
+}
+.ink-error-head {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ui-text-strong, #0f172a);
+}
+.ink-error-message {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    max-height: 8.4em;
+    overflow: auto;
+}
+.ink-error-text {
+    width: 100%;
+    min-height: 240px;
+    max-height: 45vh;
+    padding: 10px;
+    box-sizing: border-box;
+    background: var(--ui-bg-base, #f8fafc);
+    color: var(--ui-text-main, #334155);
+    border: 1px solid var(--ui-border, #e2e8f0);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre;
+    resize: vertical;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.ink-error-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.ink-error-hint {
+    margin-right: auto;
+    color: var(--ui-text-muted, #64748b);
+    font-size: 12px;
+}
+.ink-error-btn {
+    min-width: 68px;
+    padding: 5px 12px;
+    background: var(--ui-bg-base, #f8fafc);
+    color: var(--ui-text-main, #334155);
+    border: 1px solid var(--ui-border-light, #cbd5e1);
+    border-radius: 6px;
+    font: inherit;
+    cursor: pointer;
+}
+.ink-error-btn:hover {
+    background: var(--ui-hover-bg, #f1f5f9);
+}
+.ink-error-btn-primary {
+    background: var(--ui-accent-bg, #e6f3fa);
+    border-color: var(--ui-accent, #0284c7);
+    color: var(--ui-accent-text, #0284c7);
+}
+.ink-error-btn-primary:hover {
+    background: var(--ui-accent-bg-hover, #cce7f5);
+}

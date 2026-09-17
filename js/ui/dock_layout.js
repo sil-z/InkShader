@@ -31,7 +31,9 @@ function createNode(type, data = {}) {
     return { type, ...data };
 }
 
-const STORAGE_KEY = 'inkshader_dock_layout_v2';
+// v3：默认布局改为「左 objects/properties/sample、中 canvas 50%、右 glyphs/font」，
+// console/kerning 默认隐藏。升版本号让旧保存的 v2 布局不再生效（全新默认）。
+const STORAGE_KEY = 'inkshader_dock_layout_v3';
 
 export class DockLayout {
     constructor(container) {
@@ -93,27 +95,36 @@ export class DockLayout {
             return;
         }
         // Fresh layout: optional panels start hidden; the Edit menu reveals them.
+        // 默认布局：左列 objects/properties/sample（上→下）、中列 canvas 占 50%、
+        // 右列 glyphs/font（上→下）；其余（console/kerning）默认隐藏。
+        const LEFT_IDS = ["objects", "properties", "sample"];
+        const RIGHT_IDS = ["glyphs", "font"];
+        const visibleInDefault = new Set(["canvas", ...LEFT_IDS, ...RIGHT_IDS]);
         for (const id of panelIds) {
-            if (id === "font" || id === "kerning" || id === "glyphs") this._hiddenPanels.add(id);
+            if (!visibleInDefault.has(id)) this._hiddenPanels.add(id);
         }
-        const visibleIds = panelIds.filter(id => !this._hiddenPanels.has(id));
-        const canvasIdx = visibleIds.indexOf("canvas");
-        if (canvasIdx >= 0 && visibleIds.length > 1) {
-            const otherIds = visibleIds.filter(id => id !== "canvas");
-            // H-split: canvas on the left (75%), other panels stacked vertically on the right (25%)
+        const leftIds = LEFT_IDS.filter(id => panelIds.includes(id) && !this._hiddenPanels.has(id));
+        const rightIds = RIGHT_IDS.filter(id => panelIds.includes(id) && !this._hiddenPanels.has(id));
+        if (leftIds.length > 0 || rightIds.length > 0) {
             this.root = createNode("split", {
                 direction: "h",
+                sizes: [25, 50, 25],
                 children: [
+                    createNode("split", {
+                        direction: "v",
+                        children: leftIds.map(id => createNode("leaf", { id })),
+                        sizes: leftIds.map(() => 100 / leftIds.length)
+                    }),
                     createNode("leaf", { id: "canvas" }),
                     createNode("split", {
                         direction: "v",
-                        children: otherIds.map(id => createNode("leaf", { id })),
-                        sizes: otherIds.map(() => 100 / otherIds.length)
+                        children: rightIds.map(id => createNode("leaf", { id })),
+                        sizes: rightIds.map(() => 100 / rightIds.length)
                     })
-                ],
-                sizes: [75, 25]
+                ]
             });
         } else {
+            const visibleIds = panelIds.filter(id => !this._hiddenPanels.has(id));
             this.root = createNode("split", {
                 direction: "v",
                 children: visibleIds.map(id => createNode("leaf", { id, component: null })),
@@ -1505,22 +1516,35 @@ export class DockLayout {
         if (target.zone === "insert" && target.tabsEl) {
             const PREVIEW_THICKNESS = 4;
             const half = PREVIEW_THICKNESS / 2;
-            const r = target.tabsEl.getBoundingClientRect();
             const seam = this._calcSeam(target.tabsEl, target.edge);
             this._previewEl.classList.add("dock-preview-insert");
             this._previewEl.classList.add("visible");
 
+            // 指示条沿缝的长度横跨**整个被切分的组**（垂直插入新列时横跨整组高度、
+            // 水平插入新行时横跨整组宽度），而不是只覆盖悬停面板——与落点行为一致
+            const wantH = (target.edge === "left" || target.edge === "right");
+            let groupEl = target.tabsEl;
+            while (groupEl.parentElement) {
+                const p = groupEl.parentElement;
+                if (p.classList.contains("dock-split") &&
+                    p.classList.contains(wantH ? "dock-split-h" : "dock-split-v")) {
+                    break;
+                }
+                groupEl = p;
+            }
+            const gr = groupEl.getBoundingClientRect();
+
             let left, top, width, height;
             if (target.edge === "top" || target.edge === "bottom") {
-                left = r.left;
+                left = gr.left;
                 top = seam - half;
-                width = r.width;
+                width = gr.width;
                 height = PREVIEW_THICKNESS;
             } else {
                 left = seam - half;
-                top = r.top;
+                top = gr.top;
                 width = PREVIEW_THICKNESS;
-                height = r.height;
+                height = gr.height;
             }
             const clamped = this._clampPreviewRect(left, top, width, height);
             this._previewEl.style.left = clamped.left + "px";
@@ -1556,6 +1580,8 @@ export class DockLayout {
         const tabsEls = this.container.querySelectorAll(".dock-tabs");
         let best = null;
         let bestDist = Infinity;
+        // 容量不足时（并排放不下新槽）的 merge 兜底：保证指示条与落点一致
+        let mergeFallback = null;
         for (const tabsEl of tabsEls) {
             const leaf = tabsEl.querySelector(".dock-leaf");
             if (!leaf) continue;
@@ -1646,6 +1672,18 @@ export class DockLayout {
             else dist = r.right - cx;
             if (dist < 0) dist = 0;
 
+            // 容量判定：该边并排插入不可行时（窗口太窄/槽位已满）改为标签合并，
+            // 与 _insertAtPanel 的 foldIntoTabs 行为一致——否则蓝色并排指示条
+            // 会在松开时变成标签合并，指示与结果错位。
+            const parentSplitNode = parentSplit?._treeNode;
+            const targetTreeNode = tabsEl._treeNode;
+            if (parentSplitNode && targetTreeNode && !this._insertFeasible(targetTreeNode, parentSplitNode, edge)) {
+                if (!mergeFallback || dist < mergeFallback.dist) {
+                    mergeFallback = { panelId: pid, zone: "merge", dist };
+                }
+                continue;
+            }
+
             if (dist >= bestDist) continue;
 
             best = { panelId: pid, zone: "insert", edge, tabsEl, dist };
@@ -1661,13 +1699,63 @@ export class DockLayout {
                 return { panelId: draggedId, zone: "empty-dock" };
             }
         }
-        return best;
+        // 没有任何可行的并排插入时，用最近的 merge 兜底（指示条/落点一致）
+        return best || (mergeFallback ? { panelId: mergeFallback.panelId, zone: "merge" } : null);
     }
 
     _findLeafPid(node) {
         if (node.dataset?.panelId) return node.dataset.panelId;
         const leaf = node.querySelector?.(".dock-leaf");
         return leaf?.dataset?.panelId || null;
+    }
+
+    /**
+     * 在树中查找 `targetNode` 最近的、direction === `dir` 的祖先 split。
+     * @returns {{split: Object, childIdx: number}|null} null = 不存在（目标是根或祖先方向都不匹配）
+     */
+    _findAncestorSplit(targetNode, dir) {
+        const walk = (n, parent, idx) => {
+            if (n === targetNode) {
+                if (parent && parent.type === "split" && parent.direction === dir) {
+                    return { split: parent, childIdx: idx };
+                }
+                return null;
+            }
+            if (n.type === "split") {
+                for (let i = 0; i < n.children.length; i++) {
+                    const r = walk(n.children[i], n, i);
+                    if (r) return r;
+                }
+            } else if (n.type === "tabs") {
+                for (let i = 0; i < n.children.length; i++) {
+                    const r = walk(n.children[i], n, i);
+                    if (r) return r;
+                }
+            }
+            return null;
+        };
+        return walk(this.root, null, -1);
+    }
+
+    /**
+     * 并排插入是否真正可行（与 _insertAtPanel 的容量判定完全一致）。
+     * 不可行时 _findDropTarget 返回 merge 区域，保证蓝色判定条与最终落点一致
+     * ——否则会出现「显示并排指示条、松开却自动合并成标签」的错位。
+     */
+    _insertFeasible(targetNode, parentNode, edge) {
+        if (!targetNode || !parentNode) return true;
+        const newDir = (edge === "left" || edge === "right") ? "h" : "v";
+        const parentDir = parentNode.direction;
+        const isPerpendicular = ((edge === "left" || edge === "right") && parentDir === "v") ||
+                                ((edge === "top" || edge === "bottom") && parentDir === "h");
+        if (isPerpendicular) {
+            const ancestor = this._findAncestorSplit(parentNode, newDir);
+            if (ancestor) return this._fitsNewSlot(ancestor.split);
+            const extent = this._containerExtent(newDir);
+            const minPx = newDir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+            return extent <= 0 || _maxSlots(extent, minPx) >= 2;
+        }
+        return this._fitsNewSlot(parentNode);
     }
 
     _insertAtPanel(draggedId, targetId, zone) {
@@ -1730,17 +1818,31 @@ export class DockLayout {
             }
         };
         if (isPerpendicular) {
+            // 垂直于目标组的插入：在**整组旁边**新建一列/行（GoldenLayout 风格），
+            // 而不是只包住单个面板——蓝色判定条显示的就是整组的外边界（_calcSeam
+            // 向上找到同方向祖先 split 的缝），落点必须一致。容量不足（窗口太窄）
+            // 时才退回标签合并。
             const newDir = (zone === "left" || zone === "right") ? "h" : "v";
-            const newExtent = this._nodeExtentPx(node, newDir);
-            const minPx = newDir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
-            if (newExtent > 0 && _maxSlots(newExtent, minPx) < 2) {
+            const after = (zone === "right" || zone === "bottom");
+            const ancestor = this._findAncestorSplit(parent, newDir);
+            if (ancestor && this._fitsNewSlot(ancestor.split)) {
+                ancestor.split.children.splice(ancestor.childIdx + (after ? 1 : 0), 0, draggedLeaf);
+                ancestor.split.sizes = ancestor.split.children.map(() => 100 / ancestor.split.children.length);
+            } else if (ancestor) {
                 foldIntoTabs();
             } else {
-                const children = (zone === "top" || zone === "left")
-                    ? [draggedLeaf, node]
-                    : [node, draggedLeaf];
-                const newSplit = createNode("split", { direction: newDir, sizes: [50, 50], children });
-                parent.children[idx] = newSplit;
+                // 目标组就是根、没有 newDir 方向的祖先：把整个根包进新 split
+                const extent = this._containerExtent(newDir);
+                const minPx = newDir === "h" ? MIN_PANEL_WIDTH : MIN_PANEL_HEIGHT;
+                if (extent > 0 && _maxSlots(extent, minPx) < 2) {
+                    foldIntoTabs();
+                } else {
+                    const newSplit = createNode("split", {
+                        direction: newDir, sizes: [50, 50],
+                        children: after ? [this.root, draggedLeaf] : [draggedLeaf, this.root]
+                    });
+                    this.root = newSplit;
+                }
             }
         } else if (!this._fitsNewSlot(parent)) {
             foldIntoTabs();

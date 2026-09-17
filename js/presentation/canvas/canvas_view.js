@@ -1,13 +1,15 @@
 const TEMPLATE_HTML = `
     <div id="painting_area" class="painting_area">
-        <button id="lock_guideline_button" class="lock_guideline_button">
-            <img id="lock_guideline_icon" class="lock_guideline_icon" data-src="assets/icons/lock.svg" alt="Guideline Locked" >
-            <img id="lock_guideline_icon_unlocked" class="lock_guideline_icon_unlocked" data-src="assets/icons/unlock.svg" alt="Guideline Unlocked">
-        </button>
-        <div id="ruler_horizontal" class="ruler_horizontal"></div>
-        <div id="ruler_vertical" class="ruler_vertical"></div>
-        <div id="main_canvas_large" class="main_canvas_large">
-            <div id="main_canvas" class="main_canvas"></div>
+        <div id="canvas_stage" class="canvas_stage">
+            <button id="lock_guideline_button" class="lock_guideline_button">
+                <img id="lock_guideline_icon" class="lock_guideline_icon" data-src="assets/icons/lock.svg" alt="Guideline Locked" >
+                <img id="lock_guideline_icon_unlocked" class="lock_guideline_icon_unlocked" data-src="assets/icons/unlock.svg" alt="Guideline Unlocked">
+            </button>
+            <div id="ruler_horizontal" class="ruler_horizontal"></div>
+            <div id="ruler_vertical" class="ruler_vertical"></div>
+            <div id="main_canvas_large" class="main_canvas_large">
+                <div id="main_canvas" class="main_canvas"></div>
+            </div>
         </div>
     </div>
 `;
@@ -16,18 +18,21 @@ export function setupCanvasView(canvas) {
     const template = canvas.env.createDOMElement("template");
     template.innerHTML = TEMPLATE_HTML;
     canvas.appendChild(template.content.cloneNode(true));
+    canvas.canvas_stage = canvas.querySelector("#canvas_stage");
     canvas.lock_guideline_button = canvas.querySelector("#lock_guideline_button");
     canvas.lock_guideline_icon = canvas.querySelector("#lock_guideline_icon");
     canvas.lock_guideline_icon_unlocked = canvas.querySelector("#lock_guideline_icon_unlocked");
     canvas.painting_area = canvas.querySelector("#painting_area");
     canvas.ruler_horizontal = canvas.querySelector("#ruler_horizontal");
     canvas.ruler_vertical = canvas.querySelector("#ruler_vertical");
+    // Indicators mark a position ON the upright ruler strips, so they live in the stage
+    // (which never rotates) and are positioned in panel-local coordinates.
     canvas._rulerIndicatorH = canvas.env.createDOMElement("div");
     canvas._rulerIndicatorH.className = "ruler-indicator-h";
-    canvas.painting_area.appendChild(canvas._rulerIndicatorH);
+    (canvas.canvas_stage || canvas.painting_area).appendChild(canvas._rulerIndicatorH);
     canvas._rulerIndicatorV = canvas.env.createDOMElement("div");
     canvas._rulerIndicatorV.className = "ruler-indicator-v";
-    canvas.painting_area.appendChild(canvas._rulerIndicatorV);
+    (canvas.canvas_stage || canvas.painting_area).appendChild(canvas._rulerIndicatorV);
     canvas.main_canvas = canvas.querySelector("#main_canvas");
     canvas.main_canvas_large = canvas.querySelector("#main_canvas_large");
     canvas.canvasObj = canvas.env.createDOMElement("canvas");

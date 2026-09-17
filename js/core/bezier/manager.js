@@ -776,7 +776,10 @@ export class CurveManager {
         const result = this.treeStore.unlinkReferenceDeep(refId, (curve, parentId) => {
             return this.cloneCurveToGroup(curve, parentId);
         });
-        if (result) this._markDirty(refId);
+        // NOTE: `_markDirty(refId)` is intentionally NOT called here. The ref item
+        // has already been deleted from the tree, so getRootGroupId(refId) returns
+        // null and the call was always a no-op. The command layer owns the tree
+        // notification (notifyTreeUpdate) instead.
         return result;
     }
 

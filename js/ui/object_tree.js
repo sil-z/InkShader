@@ -264,7 +264,7 @@ export class ObjectTree extends HTMLElement {
         const menu = document.createElement("div");
         menu.className = "tree_menu";
         menu.style.left = e.clientX + "px"; menu.style.top = e.clientY + "px";
-        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k) : defaultStr;
+        const t = (k, defaultStr) => window.I18n ? window.I18n.t(k, defaultStr) : defaultStr;
         const clip = EditorModel.getClipboardSummary();
         let canPaste = clip.canPaste;
         let pasteText = t('tree.menu.paste', 'Paste');

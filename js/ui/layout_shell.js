@@ -1,5 +1,6 @@
 import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
+import { isDesktop } from "../app/app_mode.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { DockLayout } from "./dock_layout.js";
 import "./node_property_popup.js";
@@ -151,7 +152,7 @@ export function initializeLayoutShell() {
     }
 
     // ── File menu dropdown ──
-    btnFile?.addEventListener("click", (e) => {
+    btnFile?.addEventListener("click", async (e) => {
         e.stopPropagation();
         const menu = document.querySelector('dropdown-menu');
         if (!menu) return;
@@ -165,14 +166,16 @@ export function initializeLayoutShell() {
         closeAnyOpenMenu();
 
         const I18nManager = window.I18n || { t: (k) => k };
+        // 后端可用性（fonttools 功能）：纯前端模式下置灰
+        const backendOk = await (window.__canvas?.io?.backendAvailable?.() ?? Promise.resolve(false));
 
-        // Build the fixed items first (before the async cache submenu)
         // Shortcut labels mirror the global keydown shortcuts in
         // canvas_input_controller.js (keep in sync with the header comment).
         const FILE_SHORTCUTS = {
             'file.new_project': 'Ctrl+N',
             'file.load_json': 'Ctrl+O',
-            'file.save_json': 'Ctrl+S',
+            'file.save': 'Ctrl+S',
+            'file.save_json': 'Ctrl+Shift+J',
             'file.save_ufo': 'Ctrl+Shift+E',
             'file.save_svg': 'Ctrl+Shift+S'
         };
@@ -183,13 +186,39 @@ export function initializeLayoutShell() {
             disabled: disabled,
             action: disabled ? null : action
         });
-
-        const items = [
+        // 「新建/加载」组
+        const loadGroup = () => [
             makeItem('file.new_project', false, () => CanvasDispatcher.requestNewProject()),
             { separator: true },
             makeItem('file.load_json', false, () => CanvasDispatcher.requestLoad()),
             makeItem('file.load_ufo', false, () => _triggerImportUFO()),
-            makeItem('file.load_svg', false, () => _triggerImportSVG()),
+            makeItem('file.load_svg', false, () => _triggerImportSVG())
+        ];
+        // 「保存」组：Save(Ctrl+S) -> 直接保存 / 转 save as json；Save as JSON 快捷键已改为 Ctrl+Shift+J
+        const saveGroup = () => [
+            makeItem('file.save', false, () => CanvasDispatcher.requestSave()),
+            makeItem('file.save_json', false, () => CanvasDispatcher.requestSaveAs()),
+            makeItem('file.save_ufo', false, () => CanvasDispatcher.requestExport()),
+            makeItem('file.save_svg', false, () => _triggerExportSVG()),
+            { separator: true },
+            // fonttools 导出（以 UFO 为输入，需要本地后端）：纯前端模式置灰
+            makeItem('file.export_otf', !backendOk, () => _triggerExportFont('otf')),
+            makeItem('file.export_ttf', !backendOk, () => _triggerExportFont('ttf'))
+        ];
+
+        // 桌面模式：禁用「从浏览器缓存加载」菜单项（及其相关逻辑一起消失）
+        if (isDesktop()) {
+            menu.show(btnFile, [
+                ...loadGroup(),
+                { separator: true },
+                ...saveGroup()
+            ]);
+            btnFile.classList.add('active');
+            return;
+        }
+
+        const items = [
+            ...loadGroup(),
             { separator: true },
             {
                 label: I18nManager.t('file.load_cache'),
@@ -197,9 +226,7 @@ export function initializeLayoutShell() {
                 children: []  // Will be populated async
             },
             { separator: true },
-            makeItem('file.save_json', false, () => CanvasDispatcher.requestSave()),
-            makeItem('file.save_ufo', false, () => CanvasDispatcher.requestExport()),
-            makeItem('file.save_svg', false, () => _triggerExportSVG())
+            ...saveGroup()
         ];
 
         // Fetch cached projects async and populate the submenu
@@ -227,7 +254,7 @@ export function initializeLayoutShell() {
 
     // ── Edit menu dropdown ──
     const btnEdit = document.getElementById("menu_edit");
-    btnEdit?.addEventListener("click", (e) => {
+    btnEdit?.addEventListener("click", async (e) => {
         e.stopPropagation();
         const menu = document.querySelector('dropdown-menu');
         if (!menu) return;
@@ -242,12 +269,15 @@ export function initializeLayoutShell() {
 
         const c = window.__canvas;
         const I18nManager = window.I18n || { t: (k) => k };
+        // 后端可用性（fonttools 功能）：纯前端模式下置灰
+        const backendOk = await (window.__canvas?.io?.backendAvailable?.() ?? Promise.resolve(false));
 
-        const makeItem = (i18nKey, shortcut = null, action = null) => ({
+        const makeItem = (i18nKey, shortcut = null, action = null, disabled = false) => ({
             label: I18nManager.t(i18nKey),
             i18n: i18nKey,
             shortcut,
-            action
+            action: disabled ? null : action,
+            disabled
         });
         const makeToggle = (i18nKey, checked, action) => ({
             label: (checked ? '\u2713 ' : '   ') + I18nManager.t(i18nKey),
@@ -265,6 +295,8 @@ export function initializeLayoutShell() {
             makeItem('edit.optimize_path', null, () => CanvasDispatcher.requestOptimizePath()),
             makeItem('edit.round_nodes', null, () => CanvasDispatcher.requestRoundNodes()),
             makeItem('edit.smooth_curves', null, () => CanvasDispatcher.requestSmoothCurves()),
+            // correct direction 与 remove overlap 均已集成到导出流程（导出前自动校正+去重叠），
+            // 编辑期布尔/去重叠统一由工具栏 Union（Ctrl+U）承担，不再作为手动菜单项
             { separator: true },
             makeToggle('edit.snap_alignment', c?.snap_alignment_enabled !== false, () => {
                 if (c) c.snap_alignment_enabled = !c.snap_alignment_enabled;
@@ -272,6 +304,13 @@ export function initializeLayoutShell() {
             }),
             makeToggle('edit.snap_coincident', c?.snap_coincident_enabled !== false, () => {
                 if (c) c.snap_coincident_enabled = !c.snap_coincident_enabled;
+                if (c) c.history?.saveCurrentViewState?.();
+            }),
+            // Object-drag node snapping: while dragging whole objects, their nodes
+            // snap to other nodes (coincident) and to their X/Y alignment lines,
+            // using the two modes above. Ctrl during the drag disables it.
+            makeToggle('edit.snap_nodes', c?.snap_nodes_enabled !== false, () => {
+                if (c) c.snap_nodes_enabled = !c.snap_nodes_enabled;
                 if (c) c.history?.saveCurrentViewState?.();
             }),
             { separator: true },
@@ -529,11 +568,47 @@ export function initializeLayoutShell() {
     }
 }
 
-// ── Save current project on page close ──
+// ── Save current project on page close（桌面模式无浏览器缓存，不保存）──
 window.addEventListener('beforeunload', () => {
-    const pm = window.__canvas?.projectManager;
-    if (pm && pm.activeProjectName) {
-        pm.saveToCache(pm.activeProjectName);
+    if (isDesktop()) return;
+    const c = window.__canvas;
+    // 1. 强制提交进行中的手势（等价于用户松手）。live-reload / 插件刷新常在编辑中途触发：
+    //    拖拽节点、绘制路径等手势中的改动只存在于实时数据，尚未写入 history，
+    //    而自动保存（_saveRuntimeState）用的是上次提交的 currentStateObj ——
+    //    不先提交的话，unload 保存的是旧状态，最后一步操作必丢。
+    //    复用 handleWindowMouseMove 已有的“buttons=0 时自动提交”恢复路径：
+    //    直接派发一次 window mouseup，让所有 window 级 mouseup 监听（含引导线/分割线）生效。
+    if (c) {
+        try {
+            if (c.current_state && c.current_state !== 'IDLE') {
+                window.dispatchEvent(new MouseEvent('mouseup', {
+                    button: 0,
+                    buttons: 0,
+                    clientX: c.last_mouse_pos_x ?? 0,
+                    clientY: c.last_mouse_pos_y ?? 0,
+                    bubbles: true,
+                    cancelable: true
+                }));
+            }
+            // DRAW 画到一半的路径：mouseup 只收起手柄、不会结束路径 —— 强制完成（同右键行为），
+            // 否则未完成路径不会进入 history/序列化，刷新即丢。
+            if (c.current_curve && c.current_curve.startNode && c.commands?.finishAddingPathCommand) {
+                if (c.drawToolSettings?.closed) c.current_curve.closed = true;
+                c.commands.finishAddingPathCommand();
+            }
+        } catch (e) {
+            console.error("[beforeunload] force-commit gesture failed:", e);
+        }
+    }
+    // 2. 快速落盘：用 fast 直写（单次微任务即派发 IndexedDB put）。页面在 beforeunload
+    //    返回后立即销毁，普通 saveProject 的 get→put→排序链走不完、put 根本不会发出；
+    //    saveToCache 同理，故不再调用（fast 直写已覆盖同一缓存键）。
+    if (c?.history && typeof c.history._flushRuntimeStateSave === "function") {
+        try {
+            c.history._flushRuntimeStateSave(true);
+        } catch (e) {
+            console.error("[beforeunload] fast flush failed:", e);
+        }
     }
 });
 
@@ -546,6 +621,16 @@ function _triggerExportSVG() {
     if (!canvas) return;
     canvas.io.exportToSVG();
 }
+
+/**
+ * OTF / TTF 导出：fonttools 后端（ufo2ft 编译，以 UFO 为输入）。
+ */
+function _triggerExportFont(fmt) {
+    const canvas = window.__canvas;
+    if (!canvas) return;
+    canvas.io.exportBinaryFont(fmt);
+}
+
 
 /**
  * UFO import: delegates to CanvasIOService.triggerImportUFO().

@@ -41,7 +41,7 @@ export class SnapshotPatchExecutor {
             coarsePathPrefixes: Array.isArray(raw.coarse_patch_paths) ? raw.coarse_patch_paths : [],
             granularPathPrefixes: Array.isArray(raw.granular_patch_paths)
                 ? raw.granular_patch_paths
-                : [["glyphs"], ["editor_guidelines"], ["editor_active_indices"]]
+                : [["glyphs"], ["editor_guidelines"], ["editor_rulers"], ["editor_active_indices"]]
         };
     }
 
@@ -315,9 +315,15 @@ export class SnapshotPatchExecutor {
     }
 
     _pathIsTreeHierarchy(path) {
-        if (!Array.isArray(path)) return false;
-        if (path.length === 1 && path[0] === "editor_root_order") return true;
-        return path.length === 1 && path[0] === "editor_root_order";
+        if (!Array.isArray(path) || path.length === 0) return false;
+        // ANY depth under editor_root_order counts: the diff walker emits
+        // per-index patches when both root orders have the same length but a
+        // different permutation (remove one glyph + add another), and those
+        // index patches cannot survive the whole-array replace patch that this
+        // method guarantees to add — undo then dies with
+        // "Runtime patch failed at editor_root_order.<i>" because the array has
+        // already been rewritten when they are validated/applied.
+        return path[0] === "editor_root_order";
     }
 
     /**

@@ -38,6 +38,7 @@ const TEMPLATE_HTML = `
     <div class="sample-panel-body">
         <textarea class="sample-text-input" id="sample_text_input" rows="2"
             data-i18n-placeholder="sample.placeholder"
+            data-i18n-placeholder="sample.placeholder"
             placeholder="Type sample text, \\name\\ for non-character glyphs, Enter for new line"></textarea>
         <div class="sample-options-row">
             <label class="sample-option">

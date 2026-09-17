@@ -20,6 +20,7 @@ const SCALAR_KEYS = Object.freeze([
     "sequenceText",
     "commandStackSize",
     "redoStackSize",
+    "historyTopCommandId",
     "isRestoring",
     "_nodeSelectionRefId",
     "draggingNodeId"

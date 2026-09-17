@@ -15,6 +15,33 @@ export function selectedTreeIdsFromStore(canvas, ids = null) {
     return [...(state?.selectedTreeIds || [])];
 }
 
+/**
+ * 把树选中项展开为曲线 id 列表：曲线 -> 自身；组/字形 -> 其全部后代曲线。
+ * 用户常直接在对象树点选字形（组）而不是单条路径，逐曲线命令（optimize /
+ * simplify / round / smooth）若只看树选中项会在组选定时静默无事发生。
+ * ref（组件引用）不展开（引用的是别的组的变换视图，处理源组语义不清）。
+ */
+export function selectedCurveIdsFromStore(canvas, ids = null) {
+    const treeIds = selectedTreeIdsFromStore(canvas, ids);
+    const cm = canvas?.curve_manager;
+    if (!cm) return [...treeIds];
+    const out = [];
+    const seen = new Set();
+    for (const tid of treeIds) {
+        const item = cm.treeItems.get(tid);
+        if (!item || item.isRef) continue;
+        if (item.type === "curve") {
+            if (!seen.has(tid)) { seen.add(tid); out.push(tid); }
+        } else if (item.type === "group") {
+            for (const entry of cm.getCurvesForGroup(tid)) {
+                const cid = entry.curve?.id;
+                if (cid && !seen.has(cid)) { seen.add(cid); out.push(cid); }
+            }
+        }
+    }
+    return out;
+}
+
 export function isStoreInteractionDispatch(canvas) {
     return getCanvasCommandPort(canvas).isStoreDispatching();
 }

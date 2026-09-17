@@ -52,6 +52,24 @@ export class GlyphSequenceBar extends HTMLElement {
         this._previewCtx = this._previewCanvas.getContext("2d", { willReadFrequently: true });
         this._activeMenu = null;
         this._lastTriggerBtn = null;
+        // 指针按下期间的重建保护（见 _render）：按下 -> 松开 -> click 这条
+        // 链上任何一个环节把被按下的按钮从 DOM 摘掉，click 就永远不会产生。
+        this._pointerDownOnBar = false;
+        this._renderPending = false;
+        this._renderDeferredAt = 0;
+        this._deferredFlushArmed = false;
+        this._menuOpenedAt = 0;
+    }
+    /**
+     * 视图签名。onState（状态事件）与 onRender（画布重绘）必须用同一个来源判断
+     * “视图是否变了”，否则两者会永久互相认为对方的值是新的：窗口最大化/尺寸变化
+     * 时画布 offset 变了而 store 里的 offset 还是旧值，于是之后每一个状态事件都被
+     * 判成“变了” -> 每次 mouseup 都整条重建轨道 -> click 被吃掉。
+     */
+    _viewSig() {
+        const c = this._canvas;
+        if (!c) return "";
+        return `${c.offset?.x ?? 0},${c.scale ?? 1}`;
     }
     connectedCallback() {
         // Ensure DOM is created once (survives dock reconnect)
@@ -60,17 +78,41 @@ export class GlyphSequenceBar extends HTMLElement {
             this._track = document.createElement("div");
             this._track.className = "seq-bar-track";
             this._track.addEventListener("click", (e) => this._onTrackClick(e));
+            // 记录“指针正按在序列条上”：_render 在此期间只做挂起，绝不重建 DOM。
+            // 用 mousedown 而不是 pointerdown：合成输入（测试探针、部分远端输入）
+            // 不一定会派发 pointer 事件，而 mousedown 一定会到。
+            this._track.addEventListener(
+                "mousedown",
+                () => {
+                    this._pointerDownOnBar = true;
+                },
+                true
+            );
             this.appendChild(this._track);
         }
         // Always re-register listeners (disconnectedCallback cleans them up)
         this._cleanups = [];
+        // 松开（含在序列条外松开）后解除保护，并把被挂起的重建补上。
+        // 用 document 捕获阶段：按钮上的监听器不影响我们观察松开事件。
+        const onDocRelease = () => this._endPointerPress();
+        // 窗口失焦（原生拖动切全屏/最大化、Alt+Tab 等）：收不到 mouseup 也必须
+        // 解开保护，否则序列条会一直停在“不重建”状态。
+        const onBlur = () => this._forceEndPointerPress();
+        document.addEventListener("mouseup", onDocRelease, true);
+        document.addEventListener("pointercancel", onDocRelease, true);
+        window.addEventListener("blur", onBlur);
+        this._cleanups.push(() => {
+            document.removeEventListener("mouseup", onDocRelease, true);
+            document.removeEventListener("pointercancel", onDocRelease, true);
+            window.removeEventListener("blur", onBlur);
+        });
         const onState = (e) => {
             const s = e?.detail?.afterState;
             if (!s) return;
             const actionType = e?.detail?.action?.type;
             const text = s.sequenceText ?? "";
             const activeKey = JSON.stringify(s.activeSequenceIndices);
-            const offKey = s.offset ? `${s.offset.x},${s.scale}` : "";
+            const offKey = this._viewSig();
             // Active-glyph signature: the focused group (activeGroupId) + tree selection.
             // The sequence bar highlight follows the app's "active group" (selection),
             // NOT activeSequenceIndices (a bookkeeping set that grows with every add).
@@ -93,7 +135,9 @@ export class GlyphSequenceBar extends HTMLElement {
             if (!c) return;
             const ox = c.offset?.x ?? 0;
             const sc = c.scale;
-            this._offSig = `${ox},${sc}`;
+            // 与 onState 用同一个来源（_viewSig）：两侧取值来源不同会让彼此永远
+            // 认为对方的值是新的，从而在每个状态事件上多余地整条重建轨道。
+            this._offSig = this._viewSig();
             // Scale change: full re-render to re-evaluate collapse/expand —
             // glyph widths at different zoom levels may fit in or overflow
             // their slots differently.
@@ -144,15 +188,82 @@ export class GlyphSequenceBar extends HTMLElement {
         if (!c) return 0;
         return (c.ruler_size ?? 20) + (c.offset?.x ?? 0);
     }
+    /**
+     * 松开指针：解除“按下期间禁止重建”的保护，并补一次被挂起的重建。
+     *
+     * 为什么补建要等一拍：浏览器只有在 mousedown 与 mouseup 命中同一祖先时才
+     * 合成 click。若我们在 mouseup 的同一条任务里就把轨道 DOM 换掉，浏览器计算
+     * click 目标时会发现按下时的按钮已离线，于是 click 根本不派发 —— 按钮的监听器
+     * 永远不执行（用户看到的就是“点了没反应”）。所以先等 click 走完（click 紧跟
+     * mouseup），再重建；同时用超时兜底，避免没有 click（在别处松开）时永远不恢复。
+     */
+    _forceEndPointerPress() {
+        this._pointerDownOnBar = false;
+        if (!this._renderPending) return;
+        this._renderPending = false;
+        this._render();
+    }
+    _endPointerPress() {
+        if (!this._pointerDownOnBar) return;
+        this._pointerDownOnBar = false;
+        if (!this._renderPending) return;
+        if (this._deferredFlushArmed) return;
+        this._deferredFlushArmed = true;
+        const flush = () => {
+            this._deferredFlushArmed = false;
+            if (this._pointerDownOnBar) return; // 又按下去了，继续保持挂起
+            if (!this._renderPending) return;
+            this._renderPending = false;
+            this._render();
+        };
+        const onDocClick = () => {
+            document.removeEventListener("click", onDocClick, true);
+            setTimeout(flush, 0);
+        };
+        document.addEventListener("click", onDocClick, true);
+        setTimeout(() => {
+            document.removeEventListener("click", onDocClick, true);
+            flush();
+        }, 200);
+    }
     _render() {
+        // 指针按下期间绝不重建轨道 DOM：mousedown 命中的按钮如果被摘掉，
+        // mouseup/click 都拿不到共同祖先，click 事件根本不会产生 —— 这正是
+        // “最大化后点 add glyph 再也点不出菜单”的成因（窗口尺寸变化后每个
+        // 状态事件都会触发一次多余重建，而 mouseup 恰好会发一个状态事件）。
+        if (this._pointerDownOnBar) {
+            this._renderPending = true;
+            this._renderDeferredAt = performance.now();
+            return;
+        }
         // Close any open menu before rebuilding the track — _render() destroys
         // all child elements (including trigger buttons), rendering the existing
         // menu's stale triggerBtn reference unusable for hit-testing.
         if (this._activeMenu) {
-            if (this._activeMenu.isConnected) this._activeMenu.remove();
-            this._activeMenu = null;
-            this._lastTriggerBtn = null;
+            // 例外：本次按下期间刚打开的菜单必须留下。挂起的重建会在 press 之后
+            // 补做，若照常关掉，用户看到的就是“菜单一闪即逝”。只解除它与旧触发
+            // 按钮的绑定；下一次点击别处仍会正常关闭它。
+            const openedDuringDefer = this._menuOpenedAt >= this._renderDeferredAt && this._renderDeferredAt > 0;
+            if (openedDuringDefer && this._activeMenu.isConnected) {
+                this._keepMenuRebindTrigger = this._activeMenuTriggerKey || null;
+                this._lastTriggerBtn = null;
+            } else {
+                if (this._activeMenu.isConnected) this._activeMenu.remove();
+                this._activeMenu = null;
+                this._lastTriggerBtn = null;
+            }
         }
+        const rebindKey = this._keepMenuRebindTrigger;
+        this._keepMenuRebindTrigger = null;
+        this._renderTrack();
+        // 上面保留了菜单时，重建后把菜单重新绑到等价的触发按钮上（同一个 key），
+        // 这样“再点一次触发按钮 = 关闭菜单”的语义在重建之后依然成立。
+        if (rebindKey && this._track) {
+            const btn = this._track.querySelector(`[data-seq-trigger-key="${rebindKey}"]`);
+            if (btn) this._lastTriggerBtn = btn;
+        }
+    }
+    _renderTrack() {
         const tr = this._track;
         if (!tr) return;
         tr.textContent = "";
@@ -413,6 +524,8 @@ export class GlyphSequenceBar extends HTMLElement {
     _mkInsertBtn(idx) {
         const b = document.createElement("div");
         b.className = "seq-bar-ins-btn";
+        // 稳定标识：挂起的重建补做后，用它把菜单重新绑回等价的触发按钮
+        b.dataset.seqTriggerKey = `ins:${idx}`;
         b.appendChild(this._mkSvg("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"));
         b.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -424,6 +537,7 @@ export class GlyphSequenceBar extends HTMLElement {
     _mkInsertLastBtn(idx) {
         const b = document.createElement("div");
         b.className = "seq-bar-ins-last-btn";
+        b.dataset.seqTriggerKey = `ins-last:${idx}`;
         const text = document.createElement("span");
         text.className = "seq-bar-ins-last-label";
         text.textContent = "Click to add glyphs";
@@ -468,6 +582,7 @@ export class GlyphSequenceBar extends HTMLElement {
     _addBtn(left) {
         const b = document.createElement("div");
         b.className = "seq-bar-add-btn";
+        b.dataset.seqTriggerKey = "add";
         b.style.left = `${left}px`;
         const text = document.createElement("span");
         text.className = "seq-bar-add-label";
@@ -491,6 +606,8 @@ export class GlyphSequenceBar extends HTMLElement {
         const c = this._canvas;
         if (!tr || !c || !this.text) return;
         if (e.target.closest(".seq-bar-pos") || e.target.closest(".seq-bar-add-btn")) return;
+        // The sequence bar is UI and never rotates (only the sheet layer does), so its
+        // own rect stays layout-accurate in any view rotation.
         const rect = tr.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const sc = c.scale ?? 1;
@@ -564,6 +681,8 @@ export class GlyphSequenceBar extends HTMLElement {
             this._activeMenu = null;
         }
         this._lastTriggerBtn = triggerBtn;
+        this._activeMenuTriggerKey = triggerBtn?.dataset?.seqTriggerKey || null;
+        this._menuOpenedAt = performance.now();
         const menu = document.createElement("div");
         menu.className = "sequence-add-menu";
         const COLUMN_W = 68;
@@ -675,22 +794,9 @@ export class GlyphSequenceBar extends HTMLElement {
                 }
             }
         };
-        // Close button: absolute-positioned so it doesn't consume layout space
-        const closeBtn = document.createElement("button");
-        closeBtn.className = "seq-menu-close-btn";
-        closeBtn.style.position = "absolute";
-        closeBtn.style.top = "4px";
-        closeBtn.style.right = "4px";
-        closeBtn.style.zIndex = "1";
-        closeBtn.appendChild(this._mkSvg("M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"));
-        closeBtn.addEventListener("click", () => {
-            menu.remove();
-            document.removeEventListener("mousedown", closeMenu);
-            offTree();
-            this._activeMenu = null;
-            this._lastTriggerBtn = null;
-        });
-        menu.appendChild(closeBtn);
+        // No close ("X") button: this menu is closed by clicking outside it or
+        // by clicking its trigger again. The X was an unintended leftover from
+        // the docked-popup chrome and overlapped the menu's first row.
         const form = document.createElement("div");
         form.className = "seq-menu-form";
         installEnterBlurHandler(form);
@@ -842,7 +948,12 @@ export class GlyphSequenceBar extends HTMLElement {
     }
     _refreshCharGrid(charGrid, asciiCharToGroup, insertAt, cols) {
         charGrid.replaceChildren();
-        charGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        // minmax(0, 1fr) — NOT 1fr: the implicit minimum of a `1fr` track is the
+        // item's min-content width. `.seq-menu-name` is `white-space: nowrap`, so a
+        // long glyph name made its column wider than 1fr and the whole "Other
+        // Groups" grid ran off the right edge of the fixed-width menu instead of
+        // wrapping. minmax(0, …) lets the column shrink and the name ellipsize.
+        charGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
         for (let code = 32; code <= 126; code++) {
             const afdkoName = AFDKO_NAMES[code] || _toAfdkoName(String.fromCodePoint(code));
             const char = String.fromCodePoint(code);
@@ -967,7 +1078,9 @@ export class GlyphSequenceBar extends HTMLElement {
             return g;
         })();
         grid.replaceChildren();
-        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        // minmax(0, 1fr): see _refreshCharGrid — long group names must ellipsize
+        // inside their column instead of widening it past the menu edge.
+        grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
         for (const g of groups) {
             const item = document.createElement("div");
             item.className = "seq-menu-item";

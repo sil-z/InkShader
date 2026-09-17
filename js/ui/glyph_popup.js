@@ -262,7 +262,12 @@ export class GlyphPopup extends HTMLElement {
                 groupName = nameVal;
                 raw = `\\${groupName}\\`;
             }
-            const r2 = EditorModel.appendRawToSequence("", raw, (n) => EditorModel.getGroupByName(n));
+            // Append to the CURRENT sequence instead of replacing it with just
+            // this glyph. Replacing dropped every other entry from the sequence,
+            // and an empty glyph that had just been created was then deleted by
+            // the unused-empty-group prune pass as soon as the sequence moved on.
+            const curText = EditorModel.getSequenceText();
+            const r2 = EditorModel.appendRawToSequence(curText, raw, (n) => EditorModel.getGroupByName(n));
             const newText = r2.text;
             const newIdx = r2.newTokenIndex;
             CanvasDispatcher.requestSetSequenceEditorState(
@@ -278,6 +283,12 @@ export class GlyphPopup extends HTMLElement {
                     gid = item ? item.id : null;
                 }
                 if (gid) {
+                    // Mark the glyph as explicitly created. The sequence sync deletes
+                    // any root group that is empty, unmodified and no longer in the
+                    // sequence, so without this the glyph the user just created would
+                    // be pruned the moment they switch to another glyph from the grid
+                    // below (a deliberate switch replaces the sequence).
+                    CanvasDispatcher.requestMarkGroupExplicit(gid);
                     if (nameVal) {
                         const item = EditorModel.getTreeItem(gid);
                         if (item && item.name !== nameVal) {
@@ -337,6 +348,29 @@ export class GlyphPopup extends HTMLElement {
         this._resizeObserver.observe(menu);
     }
 
+    /**
+     * Show exactly one glyph on the canvas — the glyphs panel's click action.
+     *
+     * This panel is a glyph BROWSER: clicking a glyph switches the canvas to that
+     * glyph, so the sequence is replaced by this single token (the same contract as
+     * the "click to add glyphs" placeholder in an empty sequence). Appending
+     * instead would leave the clicked glyph in the sequence forever — a glyph the
+     * user never asked to place stays on the canvas and is written to the project
+     * file (the "ghost glyph"). Adding to the sequence is the sequence bar's add
+     * menu, not this panel.
+     *
+     * Leaving a glyph that the user just created with the Add form behind is safe:
+     * the Add handler marks it with `requestMarkGroupExplicit`, which is what keeps
+     * the unused-empty-group prune pass from deleting it.
+     */
+    _showSingleGlyph(appendText) {
+        const r2 = EditorModel.appendRawToSequence("", appendText, (n) => EditorModel.getGroupByName(n));
+        CanvasDispatcher.requestSetSequenceEditorState(
+            { text: r2.text, activeIndices: [r2.newTokenIndex] },
+            { recordHistory: true }
+        );
+    }
+
     _refreshCharGrid(charGrid, asciiCharToGroup, cols) {
         charGrid.replaceChildren();
         // Fixed-width columns: leftover width stays on the right of the grid,
@@ -387,14 +421,10 @@ export class GlyphPopup extends HTMLElement {
             item.appendChild(nameEl);
             item.title = `${displayName} (${code})`;
             item.addEventListener("click", () => {
-                const raw = char;
-                const r2 = EditorModel.appendRawToSequence("", raw, (n) => EditorModel.getGroupByName(n));
-                const newText = r2.text;
-                const newIdx = r2.newTokenIndex;
-                CanvasDispatcher.requestSetSequenceEditorState(
-                    { text: newText, activeIndices: [newIdx] },
-                    { recordHistory: true }
-                );
+                // Browse to this glyph: replace the sequence with it (see
+                // _showSingleGlyph). The bare character is the canonical token for
+                // a character group.
+                this._showSingleGlyph(char);
             });
             nameEl.addEventListener("dblclick", (e) => {
                 e.stopPropagation();
@@ -480,7 +510,7 @@ export class GlyphPopup extends HTMLElement {
             delBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
                 const result = EditorModel.removeGroupTokensFromSequence({
-                    text: EditorModel.getSequenceText?.() ?? "",
+                    text: EditorModel.getSequenceText(),
                     activeIndices: EditorModel.getActiveSequenceIndices?.() ?? [],
                     groupId: g.id,
                     charCode: g.charCode,
@@ -494,13 +524,11 @@ export class GlyphPopup extends HTMLElement {
             });
             item.appendChild(delBtn);
             item.addEventListener("click", () => {
+                // Browse to this glyph: replace the sequence with it (see
+                // _showSingleGlyph). Character groups are addressed by their bare
+                // character, everything else by its (unique) name.
                 const isDefault = EditorModel.isDefaultCharGroup(g.id, g.charCode);
-                const appendText = isDefault ? g.charCode : `\\${g.name}\\`;
-                const r2 = EditorModel.appendRawToSequence("", appendText, (name) => EditorModel.getGroupByName(name));
-                CanvasDispatcher.requestSetSequenceEditorState(
-                    { text: r2.text, activeIndices: [r2.newTokenIndex] },
-                    { recordHistory: true }
-                );
+                this._showSingleGlyph(isDefault ? g.charCode : `\\${g.name}\\`);
             });
             grid.appendChild(item);
         }

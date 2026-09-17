@@ -357,13 +357,17 @@ export function emitExpandedStrokeOutline(recorder, outline, mapPoint, { outerCo
             recorder.closePath();
             return;
         }
-        // Emit forward+backward as a single connected ring (not two separate
-        // closed subpaths).  Two separate closed offset rings self-intersect
-        // for figure‑8 skeletons, producing degenerate boolean-unite results.
-        // Merging them into one ring — forward (outer) → backward reversed
-        // (inner) → closePath — gives Paper.js a clean annulus boundary.
-        emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);
-        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, false);
+        // Two separate closed offset rings (outer offset traversed forward,
+        // inner offset traversed backward). Under the nonzero rule their
+        // combination with the fill ring yields exactly the fill ∪ band
+        // region, and — critically — a boolean merge (cache melt / union)
+        // sees only simple closed rings, never the near-coincident parallel
+        // edges of a keyhole ring, which Paper.js resolves by eating the
+        // outer stroke half-band (verified: consistent ~4.2k px loss on the
+        // example Path regardless of jitter/order/pre-split).
+        emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, true);
+        recorder.closePath();
+        emitOffsetSegmentList(recorder, backwardPaths, mapPoint, true, true);
         recorder.closePath();
     } else {
         emitOffsetSegmentList(recorder, forwardPaths, mapPoint, false, false);

@@ -1,5 +1,6 @@
 import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
 import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } from "../../app/editor_interaction_state.js";
+import { desktopApi } from "../../app/app_mode.js";
 /**
  * CanvasInputController: binds DOM events to canvas interaction layer.
  *
@@ -12,15 +13,19 @@ import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } f
  * - Ctrl+C: copy selected objects | canvas / tree
  * - Ctrl+V: paste to active group | canvas / tree
  * - Ctrl+D: duplicate selected objects | canvas / tree
- * - Ctrl+N: new project | global
+ * - Ctrl+N: new project (browser: new tab; desktop: new window) | global
  * - Ctrl+O: open (load JSON) | global
- * - Ctrl+S: save file | global
+ * - Ctrl+S: save (desktop: 直接写回打开的文件 / 否则 save as json) | global
+ * - Ctrl+Shift+J: save as JSON | global
  * - Ctrl+Shift+S: export SVG | global
  * - Ctrl+Shift+E: export UFO | global
  * - Ctrl+U / Ctrl+Shift+U / Ctrl+Alt+U / Ctrl+Alt+Shift+U: boolean union / intersection / difference / exclusion | global
  * - Ctrl+Shift+X: expand stroke | global
  * - Ctrl+= / Ctrl+-: adjust canvas size (change_canvas_size) | global
  * - Ctrl+Arrow: pan canvas in 40px steps | global
+ * - Alt+Left / Alt+Right (or Ctrl+Alt+Left/Right): rotate the view in 5° steps | global
+ * - Alt+0: reset the canvas view rotation to 0° | global
+ * - Alt+drag on empty canvas: rotate the canvas view about the stage centre | canvas
  * - C / S / Y (NODE tool): corner / smooth / symmetric node mode | global
  * - I / J / B (NODE tool): insert / join / break node | global
  * - Space + drag: temporary pan | global
@@ -76,13 +81,25 @@ export class CanvasInputController {
         if (c.mouse_pos_output && c.current_state !== 'PANNING') {
             const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
             const baselineWorldY = c.fontSettings?.ascender ?? 800;
-            c._pendingMouseText = "Mouse Pos " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
+            const posLabel = window.I18n ? window.I18n.t('canvas.mouse_pos', 'Mouse Pos') : 'Mouse Pos';
+            c._pendingMouseText = posLabel + " " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
         }
         if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
-            const pa = c._cachedPaintingRect || c.painting_area.getBoundingClientRect();
-            const px = e.clientX - pa.left;
-            const py = e.clientY - pa.top;
-            const inCanvas = px >= 18 && px <= pa.width && py >= 18 && py <= pa.height;
+            // The markers are children of the stage and sit on the ruler strips, which are
+            // laid out in PANEL-local coordinates. Un-rotated, the sheet's own space and
+            // the panel space coincide, so mouseX/mouseY can be used directly. While the
+            // sheet is rotated they no longer do (the pointer's sheet coordinate is a
+            // different place on screen), and the strips stay upright — so mark where the
+            // pointer actually is inside the panel, otherwise the markers would run around
+            // the strips on their own.
+            const box = c.viewRotation ? c.viewportService.getPanelBox() : null;
+            const px = box ? e.clientX - box.left : mouseX;
+            const py = box ? e.clientY - box.top : mouseY;
+            const panelW = box ? box.width : (Number.isFinite(c.viewportConfig?.userSpaceWidth) ? c.viewportConfig.userSpaceWidth : 0);
+            const panelH = box ? box.height : (Number.isFinite(c.viewportConfig?.userSpaceHeight) ? c.viewportConfig.userSpaceHeight : 0);
+            // (un-rotated: panel-local === sheet-local, see getPanelLocalPoint)
+            const ruler = c.ruler_size;
+            const inCanvas = px >= ruler && px <= panelW && py >= ruler && py <= panelH;
             c._pendingRulerState = { px, py, inCanvas };
         }
         if (tool === 'MEASURE') ic.handleMeasureMouseMove(mouseX, mouseY);
@@ -96,9 +113,19 @@ export class CanvasInputController {
             return;
         }
         let hoverStateChanged = false;
-        if (c.current_state === 'PANNING' && (e.buttons & 1 || e.buttons & 4)) {
-            const dx = e.clientX - c.drag_start.x, dy = e.clientY - c.drag_start.y;
-            c.offset = { x: c.offset_start.x + dx, y: c.offset_start.y + dy };
+        if (c.current_state === 'ROTATING_VIEW') {
+            const start = c._viewRotateStart;
+            const box = c.viewportService.getPanelBox();
+            if (start && box) {
+                const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+                const angle = Math.atan2(e.clientY - cy, e.clientX - cx);
+                c.setViewRotation(start.rotation + (angle - start.angle) * 180 / Math.PI);
+            }
+        } else if (c.current_state === 'PANNING' && (e.buttons & 1 || e.buttons & 4)) {
+            // Pan along the sheet's own axes: a rotated view must not move sideways
+            // under the cursor, so the screen delta is rotated into the sheet's own axes.
+            const d = c.viewportService.clientDeltaToLocal(e.clientX - c.drag_start.x, e.clientY - c.drag_start.y);
+            c.offset = { x: c.offset_start.x + d.x, y: c.offset_start.y + d.y };
             c.is_dirty = true;
         } else if ((e.buttons & 1) !== 0 && c.current_state === 'DRAGGING_ELLIPSE') {
             const ewX = (mouseX - offsetX) / c.scale, ewY = (mouseY - offsetY) / c.scale;
@@ -484,17 +511,19 @@ export class CanvasInputController {
                     c.is_dirty = true;
                     return;
                 }
-                const pa = c.painting_area?.getBoundingClientRect();
-                if (pa) {
-                    const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
-                    if (toRuler) {
-                        c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
-                        if (!wasNew) {
-                            CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
-                        }
-                        c.is_dirty = true;
-                        return;
+                // "Dropped on the ruler": the strips never rotate with the sheet, so while
+                // the view is turned this must be tested in panel-local coordinates.
+                const dropPoint = c.viewRotation
+                    ? c.viewportService.getPanelLocalPoint(e.clientX, e.clientY)
+                    : c.getViewportMousePosition(e.clientX, e.clientY, e);
+                const toRuler = dropPoint.x <= c.ruler_size || dropPoint.y <= c.ruler_size;
+                if (toRuler) {
+                    c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
+                    if (!wasNew) {
+                        CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                     }
+                    c.is_dirty = true;
+                    return;
                 }
                 if (wasNew) {
                     // Already pushed to c.guidelines on mousedown (startUserGuideDrag)
@@ -746,8 +775,10 @@ export class CanvasInputController {
                 if (rulerHit) {
                     e.preventDefault();
                     e.stopPropagation();
+                    const before = { x1: rulerHit.x1, y1: rulerHit.y1, x2: rulerHit.x2, y2: rulerHit.y2 };
                     c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
                     c.is_dirty = true;
+                    CanvasDispatcher.requestHistoryCommit("deleteRuler", { id: rulerHit.id, before });
                     return;
                 }
             }
@@ -771,7 +802,7 @@ export class CanvasInputController {
                 menu.className = 'tree_menu';
                 menu.style.left = e.clientX + 'px';
                 menu.style.top = e.clientY + 'px';
-                const t = (k, def) => window.I18n ? window.I18n.t(k) : def;
+                const t = (k, def) => window.I18n ? window.I18n.t(k, def) : def;
                 const createItem = (label, shortcut, action) => {
                     const div = document.createElement('div');
                     div.className = 'tree_menu_item';
@@ -844,7 +875,18 @@ export class CanvasInputController {
                     let inv = seg.matrix.inverse(); let pt = inv.transformPoint({x: localX, y: localY});
                     localX = pt.x; localY = pt.y;
                 }
-                c.commands.insertMainNode(seg, localX, localY);
+                const inserted = c.commands.insertMainNode(seg, localX, localY);
+                if (inserted && (typeof window !== 'undefined' && window.__DBG_INSERT_NODE)) {
+                    // Debug aid: compare double-click position with the actual inserted node.
+                    const node = c.curve_manager.find_node_by_curve(inserted);
+                    console.debug('[dblclick-insert]', {
+                        dblclickWorld: { x: worldX, y: worldY },
+                        dblclickLocal: { x: localX, y: localY },
+                        insertedNodeLocal: node ? { x: node.x, y: node.y } : null,
+                        seqOffsetX,
+                        scale: c.scale
+                    });
+                }
             }
         });
         c.canvasObj.addEventListener("mousedown", (e) => {
@@ -874,10 +916,30 @@ export class CanvasInputController {
             let isSpacePan = (e.button === 0 && c._spaceDown && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
             let isCtrlLeftPan = (e.button === 0 && e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE') || isSpacePan;
             let isMiddlePan = (e.button === 1);
+            let isAltLeftRotate = (e.button === 0 && e.altKey && !e.ctrlKey && !hitMarker && !hitCurveSegment && !handleHit && tool !== 'MEASURE');
             if (isMiddlePan || isCtrlLeftPan) {
                 e.preventDefault(); c.current_state = 'PANNING';
                 c.canvasObj.dataset.cursor = 'move';
                 c.drag_start = { x: e.clientX, y: e.clientY }; c.offset_start = { x: c.offset.x, y: c.offset.y };
+                c.previewData = null; c.is_dirty = true; return;
+            }
+            if (isAltLeftRotate) {
+                // Alt + drag on empty canvas rotates the view about the centre of the
+                // panel — the pivot the sheet layer turns about — so the pointer angle
+                // around it maps 1:1 onto the view rotation.
+                e.preventDefault();
+                c.current_state = 'ROTATING_VIEW';
+                c.canvasObj.dataset.cursor = 'move';
+                const box = c.viewportService.getPanelBox();
+                if (box) {
+                    const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+                    c._viewRotateStart = {
+                        angle: Math.atan2(e.clientY - cy, e.clientX - cx),
+                        rotation: c.viewRotation || 0
+                    };
+                } else {
+                    c._viewRotateStart = null;
+                }
                 c.previewData = null; c.is_dirty = true; return;
             }
             if(e.button === 0) {
@@ -1148,18 +1210,19 @@ export class CanvasInputController {
                 c.is_dirty = true;
                 return;
             }
-            const pa = c.painting_area?.getBoundingClientRect();
-            if (pa) {
-                const toRuler = e.clientY <= pa.top + 18 || e.clientX <= pa.left + 18;
-                if (toRuler) {
-                    // Remove guide from array (whether new or existing).
-                    c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
-                    if (!wasNew) {
-                        CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
-                    }
-                    c.is_dirty = true;
-                    return;
+            // "Dropped on the ruler" — panel-local while the sheet is turned (see above).
+            const dropPoint = c.viewRotation
+                ? c.viewportService.getPanelLocalPoint(e.clientX, e.clientY)
+                : c.getViewportMousePosition(e.clientX, e.clientY, e);
+            const toRuler = dropPoint.x <= c.ruler_size || dropPoint.y <= c.ruler_size;
+            if (toRuler) {
+                // Remove guide from array (whether new or existing).
+                c.guidelines = c.guidelines.filter(g => g.id !== guide.id);
+                if (!wasNew) {
+                    CanvasDispatcher.requestHistoryCommit("deleteUserGuideline", { id: guide.id });
                 }
+                c.is_dirty = true;
+                return;
             }
             if (wasNew) {
                 // Guide was already pushed to c.guidelines in startUserGuideDrag (mousedown).
@@ -1500,8 +1563,10 @@ export class CanvasInputController {
                 if (rulerHit) {
                     e.preventDefault();
                     e.stopPropagation();
+                    const before = { x1: rulerHit.x1, y1: rulerHit.y1, x2: rulerHit.x2, y2: rulerHit.y2 };
                     c.rulers = c.rulers.filter(r => r.id !== rulerHit.id);
                     c.is_dirty = true;
+                    CanvasDispatcher.requestHistoryCommit("deleteRuler", { id: rulerHit.id, before });
                     return;
                 }
             }
@@ -1525,7 +1590,7 @@ export class CanvasInputController {
                 menu.className = 'tree_menu';
                 menu.style.left = e.clientX + 'px';
                 menu.style.top = e.clientY + 'px';
-                const t = (k, def) => window.I18n ? window.I18n.t(k) : def;
+                const t = (k, def) => window.I18n ? window.I18n.t(k, def) : def;
                 const createItem = (label, shortcut, action) => {
                     const div = document.createElement('div');
                     div.className = 'tree_menu_item';
@@ -1562,7 +1627,7 @@ export class CanvasInputController {
             const value = Number(input.value);
             return Number.isFinite(value) && value >= min ? value : null;
         };
-        const installDialogInputValidation = (inputs, overlay, rules = {}) => {
+        const installDialogInputValidation = (inputs, overlay, rules = {}, onEscape = null) => {
             inputs.forEach((input) => {
                 input.dataset.prevValue = input.value;
                 input.addEventListener("focusin", () => {
@@ -1579,7 +1644,14 @@ export class CanvasInputController {
                         ev.preventDefault();
                         input.blur();
                     }
-                    if (ev.key === "Escape") overlay.remove();
+                    if (ev.key === "Escape") {
+                        // Prefer the dialog's own close path so listeners are
+                        // unregistered and the value is committed exactly once;
+                        // fall back to a plain removal for dialogs that do not
+                        // pass one (legacy behaviour).
+                        if (onEscape) onEscape();
+                        else overlay.remove();
+                    }
                 });
             });
         };
@@ -1604,22 +1676,66 @@ export class CanvasInputController {
             if (rect.bottom > window.innerHeight) dlg.style.top = `${clientY - rect.height}px`;
             const inputs = dlg.querySelectorAll("input");
             inputs[0].focus(); inputs[0].select();
-            installDialogInputValidation([...inputs], overlay);
             const commitGuide = () => {
                 const x = readDialogNumber(dlg.querySelector('[data-field="x"]'));
                 const rawY = readDialogNumber(dlg.querySelector('[data-field="y"]'));
                 const angle = readDialogNumber(dlg.querySelector('[data-field="angle"]'));
                 if (x === null || rawY === null || angle === null) return;
                 guide.x = x;
-                guide.y = H - rawY;
+                // The Y field shows view-space Y (asc - modelY), exactly like the
+                // node property popup's Y field, so the inverse is asc - value.
+                // This used to read `H - rawY` where H is declared nowhere in this
+                // module: the line threw ReferenceError, which aborted closeDialog
+                // BEFORE overlay.remove() — the dialog could never be dismissed and
+                // its full-screen overlay kept swallowing every click, locking the
+                // whole UI (mousedown → commit → throw → overlay stays).
+                guide.y = asc - rawY;
                 guide.angle = angle;
                 c.is_dirty = true;
                 CanvasDispatcher.requestHistoryCommit("editUserGuideline", { id: guide.id });
             };
+            // Leaving a field saves (blur) but must NOT close the dialog.
             inputs.forEach(inp => inp.addEventListener("blur", commitGuide));
-            overlay.addEventListener("mousedown", (ev) => {
-                if (ev.target === overlay) { commitGuide(); overlay.remove(); }
-            });
+            // Clicking ANYWHERE outside the dialog closes it and saves. Listening
+            // on the overlay alone was not enough: the overlay is a full-screen
+            // layer (z-index 2000) that swallows every click, so when a click did
+            // not land exactly on it the dialog could never be dismissed and the
+            // layer kept blocking the whole UI. Capture phase + closeDialog()
+            // handles the dialog's own inputs (they blur first, committing) as well.
+            let closed = false;
+            const closeDialog = () => {
+                // `closed` makes dismissal idempotent: without it an Escape inside
+                // an input (which also removes the overlay through the validation
+                // helper) could leave the document listeners armed and commit the
+                // stale values again on the next click anywhere.
+                if (closed) return;
+                closed = true;
+                document.removeEventListener("mousedown", onDocMouseDown, true);
+                document.removeEventListener("keydown", onDocKeyDown, true);
+                try {
+                    commitGuide();
+                } catch (err) {
+                    // A failing commit must never keep the modal overlay on screen:
+                    // that is what turned this dialog into a UI-wide lock before.
+                    console.error("[user-guide-dialog] commit failed", err);
+                }
+                overlay.remove();
+                c.is_dirty = true;
+            };
+            const onDocMouseDown = (ev) => {
+                if (dlg.contains(ev.target)) return;
+                closeDialog();
+            };
+            const onDocKeyDown = (ev) => {
+                if (ev.key !== "Escape") return;
+                ev.preventDefault();
+                closeDialog();
+            };
+            installDialogInputValidation([...inputs], overlay, {}, closeDialog);
+            document.addEventListener("mousedown", onDocMouseDown, true);
+            document.addEventListener("keydown", onDocKeyDown, true);
+            // The dialog's own inputs must keep working: the capture listener above
+            // ignores them (dlg.contains), and Enter only blurs (commits, stays open).
         };
         c._showDividerEditDialog = (groupId, clientX, clientY) => {
             const group = c.curve_manager.treeItems.get(groupId);
@@ -1784,17 +1900,23 @@ export class CanvasInputController {
                 const x2 = readDialogNumber(inputs.x2);
                 const y2 = readDialogNumber(inputs.y2);
                 if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+                const before = { x1: ruler.x1, y1: ruler.y1, x2: ruler.x2, y2: ruler.y2 };
                 ruler.x1 = x1;
                 ruler.y1 = y1;
                 ruler.x2 = x2;
                 ruler.y2 = y2;
                 overlay.remove();
                 c.is_dirty = true;
+                if (x1 !== before.x1 || y1 !== before.y1 || x2 !== before.x2 || y2 !== before.y2) {
+                    CanvasDispatcher.requestHistoryCommit("moveRuler", { id: ruler.id, before });
+                }
             };
             const deleteRuler = () => {
+                const before = { x1: ruler.x1, y1: ruler.y1, x2: ruler.x2, y2: ruler.y2 };
                 c.rulers = c.rulers.filter(r => r.id !== ruler.id);
                 overlay.remove();
                 c.is_dirty = true;
+                CanvasDispatcher.requestHistoryCommit("deleteRuler", { id: ruler.id, before });
             };
             dlg.querySelector(".btn-ok").addEventListener("click", apply);
             dlg.querySelector(".btn-delete").addEventListener("click", deleteRuler);
@@ -1832,6 +1954,13 @@ export class CanvasInputController {
             if (c._pointerCaptureId != null && c.canvasObj.releasePointerCapture) {
                 try { c.canvasObj.releasePointerCapture(c._pointerCaptureId); } catch (_) { /* ignore */ }
                 c._pointerCaptureId = null;
+            }
+            if (c.current_state === 'ROTATING_VIEW') {
+                c.current_state = 'IDLE';
+                c._viewRotateStart = null;
+                c.history.saveCurrentViewState();
+                c.is_dirty = true;
+                return;
             }
             if (c.current_state === 'PANNING') {
                 c.current_state = 'IDLE';
@@ -1990,6 +2119,24 @@ function handleWindowKeydown(c, e) {
         return;
     }
 
+    // --- F11: toggle fullscreen (desktop mode delegates to pywebview native window;
+    //     browser mode falls back to the Fullscreen API). Placed before the INPUT
+    //     guard so it works even when focus sits in a text field. ---
+    if (e.code === "F11") {
+        e.preventDefault();
+        try {
+            const api = desktopApi();
+            if (api && typeof api.toggle_fullscreen === "function") {
+                api.toggle_fullscreen();
+            } else if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        } catch (err) { /* 桥未就绪或 Fullscreen API 被拒绝：忽略 */ }
+        return;
+    }
+
     // --- Tool switching (1-5 keys, no modifiers): 1=SELECT 2=NODE 3=DRAW 4=ELLIPSE 5=MEASURE ---
     if (noMods) {
         const toolMap = { Digit1: 'SELECT', Digit2: 'NODE', Digit3: 'DRAW', Digit4: 'ELLIPSE', Digit5: 'MEASURE' };
@@ -2003,6 +2150,27 @@ function handleWindowKeydown(c, e) {
         if (modeMap[e.code] !== undefined) { e.preventDefault(); CanvasDispatcher.requestSetNodeMode(modeMap[e.code]); return; }
         if (e.code === 'KeyI') { e.preventDefault(); CanvasDispatcher.requestInsertNode(); return; }
         if (e.code === 'KeyD') { e.preventDefault(); c.commands.deleteSelectedNodes(); return; }
+    }
+
+    // --- View rotation: Alt+Left/Right rotate in 5° steps, snapped to multiples of 5
+    //     (free-hand Alt+drag rarely lands on a multiple, so the first press snaps to
+    //     the nearest boundary in that direction); Alt+0 resets to upright.
+    //     Checked BEFORE the Ctrl+Arrow pan block, which tests only ctrlKey and would
+    //     otherwise swallow Ctrl+Alt+Arrow. ---
+    //     Ctrl+Alt+Arrow is accepted as an alias: Chrome reserves Alt+Left/Right for
+    //     history navigation (a browser accelerator a page cannot suppress), while
+    //     Ctrl+Alt+Arrow collides with nothing — Ctrl+Arrow (pan) is handled below.
+    if (e.altKey && (e.code === "ArrowLeft" || e.code === "ArrowRight")) {
+        e.preventDefault();
+        c.setViewRotation(c.getViewRotationStepTarget(e.code === "ArrowRight" ? 1 : -1));
+        c.history?.saveCurrentViewState?.();
+        return;
+    }
+    if (e.altKey && !e.ctrlKey && (e.code === "Digit0" || e.code === "Numpad0")) {
+        e.preventDefault();
+        c.setViewRotation(0);
+        c.history?.saveCurrentViewState?.();
+        return;
     }
 
     // --- Pan / zoom (unchanged) ---
@@ -2022,6 +2190,9 @@ function handleWindowKeydown(c, e) {
     //     swallow the export shortcuts) ---
     if (e.ctrlKey && e.shiftKey && e.code === "KeyE") { e.preventDefault(); c.io.exportToUFO(); return; }
     if (e.ctrlKey && e.shiftKey && e.code === "KeyS") { e.preventDefault(); c.io.exportToSVG(); return; }
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyJ") { e.preventDefault(); CanvasDispatcher.requestSaveAs(); return; }
+    // Ctrl+S = Save：桌面模式直接保存到打开的文件（无对应文件则转 save as json），
+    // 浏览器模式即 save as json（下载）。
     if (e.ctrlKey && e.code === "KeyS") { e.preventDefault(); c.io.triggerSave(); return; }
     if (e.ctrlKey && e.code === "KeyN") { e.preventDefault(); CanvasDispatcher.requestNewProject(); return; }
     if (e.ctrlKey && e.code === "KeyO") { e.preventDefault(); CanvasDispatcher.requestLoad(); return; }

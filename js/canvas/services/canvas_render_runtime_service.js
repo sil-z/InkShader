@@ -38,7 +38,9 @@ export class CanvasRenderRuntimeService {
             c._cachedCanvasRect = c.canvasObj.getBoundingClientRect();
         }
         if (c.painting_area) {
-            c._cachedPaintingRect = c.painting_area.getBoundingClientRect();
+            // Panel box (never rotated — only the sheet layer inside it turns); it is the
+            // pivot reference for pointer → drawing-coordinate math while rotated.
+            c._cachedPanelRect = c.painting_area.getBoundingClientRect();
         }
 
         let dirty = c.is_dirty;

@@ -14,14 +14,6 @@ function buildAccentOptions() {
 const TEMPLATE_HTML = `
 <div class="pen-tool-popup-body">
     <div class="pen-tool-row">
-        <label data-i18n="pref.lang">Language</label>
-        <select id="pref_lang" class="font-popup-input">
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-        </select>
-    </div>
-    <div class="pen-tool-separator"></div>
-    <div class="pen-tool-row">
         <label data-i18n="pref.theme">Theme</label>
         <select id="pref_theme" class="font-popup-input">
             <option value="light">Light</option>
@@ -40,7 +32,8 @@ const TEMPLATE_HTML = `
 </div>`;
 
 const CONFIGURABLE_COLORS = [
-    { varName: '--cvs-path-stroke', key: 'color.path_stroke' }
+    { varName: '--cvs-path-stroke', key: 'color.path_stroke' },
+    { varName: '--cvs-handle-line', key: 'color.ctrl_stroke' }
 ];
 
 export class PreferencesPopup extends HTMLElement {
@@ -73,9 +66,11 @@ export class PreferencesPopup extends HTMLElement {
             if (!this._visible) return;
             // Allow menu bar items to handle toggle/switch via their click handlers
             if (e.target.closest('.top .item')) return;
-            // Custom select panels live in document.body (position:fixed) so they
-            // are outside the modal's DOM tree.  Treat clicks on them as inside.
-            if (e.target.closest('.cs-panel')) return;
+            // Custom select panels and the RGBA picker live in document.body
+            // (position:fixed) so they are outside the modal's DOM tree.
+            // Treat clicks on them as inside — interacting with a sub-widget
+            // (e.g. the path-stroke color palette) must not dismiss the popup.
+            if (e.target.closest('.cs-panel, .rgba-picker')) return;
             if (!this.contains(e.target)) this.hide();
         }, true);
     }
@@ -110,10 +105,6 @@ export class PreferencesPopup extends HTMLElement {
     }
 
     bindEvents() {
-        this.querySelector('#pref_lang').addEventListener('change', (e) => {
-            if (window.I18n) window.I18n.setLang(e.target.value);
-        });
-
         this.querySelector('#pref_theme').addEventListener('change', (e) => {
             this.applyTheme(e.target.value);
             this.saveSettings();
@@ -127,9 +118,10 @@ export class PreferencesPopup extends HTMLElement {
 
     buildColorPickers() {
         const container = this.querySelector('#pref_colors');
-        container.innerHTML = '';
         const t = window.I18n ? window.I18n.t.bind(window.I18n) : (k) => k;
         const self = this;
+
+        container.innerHTML = `<div class="pref_section_title" data-i18n="pref.override">Canvas Colors Override</div>`;
 
         CONFIGURABLE_COLORS.forEach(item => {
             const row = document.createElement('div');
@@ -145,8 +137,8 @@ export class PreferencesPopup extends HTMLElement {
                     <div class="pref-color-swatch-checker"></div>
                     <div class="pref-color-swatch-fill" style="background-color:${currentVal};"></div>
                 </div>
-                <button class="pref-color-reset-btn" data-var-name="${item.varName}" title="Reset">
-                    <img src="./assets/icons/reset.svg" alt="Reset">
+                <button class="pref-color-reset-btn" data-var-name="${item.varName}" data-i18n-tip="pref.reset" title="Reset to Theme Default">
+                    <img src="./assets/icons/reset.svg" alt="Reset to Theme Default">
                 </button>
             `;
 
@@ -238,9 +230,6 @@ export class PreferencesPopup extends HTMLElement {
 
     loadSettings() {
         try {
-            if (window.I18n) {
-                this._setSelectValue('#pref_lang', window.I18n.lang);
-            }
             const data = localStorage.getItem('InkShader_preferences');
             if (data) {
                 const settings = JSON.parse(data);

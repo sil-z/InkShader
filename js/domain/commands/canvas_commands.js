@@ -10,9 +10,15 @@ import {
     isStoreInteractionDispatch,
     refreshStoreSequence,
     selectedTreeIdsFromStore,
+    selectedCurveIdsFromStore,
     syncActiveGroupToStore
 } from "./command_runtime.js";
 import { resolveMarkersFromCanvas } from "../selection/marker_resolution.js";
+
+/** 节点 control_mode 数值 -> 字符串（选中路径级操作序列化用）。
+ * 注意：命令经 Proxy 宿主执行（Object.create(prototype)，构造器不运行），
+ * 类字段不可用，必须用模块级常量。 */
+const _CONTROL_MODE_NAMES = ["corner", "smooth", "symmetric"];
 
 /**
  * Solve quadratic equation at^2 + bt + c = 0, adding valid (0,1) roots to result set.
@@ -70,6 +76,14 @@ function restoreEditorStateFromSnapshot(canvas, snapshotObj) {
             id: canvas._nextUserGuideId++,
             x: g.x, y: g.y, angle: g.angle,
             type: g.type
+        }));
+    }
+    if (Array.isArray(snapshotObj.editor_rulers)) {
+        // Rulers persist as file data (editor_rulers). Re-id on load so new
+        // measurements never collide with ids deserialized from a file.
+        canvas.rulers = snapshotObj.editor_rulers.map(r => ({
+            id: canvas._nextRulerId++,
+            x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2
         }));
     }
     if (snapshotObj.editor_guideline_lock !== undefined) {
@@ -701,6 +715,27 @@ export class CanvasCommands {
     }
 
     /**
+     * Command: mark a root group as explicitly created by the user.
+     *
+     * `is_modified` is this project's existing "keep this glyph" marker (imports
+     * and project deserialization set it). Both `syncTreeWithSequence` and
+     * `cleanupUnusedEmptyGroups` delete any root group that is empty, unmodified
+     * and not currently in the sequence. A glyph created from the glyphs panel is
+     * deliberately created, so it must survive the user switching to another
+     * glyph — otherwise the created glyph disappears from the glyph list forever.
+     * No geometry change, so no history entry is recorded here (the creation
+     * itself was already committed by the sequence command).
+     */
+    markGroupExplicit(groupId) {
+        const item = this.curve_manager.treeItems.get(groupId);
+        if (!item || item.type !== 'group') return false;
+        if (item.is_modified === true) return true;
+        item.is_modified = true;
+        this.is_dirty = true;
+        return true;
+    }
+
+    /**
      * Command: apply kerning pair changes (set or remove) through the history
      * pipeline. Each item: { left, right, value } to set, or
      * { left, right, remove: true } to delete. No change -> false (history is
@@ -744,7 +779,33 @@ export class CanvasCommands {
     updateSingleNodeProperty(marker, propId, value, options = {}) {
         const num = Number(value);
         if (!Number.isFinite(num)) return false;
-        const changed = this.curve_manager.updateNodeProperty(marker, propId, num);
+        let changed = false;
+        // Multi-node selection + absolute coordinate edit: the panel can only
+        // display ONE node's coordinate (the primary one), so the typed value is
+        // that node's new absolute position. The user expects the resulting
+        // RELATIVE displacement to apply to every selected node — a node drag
+        // does exactly that (moveSelectedNodes). Setting the absolute value on
+        // the primary node alone used to collapse the selection onto it.
+        const isAxisProp = propId === 'prop_x' || propId === 'prop_y';
+        const primary = isAxisProp ? this.curve_manager.find_node_by_curve?.(marker) : null;
+        if (primary) {
+            const primaryCur = propId === 'prop_x' ? primary.x : primary.y;
+            const delta = num - primaryCur;
+            const allMarkers = resolveMarkersFromCanvas(commandCanvas(this));
+            if (allMarkers.length > 1 && delta !== 0) {
+                for (const m of allMarkers) {
+                    const n = m === marker ? primary : this.curve_manager.find_node_by_curve?.(m);
+                    if (!n) continue;
+                    const cur = propId === 'prop_x' ? n.x : n.y;
+                    const target = m === marker ? num : cur + delta;
+                    if (this.curve_manager.updateNodeProperty(m, propId, target)) changed = true;
+                }
+            } else {
+                changed = this.curve_manager.updateNodeProperty(marker, propId, num);
+            }
+        } else {
+            changed = this.curve_manager.updateNodeProperty(marker, propId, num);
+        }
         if (!changed) {
             return options.recordHistory === true;
         }
@@ -828,14 +889,75 @@ export class CanvasCommands {
 	            return options.recordHistory === true;
 	        }
 
-	        // UPM change: scale EVERY coordinate-bearing value in the document
-	        // model so the whole design space follows the new UPM (user rule:
-	        // "changing the UPM must uniformly scale all coordinate data in
-	        // the font file - nothing may be left unscaled").
-	        const prevUpm = Number(previous.upm) || 1000;
-	        const newUpm = Number(next.upm);
-	        if (Number.isFinite(newUpm) && newUpm > 0 && Number.isFinite(prevUpm) && prevUpm > 0 && newUpm !== prevUpm) {
-	            const ratio = newUpm / prevUpm;
+        // Metric (non-UPM) changes - baseline anchor rule.
+        //
+        // Coordinate convention: model y=0 is the ASCENDER line, model y grows
+        // downward toward the baseline; the baseline sits at model
+        // y = ascender and screen mapping is yScreen = offsetY + y*scale.
+        //
+        // Why translation is REQUIRED (the reported bug): baselineScreenY =
+        // offsetY + ascender*scale depends on ascender, so editing ascender
+        // moved the baseline (and every glyph with it) on screen while node
+        // model coordinates stayed put - nodes, guides, rulers and the
+        // vertical ruler's design values all referenced different origins.
+        // Semantics: metrics are annotations; the baseline is the anchor and
+        // must not move. Compensate by translating every model datum by +dy
+        // (= newAsc - prevAsc, y-down): the baseline's model y then becomes
+        // (newAsc - dy) = prevAsc - identical before/after, so the baseline,
+        // glyph-relative shapes, guides and rulers all stay where they were.
+        const prevAsc = Number(previous.ascender);
+        const newAsc = Number(next.ascender);
+        const newUpmN = Number(next.upm);
+        const prevUpm = Number(previous.upm) || 1000;
+        const upmChanged = Number.isFinite(newUpmN) && newUpmN > 0 && prevUpm > 0 && newUpmN !== prevUpm;
+        if (!upmChanged && Number.isFinite(prevAsc) && Number.isFinite(newAsc) && newAsc !== prevAsc) {
+            const dy = newAsc - prevAsc; // y-down model: +dy moves content toward the baseline
+            const cm = this.curve_manager;
+            // 1) Curve geometry: translate nodes + handles; shape untouched.
+            for (const curve of cm.curveById.values()) {
+                let node = curve.startNode;
+                while (node) {
+                    node.y += dy;
+                    if (node.control1) node.control1.y += dy;
+                    if (node.control2) node.control2.y += dy;
+                    node = node.nextOnCurve;
+                }
+                curve._invalidateBounds();
+                curve.invalidateBooleanCache?.();
+                curve._booleanContentHash = null;
+            }
+            // 2) References and images: vertical component of their transform.
+            for (const item of cm.treeItems.values()) {
+                if (((item.type === 'group' && item.isRef) || item.type === 'image') && item.transform) {
+                    item.transform.f += dy;
+                    item.is_modified = true;
+                }
+            }
+            cm.groupFlatCache?.clear?.();
+            // 3) User guidelines + measurement rulers (design units).
+            for (const g of canvas.guidelines || []) {
+                if (Number.isFinite(g.y)) g.y += dy;
+            }
+            for (const r of canvas.rulers || []) {
+                if (r && Number.isFinite(r.y1)) { r.y1 += dy; r.y2 += dy; }
+            }
+            // 4) Glyphs re-serialize (history/save/export); sequence offsets unaffected.
+            cm._glifExportCache.clear();
+            for (const rootId of cm.rootChildren) cm._markDirty(rootId);
+            // 5) Viewport compensation: keep the baseline at the same screen y.
+            //    baselineScreenY = offsetY + ascender*scale  =>  offset.y -= dy*scale.
+            //    (UPM changes deliberately do NOT compensate; a metric edit is a
+            //    small annotation change and must not visibly pan the document.)
+            canvas.offset = { x: canvas.offset.x, y: canvas.offset.y - dy * canvas.scale };
+            canvas.editorStore?.syncViewFromCanvas?.();
+        }
+
+        // UPM change: scale EVERY coordinate-bearing value in the document
+        // model so the whole design space follows the new UPM (user rule:
+        // "changing the UPM must uniformly scale all coordinate data in
+        // the font file - nothing may be left unscaled").
+        if (upmChanged) {
+            const ratio = newUpmN / prevUpm;
 	            const scaleVal = (v) => v * ratio;
 
 	            // 1) Document model: node coordinates, control handles, stroke
@@ -1126,6 +1248,24 @@ export class CanvasCommands {
             if (this.curve_manager.unlinkReferenceDeep(id)) changed = true;
         }
         if (!changed) return false;
+        // The unlinked ref items are gone from the tree (replaced by real clone
+        // curves). Two things must happen or the tree panel keeps showing a row
+        // that no longer exists — the "ghost reference" that cannot be selected
+        // or deleted:
+        //   1. drop the dead ref ids from the tree selection (the panel seeds its
+        //      rebuild from the store's selectedTreeIds);
+        //   2. emit TREE_UPDATED (notifyTreeUpdate). notifyPropertiesUpdate only
+        //      emits MODEL_UPDATED; the tree snapshot is versioned separately, so
+        //      without this call the clones do not show up and the old ref row
+        //      stays in the DOM until something else triggers a tree revision
+        //      (or the file is reloaded — which is exactly what the bug report
+        //      describes).
+        const remaining = ids.filter((id) => this.curve_manager.treeItems.has(id));
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.SET_TREE_SELECTION,
+            payload: { ids: remaining }
+        });
+        this.curve_manager.notifyTreeUpdate();
         this.notifyPropertiesUpdate();
         this.is_dirty = true;
         this.curve_manager.rebuildSpatialGrid();
@@ -1518,8 +1658,7 @@ export class CanvasCommands {
             curve._lastHash = null;
             curve._booleanContentHash = null;
             curve._booleanPath2D = null;
-            curve._boundsCache = null;
-            curve._matrixBoundsCache = null;
+            curve._invalidateBounds();
         }
         this.curve_manager._geometryEpoch = (this.curve_manager._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
@@ -1780,8 +1919,7 @@ export class CanvasCommands {
             curve._lastHash = null;
             curve._booleanContentHash = null;
             curve._booleanPath2D = null;
-            curve._boundsCache = null;
-            curve._matrixBoundsCache = null;
+            curve._invalidateBounds();
         }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
@@ -1921,8 +2059,7 @@ export class CanvasCommands {
             curve._lastHash = null;
             curve._booleanContentHash = null;
             curve._booleanPath2D = null;
-            curve._boundsCache = null;
-            curve._matrixBoundsCache = null;
+            curve._invalidateBounds();
         }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         this.notifyPropertiesUpdate();
@@ -2106,8 +2243,7 @@ export class CanvasCommands {
             curve._lastHash = null;
             curve._booleanContentHash = null;
             curve._booleanPath2D = null;
-            curve._boundsCache = null;
-            curve._matrixBoundsCache = null;
+            curve._invalidateBounds();
         }
         cm._geometryEpoch = (cm._geometryEpoch || 0) + 1;
         cm.notifyModelUpdate();
@@ -2289,7 +2425,8 @@ export class CanvasCommands {
     simplifyPath() {
         const cm = this.curve_manager;
         const canvas = commandCanvas(this);
-        const selectedIds = selectedTreeIdsFromStore(canvas);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
         if (selectedIds.length === 0) return false;
 
         let changed = false;
@@ -2351,6 +2488,7 @@ export class CanvasCommands {
             cm.notifyModelUpdate();
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.bumpGeometryEpoch();
             cm.rebuildSpatialGrid();
             this._commitHistory("simplifyPath");
         }
@@ -2367,7 +2505,8 @@ export class CanvasCommands {
     optimizePath() {
         const cm = this.curve_manager;
         const canvas = commandCanvas(this);
-        const selectedIds = selectedTreeIdsFromStore(canvas);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
         if (selectedIds.length === 0) return false;
 
         const HANDLE_EPSILON = 0.5;
@@ -2392,6 +2531,18 @@ export class CanvasCommands {
             return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
         }
 
+        // Helper: unlink a control handle on `node`, keeping domMap and
+        // control_mode consistent (mirrors curve_store.deleteControlNode).
+        function dropHandle(curve, node, isOutgoing) {
+            const h = isOutgoing ? node.control1 : node.control2;
+            if (!h?.main_node) return;
+            if (isOutgoing) node.control1 = null; else node.control2 = null;
+            curve.domMap.delete(h.main_node);
+            cm.domMap.delete(h.main_node);
+            if (!node.control1 && !node.control2) node.control_mode = 0;
+            else if (node.control_mode === 2) node.control_mode = 1; // no longer symmetric
+        }
+
         for (const id of selectedIds) {
             const item = cm.treeItems.get(id);
             if (!item || item.type !== 'curve') continue;
@@ -2402,11 +2553,11 @@ export class CanvasCommands {
             let node = curve.startNode;
             while (node) {
                 if (node.control1 && Math.hypot(node.control1.x - node.x, node.control1.y - node.y) < HANDLE_EPSILON) {
-                    node.control1 = null;
+                    dropHandle(curve, node, true);
                     changed = true;
                 }
                 if (node.control2 && Math.hypot(node.control2.x - node.x, node.control2.y - node.y) < HANDLE_EPSILON) {
-                    node.control2 = null;
+                    dropHandle(curve, node, false);
                     changed = true;
                 }
                 node = node.nextOnCurve;
@@ -2415,11 +2566,11 @@ export class CanvasCommands {
             // Pass 2: Remove orphaned endpoint control handles (open paths)
             if (!curve.closed && curve.startNode !== curve.endNode) {
                 if (curve.startNode.control2) {
-                    curve.startNode.control2 = null;
+                    dropHandle(curve, curve.startNode, false);
                     changed = true;
                 }
                 if (curve.endNode.control1) {
-                    curve.endNode.control1 = null;
+                    dropHandle(curve, curve.endNode, true);
                     changed = true;
                 }
             }
@@ -2427,12 +2578,32 @@ export class CanvasCommands {
             // Collect nodes for passes 3 and 4
             let allNodes = collectNodes(curve.startNode);
 
-            // Pass 3: Merge coincident adjacent nodes (iterate backwards)
+            // Pass 3: Merge coincident adjacent nodes (iterate backwards).
+            // Uses handle-transfer merge (NOT remove_node_by_dom): removing a node
+            // that nearly coincides with its neighbour degenerates the through-point
+            // reconstruction (t→0, exploded handles) and warps the path.
             for (let i = allNodes.length - 1; i >= 1; i--) {
                 const a = allNodes[i - 1], b = allNodes[i];
+                // Only merge when keep-node survives: if a was already removed
+                // earlier in this backward pass it sits in allNodes but is detached.
+                if (a.nextOnCurve !== b) continue;
                 if (Math.hypot(a.x - b.x, a.y - b.y) < COLLIN_TOL) {
-                    if (curve.remove_node_by_dom(b.main_node)) {
+                    if (curve.mergeCoincidentNodeIntoPrev(a, b)) {
                         allNodes.splice(i, 1);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Closed contours store their chain linearly (endNode.nextOnCurve = null)
+            // and keep the closing segment endNode→startNode implicit. The chain scan
+            // above never compares those two endpoints — exactly where imported font
+            // contours most often carry duplicate nodes (opening point == closing point).
+            if (curve.closed && allNodes.length >= 3) {
+                const first = allNodes[0], last = allNodes[allNodes.length - 1];
+                if (first !== last && Math.hypot(first.x - last.x, first.y - last.y) < COLLIN_TOL) {
+                    if (curve.mergeClosedEndpointIntoStart(first, last)) {
+                        allNodes.pop();
                         changed = true;
                     }
                 }
@@ -2449,7 +2620,15 @@ export class CanvasCommands {
                 const next = allNodes[i + 1] || allNodes[0];
                 if (!prev || !next) continue;
                 const d = distToSeg(curr.x, curr.y, prev.x, prev.y, next.x, next.y);
-                if (d < COLLIN_TOL) {
+                // Node coordinate alone is not enough: if the node carries curved
+                // handles, deleting it (even as "collinear") would change the shape.
+                // Require the neighbouring handles to hug the same line.
+                const handlesInline =
+                    (!prev.control1 || distToSeg(prev.control1.x, prev.control1.y, prev.x, prev.y, next.x, next.y) < COLLIN_TOL) &&
+                    (!curr.control2 || distToSeg(curr.control2.x, curr.control2.y, prev.x, prev.y, next.x, next.y) < COLLIN_TOL) &&
+                    (!curr.control1 || distToSeg(curr.control1.x, curr.control1.y, prev.x, prev.y, next.x, next.y) < COLLIN_TOL) &&
+                    (!next.control2 || distToSeg(next.control2.x, next.control2.y, prev.x, prev.y, next.x, next.y) < COLLIN_TOL);
+                if (d < COLLIN_TOL && handlesInline) {
                     if (curve.remove_node_by_dom(curr.main_node)) {
                         allNodes.splice(i, 1);
                         changed = true;
@@ -2462,6 +2641,7 @@ export class CanvasCommands {
             cm.notifyModelUpdate();
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.bumpGeometryEpoch();
             cm.rebuildSpatialGrid();
             this._commitHistory("optimizePath");
         }
@@ -2474,7 +2654,8 @@ export class CanvasCommands {
     roundNodes() {
         const cm = this.curve_manager;
         const canvas = commandCanvas(this);
-        const selectedIds = selectedTreeIdsFromStore(canvas);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
         if (selectedIds.length === 0) return false;
 
         let changed = false;
@@ -2519,6 +2700,7 @@ export class CanvasCommands {
             cm.notifyModelUpdate();
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.bumpGeometryEpoch();
             cm.rebuildSpatialGrid();
             this._commitHistory("roundNodes");
         }
@@ -2530,14 +2712,20 @@ export class CanvasCommands {
      * (curvature) continuity. Node positions and handle directions are
      * unchanged — only the magnitude of each handle is adjusted.
      *
-     * At a joint where two cubic Bezier segments meet (C1 already satisfied),
-     * C2 requires:  |h_in| / |h_out| = sin(out_angle) / sin(in_angle)
-     * where h_in is the incoming handle and h_out is the outgoing handle.
+     * 原理：三次贝塞尔曲线在端点处的曲率（“均匀参数化”局部近似）为
+     *     κ ≈ (2/9) · |弦| · sinθ / h²
+     * 其中 θ 是该侧手柄与弦（相邻 on-curve 点连线）的夹角，h 为该侧手柄长度。
+     * 两侧（入/出）曲率相等 ⇒
+     *     |h_in| / |h_out| = sqrt( (|c_in|·sinθ_in) / (|c_out|·sinθ_out) )
+     * 保持两侧手柄总长不变，仅按该比例重分 hIn/hOut；多次迭代收敛。
+     * 与 simplify path 的区别：不删除任何节点、不移动节点、不改变手柄方向，
+     * 只让每个关节两侧的曲率连续（视觉上“接顺”），形状位置完全不变。
      */
     smoothCurves() {
         const cm = this.curve_manager;
         const canvas = commandCanvas(this);
-        const selectedIds = selectedTreeIdsFromStore(canvas);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
         if (selectedIds.length === 0) return false;
 
         let changed = false;
@@ -2607,13 +2795,14 @@ export class CanvasCommands {
                     // If either sin is near zero, handle is parallel to chord — skip
                     if (sinIn < 1e-6 || sinOut < 1e-6) continue;
 
-                    // C2 target ratio: |h_in| / |h_out| = sinOut / sinIn
-                    const targetRatio = sinOut / sinIn;
+                    // C2 target ratio: |h_in|/|h_out| = sqrt( sinIn / sinOut )
+                    // （sinIn/sinOut 即 |c_in|·sinθ_in / |c_out|·sinθ_out）
+                    const targetRatio = Math.sqrt(sinIn / sinOut);
 
                     // New lengths (preserve total length, adjust ratio)
                     const total = hIn + hOut;
-                    const newHOut = total * targetRatio / (1 + targetRatio);
-                    const newHIn  = total / (1 + targetRatio);
+                    const newHIn  = total * targetRatio / (1 + targetRatio);
+                    const newHOut = total / (1 + targetRatio);
 
                     // Apply new lengths, keep directions
                     if (n.control1) {
@@ -2634,9 +2823,216 @@ export class CanvasCommands {
             cm.notifyModelUpdate();
             this.notifyPropertiesUpdate();
             this.is_dirty = true;
+            this.bumpGeometryEpoch();
             cm.rebuildSpatialGrid();
             this._commitHistory("smoothCurves");
         }
         return changed;
+    }
+
+    // ── 选中路径级操作（fonttools 后端，逐条处理选中路径，可撤销）──────────
+    //
+    // 与 simplifyPath / optimizePath 同一模式：作用域 = selectedCurveIdsFromStore
+    // （唯一权威的「选中路径列表」），只把选中的路径顶点 JSON 发给后端，
+    // 结果原位应用并以历史命令提交。绝不做整文件往返。
+
+    /** 把一条曲线序列化为后端路径 JSON（画布 Y-down 坐标）。 */
+    _serializeCurveForOp(curve) {
+        const vertices = [];
+        let n = curve.startNode;
+        const seen = new Set();
+        while (n && !seen.has(n.main_node)) {
+            seen.add(n.main_node);
+            vertices.push({
+                x: n.x,
+                y: n.y,
+                control_1: n.control1 ? { x: n.control1.x, y: n.control1.y } : null,
+                control_2: n.control2 ? { x: n.control2.x, y: n.control2.y } : null,
+                control_mode: _CONTROL_MODE_NAMES[n.control_mode] || "corner"
+            });
+            n = n.nextOnCurve;
+        }
+        return { closed: !!curve.closed, vertices };
+    }
+
+    /**
+     * Correct Path Direction：对选中的路径逐条校正方向。
+     * 方向约定（画布 Y-down）：外轮廓逆时针、内孔顺时针，嵌套深度只在
+     * 「本次选中的闭合路径」之间计算。只翻转方向错误的路径，可撤销。
+     */
+    async correctDirectionSelected() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+        if (!canvas.io?.callPathOp) return false;
+
+        const items = [];
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode) continue;
+            items.push({ curve, path: this._serializeCurveForOp(curve) });
+        }
+        if (items.length === 0) return false;
+
+        let data;
+        try {
+            data = await canvas.io.callPathOp('correct_direction', items.map((x) => x.path));
+        } catch (e) {
+            console.error('[Commands] correctDirectionSelected failed:', e);
+            alert("Operation failed: " + (e?.message || e));
+            return false;
+        }
+        const resultPaths = data?.paths || [];
+
+        let changed = false;
+        for (let i = 0; i < items.length; i++) {
+            const resPath = resultPaths[i];
+            if (resPath?.reversed) {
+                items[i].curve.reverseSkeletonDirection();
+                changed = true;
+            }
+        }
+        if (!changed) return false;
+
+        cm.notifyModelUpdate();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this.bumpGeometryEpoch();
+        cm.rebuildSpatialGrid();
+        this._commitHistory("correctDirection");
+        return true;
+    }
+
+    /**
+     * Remove Overlap：对选中的闭合路径做布尔并集（移除重叠），
+     * 结果原位替换选中路径，开放路径不参与并集并保持不变。可撤销。
+     */
+    async removeOverlapSelected() {
+        const cm = this.curve_manager;
+        const canvas = commandCanvas(this);
+        // 组选定时展开为全部后代曲线（曲线本身仍直接命中）
+        const selectedIds = selectedCurveIdsFromStore(canvas);
+        if (selectedIds.length === 0) return false;
+        if (!canvas.io?.callPathOp) return false;
+
+        // 只处理闭合路径；并集结果落到第一个选中路径所在的组
+        let targetGroupId = null;
+        const closedCurves = [];
+        for (const id of selectedIds) {
+            const item = cm.treeItems.get(id);
+            if (!item || item.type !== 'curve') continue;
+            const curve = cm.curveById.get(item.curveId);
+            if (!curve || !curve.startNode || !curve.closed) continue;
+            if (targetGroupId === null) {
+                targetGroupId = curve.groupId;
+            } else if (curve.groupId !== targetGroupId) {
+                console.warn("Remove Overlap Failed: All selected paths must belong to the exact same Group.");
+                return false;
+            }
+            closedCurves.push(curve);
+        }
+        if (closedCurves.length === 0 || targetGroupId === null) return false;
+
+        let data;
+        try {
+            data = await canvas.io.callPathOp(
+                'remove_overlap',
+                closedCurves.map((curve) => this._serializeCurveForOp(curve))
+            );
+        } catch (e) {
+            console.error('[Commands] removeOverlapSelected failed:', e);
+            alert("Operation failed: " + (e?.message || e));
+            return false;
+        }
+        const resultPaths = data?.paths || [];
+        if (resultPaths.length === 0) return false;
+
+        // 删除原选中曲线（先清理 DOM markers，再删树项，最后从 curves 数组移除——
+        // 与 expandSelectedStroke / executeBooleanUnion 相同的清理顺序）
+        for (const curve of closedCurves) {
+            cm.curveStore.unregisterCurveDomMarkers(curve);
+            cm.treeStore.deleteTreeItem(curve.id, false);
+            cm.curveStore.remove_curve(curve.id);
+        }
+        // 用并集结果创建新曲线
+        const newCurves = [];
+        for (const path of resultPaths) {
+            if (!path || !Array.isArray(path.vertices) || path.vertices.length < 2) continue;
+            const curve = this._createCurveFromVertices(path.vertices, !!path.closed, targetGroupId);
+            if (curve) newCurves.push(curve);
+        }
+        if (newCurves.length === 0) {
+            cm.notifyTreeUpdate();
+            this.notifyPropertiesUpdate();
+            this.is_dirty = true;
+            return true;
+        }
+
+        // 选中新曲线（与 expandSelectedStroke 相同的选择更新方式）
+        commitInteractionFromCommand(this, {
+            type: EDITOR_ACTIONS.CHANGE_OBJECT_SELECTION,
+            payload: {
+                strategy: "replace",
+                curveIds: newCurves.map((c) => c.id),
+                refIds: []
+            }
+        });
+        cm.notifyModelUpdate();
+        this.notifyPropertiesUpdate();
+        this.is_dirty = true;
+        this.bumpGeometryEpoch();
+        cm.rebuildSpatialGrid();
+        this._commitHistory("removeOverlap");
+        return true;
+    }
+
+    /** 从后端返回的顶点 JSON 创建一条新曲线并加入指定组。 */
+    _createCurveFromVertices(vertices, closed, groupId) {
+        const cm = this.curve_manager;
+        const newCurve = cm.create_temp_curve();
+        newCurve.closed = closed;
+        newCurve.stroke_width = 0;
+
+        let last_main_node = null;
+        for (let i = 0; i < vertices.length; i++) {
+            const v = vertices[i];
+            const marker = generateMarker("vertex");
+            cm.add_node_by_curve(marker, "vertex", v.x, v.y, null, last_main_node, newCurve, String(marker.id));
+            last_main_node = marker;
+            const node = cm.find_node_by_curve(marker);
+
+            // 手柄：changeSmoothModeOnSingleNode 默认生成等长双手柄，
+            // 再按结果坐标精确定位；零长手柄删除（与 expandSelectedStroke 相同）。
+            const out = v.control_1;
+            const inn = v.control_2;
+            const hasOut = out && Math.hypot(out.x - v.x, out.y - v.y) >= 0.001;
+            const hasIn = inn && Math.hypot(inn.x - v.x, inn.y - v.y) >= 0.001;
+            if (hasOut || hasIn) {
+                cm.changeSmoothModeOnSingleNode(marker, 1, true);
+                if (node.control1) {
+                    if (hasOut) {
+                        node.control1.x = out.x;
+                        node.control1.y = out.y;
+                    } else {
+                        cm.deleteControlNode(node.control1.main_node);
+                    }
+                }
+                if (node.control2) {
+                    if (hasIn) {
+                        node.control2.x = inn.x;
+                        node.control2.y = inn.y;
+                    } else {
+                        cm.deleteControlNode(node.control2.main_node);
+                    }
+                }
+            }
+            newCurve.endNode = node;
+        }
+        cm.addPath(newCurve, groupId);
+        return newCurve;
     }
 }

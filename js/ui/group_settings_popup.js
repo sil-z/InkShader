@@ -34,20 +34,20 @@ export const GRP_DOCKED = 'grp:docked';
 const POPUP_HTML = `
 <div class="property_group_title npp-drag-handle" id="grp_drag_handle" data-i18n="prop.glyph_settings">Glyph Settings</div>
 <div class="npp-fields" id="grp_standard_fields">
-    <div class="npp-row"><label>Name</label><input type="text" id="grp_name"></div>
-    <div class="npp-row"><label>Char</label><input type="text" id="grp_char"></div>
-    <div class="npp-row"><label>Advance</label><input type="number" id="grp_advance"></div>
-    <div class="npp-row"><label>LSB</label><input type="number" id="grp_lsb"></div>
-    <div class="npp-row"><label>RSB</label><input type="number" id="grp_rsb"></div>
-    <div class="npp-row"><label>Left Kern</label><select id="grp_kern_left"><option value="">(none)</option></select></div>
-    <div class="npp-row"><label>Right Kern</label><select id="grp_kern_right"><option value="">(none)</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.name">Name</label><input type="text" id="grp_name"></div>
+    <div class="npp-row"><label data-i18n="prop.char">Char</label><input type="text" id="grp_char"></div>
+    <div class="npp-row"><label data-i18n="prop.advance">Advance Width</label><input type="number" id="grp_advance"></div>
+    <div class="npp-row"><label data-i18n="prop.lsb">LSB</label><input type="number" id="grp_lsb"></div>
+    <div class="npp-row"><label data-i18n="prop.rsb">RSB</label><input type="number" id="grp_rsb"></div>
+    <div class="npp-row"><label data-i18n="prop.kern_left">Left Kern</label><select id="grp_kern_left"><option value="">(none)</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.kern_right">Right Kern</label><select id="grp_kern_right"><option value="">(none)</option></select></div>
 </div>
 <div class="npp-fields" id="grp_ref_fields" style="display:none">
-    <div class="npp-row"><label>Name</label><input type="text" id="grp_ref_name" readonly></div>
-    <div class="npp-row"><label>Position</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="grp_ref_pos_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="grp_ref_pos_y"></div></div>
-    <div class="npp-row"><label>Scale</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.001" id="grp_ref_scale_x"><span class="npp-axis">Y</span><input type="number" step="0.001" id="grp_ref_scale_y"></div></div>
-    <div class="npp-row"><label>Rotation</label><div class="npp-input-group"><span class="npp-axis">°</span><input type="number" step="0.1" id="grp_ref_rotation"></div></div>
-    <div class="npp-row"><label>Shear</label><div class="npp-input-group"><span class="npp-axis">V</span><input type="number" step="0.001" id="grp_ref_shear"></div></div>
+    <div class="npp-row"><label data-i18n="prop.name">Name</label><input type="text" id="grp_ref_name" readonly></div>
+    <div class="npp-row"><label data-i18n="prop.position">Position</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="grp_ref_pos_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="grp_ref_pos_y"></div></div>
+    <div class="npp-row"><label data-i18n="prop.scale">Scale</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.001" id="grp_ref_scale_x"><span class="npp-axis">Y</span><input type="number" step="0.001" id="grp_ref_scale_y"></div></div>
+    <div class="npp-row"><label data-i18n="prop.rotation">Rotation</label><div class="npp-input-group"><span class="npp-axis">°</span><input type="number" step="0.1" id="grp_ref_rotation"></div></div>
+    <div class="npp-row"><label data-i18n="prop.shear">Shear</label><div class="npp-input-group"><span class="npp-axis">V</span><input type="number" step="0.001" id="grp_ref_shear"></div></div>
 </div>`;
 
 const POS_KEY = 'grp_pos';

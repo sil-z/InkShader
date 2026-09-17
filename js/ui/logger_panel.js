@@ -3,7 +3,7 @@ import { appEventBus } from "../app/event_bus.js";
 const TEMPLATE_HTML = `
     <div class="logger-scroll">
         <div class="prop_panel_title_wrapper">
-            <div class="panel_title">Console</div>
+            <div class="panel_title" data-i18n="panel.console">Console</div>
         </div>
         <div class="logger-output" id="logger_output"></div>
     </div>

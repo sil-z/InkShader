@@ -173,9 +173,13 @@ export function pickEllipseToolFieldsFromCanvas(canvas) {
 
 /** Read-only history stack depth mirror (for UI display, does not write selection) */
 export function pickHistoryStackFields(canvas) {
+    const stack = Array.isArray(canvas?.commandStack) ? canvas.commandStack : [];
     return {
-        commandStackSize: Array.isArray(canvas?.commandStack) ? canvas.commandStack.length : 0,
+        commandStackSize: stack.length,
         redoStackSize: Array.isArray(canvas?.redoCommandStack) ? canvas.redoCommandStack.length : 0,
+        // 栈顶命令 id：脏判定用「保存点是否等于当前栈顶」而非盲数编辑次数，
+        // 撤回到保存点自然回到干净状态（现代编辑器通用做法）。
+        historyTopCommandId: stack.length ? (stack[stack.length - 1]?.id ?? null) : null,
         isRestoring: canvas?.is_restoring === true
     };
 }

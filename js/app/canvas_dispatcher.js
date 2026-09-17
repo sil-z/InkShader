@@ -6,7 +6,7 @@
  * Interaction state: written to Store only via dispatch / commitInteraction, then projected to CM.
  */
 import { appEventBus } from "./event_bus.js";
-import { CANVAS_EVENTS, createCanvasAction } from "./canvas_events.js";
+import { CANVAS_ACTIONS, CANVAS_EVENTS, createCanvasAction } from "./canvas_events.js";
 import { commitCommandHistory } from "./editor_command_log.js";
 
 function emitRequest(eventName, detail = {}) {
@@ -100,6 +100,14 @@ export const CanvasDispatcher = Object.freeze({
     requestSetGroupAdvance(id, value, options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, { id, value, options });
     },
+    /**
+     * Mark a group as explicitly created by the user (survives the
+     * unused-empty-group prune pass even when it leaves the sequence).
+     * @returns {boolean} whether the flag is now set
+     */
+    requestMarkGroupExplicit(id) {
+        return requestWithResult(CANVAS_EVENTS.REQUEST_MARK_GROUP_EXPLICIT, { id, result: false });
+    },
     requestSetKerningPairs(pairs = [], options = {}) {
         emitRequest(CANVAS_EVENTS.REQUEST_SET_KERNING_PAIRS, { pairs, options });
     },
@@ -153,8 +161,11 @@ export const CanvasDispatcher = Object.freeze({
     requestOptimizePath() { emitRequest(CANVAS_EVENTS.REQUEST_OPTIMIZE_PATH); },
     requestRoundNodes() { emitRequest(CANVAS_EVENTS.REQUEST_ROUND_NODES); },
     requestSmoothCurves() { emitRequest(CANVAS_EVENTS.REQUEST_SMOOTH_CURVES); },
+    requestCorrectDirection() { emitRequest(CANVAS_EVENTS.REQUEST_CORRECT_DIRECTION); },
+    requestRemoveOverlap() { emitRequest(CANVAS_EVENTS.REQUEST_REMOVE_OVERLAP); },
     requestImport() { emitRequest(CANVAS_EVENTS.REQUEST_IMPORT); },
     requestSave() { emitRequest(CANVAS_EVENTS.REQUEST_SAVE); },
+    requestSaveAs() { emitRequest(CANVAS_EVENTS.REQUEST_SAVE_AS); },
     requestLoad() { emitRequest(CANVAS_EVENTS.REQUEST_LOAD); },
     requestNewProject() { emitRequest(CANVAS_EVENTS.REQUEST_NEW_PROJECT); },
     requestLoadFromCache(projectName) { emitRequest(CANVAS_EVENTS.REQUEST_LOAD_FROM_CACHE, { projectName }); },

@@ -218,12 +218,13 @@ export function drawCurveNode(
     const sy = mainPt.y;
 
     // ── Handle lines (dynamic per-frame, draw directly) ──
-    // Uses skeleton line color (path_stroke_color) for both ahead and back handles.
+    // Independent color (handle_line_color) — deliberately NOT the skeleton
+    // line color (path_stroke_color); both are separately configurable.
     if (showHandles) {
         ctx.lineWidth = theme.path_stroke_width * 0.75;
         if (node.control1 !== null) {
             const cp = mapPoint(node.control1.x, node.control1.y);
-            ctx.strokeStyle = theme.path_stroke_color;
+            ctx.strokeStyle = theme.handle_line_color;
             ctx.beginPath();
             ctx.moveTo(sx, sy);
             ctx.lineTo(cp.x, cp.y);
@@ -231,7 +232,7 @@ export function drawCurveNode(
         }
         if (node.control2 !== null) {
             const cp = mapPoint(node.control2.x, node.control2.y);
-            ctx.strokeStyle = theme.path_stroke_color;
+            ctx.strokeStyle = theme.handle_line_color;
             ctx.beginPath();
             ctx.moveTo(sx, sy);
             ctx.lineTo(cp.x, cp.y);

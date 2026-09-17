@@ -10,6 +10,16 @@ export class StorageUtils {
     static VIEW_SAVE_KEY = "last_view_state";
     static MAX_CACHED_PROJECTS = 5;
 
+    /**
+     * localStorage fallback written synchronously in beforeunload. localStorage
+     * writes are 100% synchronous, so the final state survives the unload even
+     * when Chrome aborts the IndexedDB transaction mid-teardown (a real,
+     * observed race: larger project payloads don't commit before the renderer
+     * is destroyed). Recovered on next boot when it is newer than the cached
+     * IndexedDB entry.
+     */
+    static UNLOAD_FALLBACK_KEY = "__ink_unload_pending";
+
     /** Format identifier — written on every save, checked on every load to distinguish InkShader project entries from foreign data. */
     static PROJECT_SIGNATURE = "InkShader V1 Project";
 
@@ -151,6 +161,65 @@ export class StorageUtils {
         return value._signature === this.PROJECT_SIGNATURE;
     }
 
+    /**
+     * Synchronous unload fallback (beforeunload). Best-effort: large projects
+     * may exceed the localStorage quota — QuotaExceededError is swallowed and
+     * the IndexedDB fast put remains the primary (usually sufficient) write.
+     */
+    static saveUnloadFallback(projectName, data) {
+        try {
+            localStorage.setItem(
+                this.UNLOAD_FALLBACK_KEY,
+                JSON.stringify({
+                    projectName,
+                    savedAt: Date.now(),
+                    data
+                })
+            );
+        } catch (_) { /* quota / private mode — ignore */ }
+    }
+
+    /**
+     * Read + clear the unload fallback. Applies it only when it is newer than
+     * the IndexedDB cache entry — otherwise a stale fallback from another tab's
+     * unload could clobber newer edits made in this session. Returns the project
+     * name when the fallback was applied (already written back into IndexedDB).
+     */
+    static async recoverUnloadFallback() {
+        let raw = null;
+        try { raw = localStorage.getItem(this.UNLOAD_FALLBACK_KEY); } catch (_) {}
+        if (!raw) return null;
+        try { localStorage.removeItem(this.UNLOAD_FALLBACK_KEY); } catch (_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(raw); } catch (_) { return null; }
+        const { projectName, savedAt, data } = parsed || {};
+        if (!projectName || !data || !data.latestSnapshot) return null;
+        // Only apply when strictly newer than what is already cached.
+        const cached = await this.loadProject(projectName).catch(() => null);
+        const cachedTs = cached?.commandStack?.length
+            ? cached.commandStack[cached.commandStack.length - 1].timestamp || 0
+            : 0;
+        if (cachedTs > (savedAt || 0)) return null;
+        await this.saveProject(projectName, data);
+        return projectName;
+    }
+
+    /**
+     * Unload-safe minimal-chain project write. Unlike saveProject, it skips the
+     * existence check (_idbGet) and the MRU order touch — the remaining await
+     * chain is short enough that the IndexedDB put is DISPATCHED in the same
+     * task as the caller. During beforeunload the page is destroyed right after
+     * the handler returns, and any chain that requires another IndexedDB round
+     * trip (get → put → order) stalls before the put is ever issued — the
+     * in-flight gesture's last write would be lost on live-reload. The order
+     * list is touched again by the next normal save / loadProject anyway.
+     */
+    static async saveProjectNow(projectName, data) {
+        await this._ensureMigrated();
+        const stamped = { _signature: this.PROJECT_SIGNATURE, ...data };
+        await this._idbPut(this._PROJ_PREFIX + projectName, stamped);
+    }
+
     static async saveProject(projectName, data) {
         await this._ensureMigrated();
         const key = this._PROJ_PREFIX + projectName;
@@ -240,6 +309,21 @@ export class StorageUtils {
         await this._ensureMigrated();
         const data = await this._idbGet(this._PROJ_PREFIX + projectName);
         return data !== undefined && data !== null;
+    }
+
+    /** MRU 顺序的项目名列表（最后保存/加载的在末尾 = 栈顶）。 */
+    static async projectOrder() {
+        await this._ensureMigrated();
+        return this._getProjectOrder();
+    }
+
+    /** 缓存项目栈顶：最后保存/加载且条目仍有效的项目名；无则 null。 */
+    static async latestCachedProject() {
+        const order = await this.projectOrder();
+        for (let i = order.length - 1; i >= 0; i--) {
+            if (await this.projectExists(order[i])) return order[i];
+        }
+        return null;
     }
 
     // ── Active project (localStorage) ──

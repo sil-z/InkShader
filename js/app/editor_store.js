@@ -202,6 +202,13 @@ export class EditorStore {
             treeRevision: (this.state.treeRevision || 0) + 1,
             documentRevision: (this.state.documentRevision || 0) + 1,
             ...modelPatch,
+            // Restore may clear/re-order the selection; recompute the cached
+            // selection bounds the property panel reads. pickModelRevisionFields
+            // only refreshes it when the selection has an object, so a selection
+            // emptied by undo must explicitly null it (stale bounds would make
+            // the next panel edit compute its delta from pre-undo coordinates —
+            // the object then moves to a wrong position).
+            selectionBoundsTransform: modelPatch.selectionBoundsTransform ?? null,
             ...pickViewFieldsFromCanvas(canvas, this.state),
             drawToolSettings: pickDrawToolFieldsFromCanvas(canvas)
         };

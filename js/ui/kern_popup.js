@@ -18,13 +18,13 @@ const POPUP_HTML = `
 <div class="prop_panel_title_wrapper"><span class="panel_title" data-i18n="panel.kerning">Kerning</span></div>
 <div class="pen-tool-popup-body kern-popup-body">
   <div class="kern-popup-add-row">
-    <select class="kern-left-select" data-i18n-placeholder="kern.left_glyph" title="Left glyph">
+    <select class="kern-left-select" data-i18n-placeholder="kern.left_glyph" data-i18n-tip="kern.left_glyph" title="Left glyph">
       <option value="">-- Left --</option>
     </select>
-    <select class="kern-right-select" data-i18n-placeholder="kern.right_glyph" title="Right glyph">
+    <select class="kern-right-select" data-i18n-placeholder="kern.right_glyph" data-i18n-tip="kern.right_glyph" title="Right glyph">
       <option value="">-- Right --</option>
     </select>
-    <input type="number" class="kern-value-input" value="0" step="5" placeholder="0" title="Kerning value (UPM)">
+    <input type="number" class="kern-value-input" value="0" step="5" placeholder="0" data-i18n-tip="kern.value_tip" title="Kerning value (UPM)">
     <button class="kern-add-btn" data-i18n="kern.add">Add</button>
   </div>
   <div class="kern-popup-list">
@@ -291,7 +291,7 @@ export class KernPopup extends HTMLElement {
                     <span class="kern-pair-arrow">&rarr;</span>
                     <span class="kern-pair-right">${esc(right)}</span>
                     <span class="kern-pair-value">${value}</span>
-                    <button class="kern-pair-remove" title="Remove">&times;</button>
+                    <button class="kern-pair-remove" data-i18n-tip="kern.remove_tip" title="Remove">&times;</button>
                 `;
 
                 row.querySelector('.kern-pair-remove').addEventListener('click', () => {

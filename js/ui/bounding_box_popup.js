@@ -18,7 +18,7 @@ const POPUP_HTML = `
 <div class="property_group_title npp-drag-handle" id="bbox_drag_handle" data-i18n="prop.bbox">Bounding Box</div>
 <div class="npp-fields">
     <div class="npp-row">
-        <label>Pos</label>
+        <label data-i18n="prop.pos">Pos</label>
         <div class="npp-input-group">
             <span class="npp-axis">X</span>
             <input type="number" step="0.1" id="bbox_x">
@@ -27,7 +27,7 @@ const POPUP_HTML = `
         </div>
     </div>
     <div class="npp-row">
-        <label>Size</label>
+        <label data-i18n="prop.size">Size</label>
         <div class="npp-input-group">
             <span class="npp-axis">W</span>
             <input type="number" step="0.1" id="bbox_w">

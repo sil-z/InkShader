@@ -52,11 +52,21 @@ class MainCanvasBase extends HTMLElement {
         this.zoomTicks = 0;            // Tick counter (incremented on zoom-in, decremented on zoom-out)
         this.scaleBase = this.scale;   // Scale at zoomTicks = 0 (initially 0.4, matched to current default)
         this.offset = { x: 0, y: 0 }; this.offset_start = { x: 0, y: 0 };
+        /** Canvas view rotation in degrees, positive = clockwise on screen (0 = upright). */
+        this.viewRotation = 0;
+        /** Sheet-layer box while rotated (see _syncSheetLayerBox); null when upright. */
+        this.view_sheet_box = null;
+        /** Arrow-key rotation step (degrees); Alt+Left/Right snap to these multiples. */
+        this.view_rotation_step = 5;
         this.guideline_lock = false;
         this._guidelineLockSaved = false;
         this._guidelineLockDisabled = false;
         this.snap_alignment_enabled = true;
         this.snap_coincident_enabled = true;
+        // Object-drag node snapping (Edit ▸ Snap Nodes while Dragging Objects):
+        // when on, a whole-object drag snaps the object's own nodes to other
+        // nodes (coincident) and to their X/Y alignment lines. Ctrl disables it.
+        this.snap_nodes_enabled = true;
         this.divider_visible = true;
         this.divider_locked = false;
         /** Coordinate display mode: 'global' | 'active-group' | 'per-glyph' */
@@ -125,7 +135,7 @@ class MainCanvasBase extends HTMLElement {
         this.max_command_patch_count = 800;
         this.max_granular_array_length = 256;
         this.max_granular_object_keys = 160;
-        this.granular_patch_paths = [["glyphs"], ["editor_guidelines"], ["editor_active_indices"]];
+        this.granular_patch_paths = [["glyphs"], ["editor_guidelines"], ["editor_rulers"], ["editor_active_indices"]];
         this.coarse_patch_paths = [];
         /** undo/redo prefers snapshotPatches for incremental runtime updates */
         this.history_use_patch_runtime = true;
@@ -234,7 +244,10 @@ class MainCanvasBase extends HTMLElement {
         for (const curve of targets) {
             curve.invalidateBooleanCache?.();
             // Geometry may have changed during the gesture — do not reuse stale Paper result.
-            if (curve) curve._booleanContentHash = null;
+            curve._booleanContentHash = null;
+            // ... and lift any "this hash yields no rings" suppression: this is the
+            // forced rebuild after a gesture, and the geometry has changed.
+            curve._booleanEmptyHash = null;
         }
         this.bumpGeometryEpoch();
         this.is_dirty = true;
@@ -258,6 +271,122 @@ class MainCanvasBase extends HTMLElement {
         // Snap to 100% when within 0.5%
         if (Math.abs(s - 1.0) < 0.005) s = 1.0;
         return Math.min(Math.max(s, this.scale_min), this.scale_max);
+    }
+    /**
+     * Rotate the canvas view (degrees, positive = clockwise on screen).
+     *
+     * This is a pure RENDERING device: only the sheet layer — dot grid, white paper and
+     * the drawing canvas itself — is turned, about the centre of the panel. Every other
+     * piece of the component stays upright: the rulers, their indicator lines, the
+     * guideline lock button, the glyph sequence bar and the tool strip. The consequence
+     * is deliberate and known: while the view is rotated the rulers keep reporting
+     * un-rotated sheet coordinates (x to the right, y downward of the sheet), so a tick
+     * is no longer under the document position it names. That is the trade we take for
+     * not having to project ruler ticks and rotate UI chrome.
+     *
+     * The model is untouched: every computation in the app keeps working in
+     * "logical screen space" (world * scale + offset), and that space is exactly the
+     * un-rotated space of the sheet layer, so drawing, hit-testing, dragging, snapping
+     * and guides need no change at all.
+     */
+    setViewRotation(deg) {
+        const c = this;
+        let d = Number.isFinite(deg) ? deg : 0;
+        d = ((d % 360) + 360) % 360;
+        if (d > 180) d -= 360;              // normalize to (-180, 180]
+        if (Math.abs(d) < 1e-6) d = 0;
+        const changed = d !== c.viewRotation;
+        c.viewRotation = d;
+        c.applyViewRotationTransform();
+        if (changed) {
+            // Retained frames (pan preview, node-drag bake, stable scene) are pixel
+            // copies of a canvas that is about to be re-rasterized at another angle and
+            // size — drop them instead of blitting stale pixels.
+            c.renderer?.invalidateRetainedCaches?.();
+            // Hover chrome was resolved against the previous angle.
+            c.hovered_node_marker = null;
+            c.hovered_curve_segment = null;
+            c.is_dirty = true;
+        }
+    }
+    /**
+     * Push the current view rotation onto the sheet layer.
+     *
+     * While rotated the layer is enlarged to the rotated bounding box of the panel and
+     * centred on it, so the turned sheet still covers the whole panel. Rotation must
+     * never degrade into "a smaller tilted rectangle with empty corners": the canvas
+     * element takes its logical size from this layer, which means the drawing is really
+     * re-rendered over the larger region — nothing is cut short and nothing the rotated
+     * view can see gets culled. The panel itself clips the overshoot (painting_area has
+     * overflow:hidden), so the enlarged sheet never leaks into neighbouring panels.
+     */
+    applyViewRotationTransform() {
+        const c = this;
+        if (c._syncSheetLayerBox()) c.renderRuntimeService.resizeCanvas();
+    }
+    /**
+     * Write the layer's geometry for the current angle. Returns true when the layer's
+     * own size changed, i.e. when the canvas bitmap has to be re-sized to match.
+     */
+    _syncSheetLayerBox() {
+        const c = this;
+        const layer = c.main_canvas_large;
+        if (!layer) return false;
+        const deg = c.viewRotation || 0;
+        const panelW = c.canvas_stage?.clientWidth || 0;
+        const panelH = c.canvas_stage?.clientHeight || 0;
+        if (!(panelW > 0 && panelH > 0)) {
+            // Panel not laid out (hidden in the dock): keep the rotation on the layer but
+            // leave the inline box alone — the resize hook re-derives it when the panel
+            // has a size again (see setupCanvasResizeBehavior).
+            if (deg) layer.style.transform = `rotate(${deg}deg)`;
+            return false;
+        }
+        if (!deg) {
+            // Upright: back to the plain inset:0 layer (no inline geometry at all).
+            if (c._sheetBoxW) {
+                layer.style.transform = "";
+                layer.style.left = ""; layer.style.top = "";
+                layer.style.width = ""; layer.style.height = ""; layer.style.right = "";
+                c._sheetBoxW = 0; c._sheetBoxH = 0;
+                c.view_sheet_box = null;
+                return true;
+            }
+            return false;
+        }
+        const rad = Math.abs(deg) * Math.PI / 180;
+        const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+        // Whole pixels, rounded UP: the layer must be at least the rotated bounding box
+        // of the panel, otherwise layout rounding (a fraction of a pixel) could leave a
+        // hairline seam where the turned sheet fails to reach the panel edge. The canvas
+        // bitmap takes its size from this box (parent.clientWidth), so the render region
+        // grows with it — nothing is culled.
+        const boxW = Math.ceil(panelW * cos + panelH * sin);
+        const boxH = Math.ceil(panelW * sin + panelH * cos);
+        const sizeChanged = Math.abs(boxW - (c._sheetBoxW || 0)) > 0.01
+            || Math.abs(boxH - (c._sheetBoxH || 0)) > 0.01;
+        c._sheetBoxW = boxW; c._sheetBoxH = boxH;
+        c.view_sheet_box = { width: boxW, height: boxH, padX: (boxW - panelW) / 2, padY: (boxH - panelH) / 2 };
+        layer.style.left = `${(panelW - boxW) / 2}px`;
+        layer.style.top = `${(panelH - boxH) / 2}px`;
+        layer.style.width = `${boxW}px`;
+        layer.style.height = `${boxH}px`;
+        layer.style.right = "auto";
+        layer.style.transform = `rotate(${deg}deg)`;
+        return sizeChanged;
+    }
+    isViewRotated() {
+        return !!this.viewRotation;
+    }
+    /** Rotation delta (deg) that snaps to the next multiple of view_rotation_step. */
+    getViewRotationStepTarget(direction) {
+        const step = this.view_rotation_step || 5;
+        const cur = this.viewRotation || 0;
+        const k = cur / step;
+        // Snap away from the current angle first (free-hand rotation rarely lands on a
+        // multiple), then move one whole step in the requested direction.
+        const next = direction > 0 ? (Math.floor(k + 1e-6) + 1) : (Math.ceil(k - 1e-6) - 1);
+        return next * step;
     }
     getInteractionSnapshot() {
         const storeState = this.editorStore?.getState?.();
@@ -341,6 +470,11 @@ class MainCanvasBase extends HTMLElement {
         this.renderRuntimeService.stopLoop();
     }
     resizeCanvas() {
+        // A resize (dock drag, float/unfold, window resize) changes the panel box, and
+        // the rotated sheet layer is sized from it — re-derive it first, then let the
+        // runtime re-size the bitmap (and re-centre the sheet, which is what keeps the
+        // visible content in place when the box grows/shrinks).
+        this._syncSheetLayerBox();
         this.renderRuntimeService.resizeCanvas();
     }
 }

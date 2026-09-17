@@ -1,4 +1,5 @@
 import { StorageUtils } from "../../services/storage.js";
+import { isDesktop } from "../../app/app_mode.js";
 import { interactionMetaFromCanvas } from "../../app/editor_history_state.js";
 import { mergeInteractionFromStoreState, resolveActiveCanvasTool } from "../../app/editor_interaction_state.js";
 import { SnapshotPatchExecutor, snapshotDeepClone } from "../../domain/history/snapshot_patch_executor.js";
@@ -13,6 +14,7 @@ import {
     expectsDocumentPatches,
     isMetaOnlyHistoryCommand
 } from "../../app/history_patch_policy.js";
+import { reportFatalError, showErrorDialog } from "../../services/error_log.js";
 
 export class CanvasHistoryService {
     constructor(canvas) {
@@ -102,6 +104,15 @@ export class CanvasHistoryService {
         }
     }
 
+    /** Live image items as plain clones (existence-preserving capture for history apply) */
+    _captureLiveSessionImages() {
+        const cm = this.canvas?.curve_manager;
+        if (!cm?.treeItems) return null;
+        return Array.from(cm.treeItems.entries())
+            .filter(([, item]) => item.type === "image")
+            .map(([, item]) => ({ ...item }));
+    }
+
     _captureRecoveryState() {
         const c = this.canvas;
         const s = c.currentStateObj;
@@ -166,8 +177,10 @@ export class CanvasHistoryService {
         return this._patchExecutor.applyPatches(snapshotObj, patches, direction);
     }
 
-    _saveRuntimeState() {
+    _saveRuntimeState(fast = false) {
         const c = this.canvas;
+        // 桌面模式：文件即权威存储，浏览器缓存整体禁用（含自动保存落 IndexedDB）
+        if (isDesktop()) return;
         if (!c.currentStateObj?.snapshotObj) return;
 
         // Never persist a pristine (empty, never-modified) project to cache.
@@ -189,8 +202,21 @@ export class CanvasHistoryService {
         };
         if (c.projectManager && c.projectManager.getActiveProjectName()) {
             const projectName = c.projectManager.getActiveProjectName();
-            StorageUtils.saveProject(projectName, data)
-                .catch((e) => console.error(" [Storage] Project save failed:", e));
+            if (fast) {
+                // Unload path (beforeunload): the page dies right after the handler
+                // returns, so a get→put→order chain stalls before the put is issued.
+                // saveProjectNow keeps the chain at a single microtask hop so the
+                // transaction + put are dispatched synchronously in this task.
+                StorageUtils.saveProjectNow(projectName, data)
+                    .catch((e) => console.error(" [Storage] Project save (fast) failed:", e));
+                // localStorage is fully synchronous — guaranteed to survive the
+                // teardown even if Chrome aborts the IndexedDB transaction (larger
+                // payloads don't commit in time). Recovered on next boot.
+                StorageUtils.saveUnloadFallback(projectName, data);
+            } else {
+                StorageUtils.saveProject(projectName, data)
+                    .catch((e) => console.error(" [Storage] Project save failed:", e));
+            }
             // Persist the active project name to localStorage alongside the
             // IndexedDB save, so that on next page load the project is findable
             // even if it was auto-created without localStorage persistence.
@@ -205,10 +231,10 @@ export class CanvasHistoryService {
         c._runtimeSaveTimer = setTimeout(() => this._saveRuntimeState(), 120);
     }
 
-    _flushRuntimeStateSave() {
+    _flushRuntimeStateSave(fast = false) {
         const c = this.canvas;
         clearTimeout(c._runtimeSaveTimer);
-        this._saveRuntimeState();
+        this._saveRuntimeState(fast);
     }
 
     _idListSame(a, b) {
@@ -223,7 +249,11 @@ export class CanvasHistoryService {
 
     _isMetaSame(beforeState, afterState) {
         if (!beforeState || !afterState) return false;
-        if ((beforeState.currentTool || "DRAW") !== (afterState.currentTool || "DRAW")) return false;
+        // NOTE: currentTool is deliberately excluded from the meta comparison.
+        // The active tool is editor state, independent of the document history:
+        // it is never recorded as a history entry itself, and it must not cause
+        // (or suppress) history recording — otherwise a tool switch between two
+        // file operations would produce spurious or mis-deduped entries.
         if (beforeState.sequenceText !== afterState.sequenceText) return false;
         if ((beforeState.activeGroupId || null) !== (afterState.activeGroupId || null)) return false;
         if (!this._idListSame(beforeState.selectedCurveIds, afterState.selectedCurveIds)) return false;
@@ -436,11 +466,21 @@ export class CanvasHistoryService {
             error: String(error?.message || error)
         });
 
-        alert(
-            "[InkShader DEV ALERT] undo/" + direction + " failed for command '" +
-            (commandEntry?.commandName || "?") + "': " + (error?.message || error) + "\n\n" +
-            "History recovery triggered. The corrupted history entry has been removed.\n" +
-            "This is a bug — please report it with repro steps."
+        // 历史栈故障：必须让人看见（每次都要弹，不能按会话去重），并且要能
+        // 复制原文给开发者 —— 所以走可复制对话框 + error.log，而不是原生 alert。
+        reportFatalError(
+            "history_recovery",
+            "undo/" + direction + " failed for command '" +
+                (commandEntry?.commandName || "?") + "': " + (error?.message || error) +
+                "\n\nHistory recovery triggered. The corrupted history entry has been removed.",
+            {
+                commandName: commandEntry?.commandName || null,
+                direction,
+                error: String(error?.message || error),
+                failedEntryId: commandEntry?.id || null,
+                patchPaths: (commandEntry?.snapshotPatches || []).map((p) => (p?.path || []).join("."))
+            },
+            { alwaysShow: true }
         );
 
         const brokenId = commandEntry?.id;
@@ -453,7 +493,12 @@ export class CanvasHistoryService {
         if (previousRuntimeState?.snapshotObj) {
             try {
                 c.currentStateObj = this._deepClone(previousRuntimeState);
-                await this._applyState(c.currentStateObj, null, direction, { forceFullSnapshotSync: true });
+                // The failed apply may already have wiped treeItems (full sync);
+                // restore images from the captured pre-failure state.
+                await this._applyState(c.currentStateObj, null, direction, {
+                    forceFullSnapshotSync: true,
+                    sessionImages: previousRuntimeState.sessionImages
+                });
                 recovered = true;
             } catch (recoveryError) {
                 this._debugCommand("history recovery previous-state failed", {
@@ -463,15 +508,21 @@ export class CanvasHistoryService {
         }
 
         if (!recovered) {
-            alert(
-                "[InkShader DEV ALERT] Primary recovery failed — falling back to current snapshot.\n" +
-                "All undo/redo history has been cleared. This indicates a serious history stack bug."
+            reportFatalError(
+                "history_recovery_fatal",
+                "Primary recovery failed — falling back to current snapshot.\n" +
+                    "All undo/redo history has been cleared.",
+                { direction },
+                { alwaysShow: true }
             );
             const fallbackState = this.getHistoryState();
             c.commandStack = [];
             c.redoCommandStack = [];
             c.currentStateObj = fallbackState;
-            await this._applyState(fallbackState, null, direction, { forceFullSnapshotSync: true });
+            await this._applyState(fallbackState, null, direction, {
+                forceFullSnapshotSync: true,
+                sessionImages: this._captureLiveSessionImages()
+            });
             this._debugCommand("history recovery fallback snapshot applied", {});
         }
 
@@ -489,12 +540,17 @@ export class CanvasHistoryService {
                 zoom_ticks: c.zoomTicks,
                 offset_x: c.offset.x,
                 offset_y: c.offset.y,
+                // Canvas view rotation in degrees (see MainCanvas.setViewRotation)
+                view_rotation: c.viewRotation || 0,
                 vp_width: c.viewportConfig?.viewportWidth || 0,
                 vp_height: c.viewportConfig?.viewportHeight || 0,
                 right_width: layoutState.rightWidth,
                 tree_flex: layoutState.treeFlex,
                 prop_flex: layoutState.propFlex,
                 dock_layout: layoutState.dockLayout,
+                // dock 布局版本号：restoreState 只恢复当前版本的布局（旧版布局
+                // 被新默认取代，恢复旧布局会覆盖用户期望的新默认）
+                dock_layout_version: 3,
                 active_group_id: interaction.activeGroupId,
                 active_sequence_indices: [...(storeState.activeSequenceIndices || [])],
                 current_tool: resolveActiveCanvasTool(c),
@@ -751,6 +807,13 @@ export class CanvasHistoryService {
         if (bodyDOM) bodyDOM.style.pointerEvents = "none";
         c.is_restoring = true;
         c.__historyApplyDepth = (c.__historyApplyDepth || 0) + 1;
+        // Image decoupling (no image persistence yet): undo/redo must not revert
+        // image state, and a full snapshot sync (initTree wipes treeItems) must
+        // not lose images. Capture the LIVE image list before applying; restore
+        // it afterwards. Recovery paths pass an explicit override instead.
+        const liveSessionImages = options.sessionImages !== undefined
+            ? this._cloneSessionImages(options.sessionImages)
+            : this._captureLiveSessionImages();
         try {
             const historyMeta =
                 commandEntry && direction === "redo" ? commandEntry.afterMeta : commandEntry?.beforeMeta;
@@ -771,11 +834,14 @@ export class CanvasHistoryService {
             if (forceFullSnapshotSync) {
                 await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
             } else if (patches.length === 0 && documentChanged) {
-                alert(
-                    "[InkShader DEV ALERT] undo/redo: command '" + (commandEntry?.commandName || "?") +
-                    "' reports documentChanged=true but has zero patches.\n" +
-                    "The runtime was re-synced from snapshot as fallback, but this indicates a bug\n" +
-                    "in patch generation. Please report this with repro steps."
+                reportFatalError(
+                    "history_patches",
+                    "undo/redo: command '" + (commandEntry?.commandName || "?") +
+                        "' reports documentChanged=true but has zero patches.\n" +
+                        "The runtime was re-synced from snapshot as fallback, but this indicates a bug " +
+                        "in patch generation.",
+                    { commandName: commandEntry?.commandName || null, direction },
+                    { alwaysShow: true }
                 );
                 await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
             } else if (patches.length > 0) {
@@ -786,10 +852,13 @@ export class CanvasHistoryService {
                     if (!c.history_allow_snapshot_fallback) {
                         throw new Error("Patch runtime disabled and snapshot fallback is off");
                     }
-                    alert(
-                        "[InkShader DEV ALERT] history_use_patch_runtime=false — incremental patch " +
-                        "runtime is disabled. Falling back to full snapshot sync.\n" +
-                        "Command: " + (commandEntry?.commandName || "?")
+                    // 明确的配置开关，不是 bug：可复制即可，不必进 error.log。
+                    showErrorDialog(
+                        "[InkShader] history_patch_runtime_disabled",
+                        "history_use_patch_runtime=false — incremental patch runtime is disabled. " +
+                            "Falling back to full snapshot sync.\nCommand: " +
+                            (commandEntry?.commandName || "?"),
+                        { direction }
                     );
                     await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
                 } else {
@@ -806,19 +875,28 @@ export class CanvasHistoryService {
                                 `Runtime patch failed at ${runtimeResult.failedPatch?.path?.join(".")}`
                             );
                         }
-                        alert(
-                            "[InkShader DEV ALERT] Runtime patch failed at " +
-                            (runtimeResult.failedPatch?.path?.join(".") || "?") +
-                            " (direction=" + direction + ", command=" + (commandEntry?.commandName || "?") + ").\n" +
-                            "Falling back to full snapshot sync. Please report this with repro steps."
+                        reportFatalError(
+                            "history_patch_runtime",
+                            "Runtime patch failed at " +
+                                (runtimeResult.failedPatch?.path?.join(".") || "?") +
+                                " (direction=" + direction + ", command=" +
+                                (commandEntry?.commandName || "?") + ").\n" +
+                                "Falling back to full snapshot sync.",
+                            {
+                                commandName: commandEntry?.commandName || null,
+                                direction,
+                                failedPath: runtimeResult.failedPatch?.path || null,
+                                patchPaths: patches.map((p) => (p?.path || []).join("."))
+                            },
+                            { alwaysShow: true }
                         );
                         await syncRuntimeFromSnapshotObject(c, stateObj.snapshotObj || {});
                     }
                 }
             }
 
-            if (stateObj.sessionImages) {
-                c.curve_manager.restoreSessionImages(stateObj.sessionImages);
+            if (liveSessionImages) {
+                c.curve_manager.restoreSessionImages(liveSessionImages);
             }
 
             if (store) {

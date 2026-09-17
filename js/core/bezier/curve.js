@@ -18,8 +18,10 @@ export class Curve {
 
     constructor({ id }) {
         this.id = id;
-        /** @type {{minX:number,minY:number,maxX:number,maxY:number}|null} bounds cache (no matrix) */
-        this._boundsCache = null;
+        /** @type {{transform:object|null,geometry:object|null,legacy:object|null}} bounds cache keyed by strokeMode (no matrix)
+         *  transform bounds include smart-stroke width; geometry bounds exclude it —
+         *  sharing one slot let a geometry read poison transform bounds (and vice versa). */
+        this._boundsCache = { transform: null, geometry: null, legacy: null };
         /** @type {Map<string,{minX:number,minY:number,maxX:number,maxY:number}>|null} matrix-keyed bounds cache */
         this._matrixBoundsCache = null;
     }
@@ -32,20 +34,34 @@ export class Curve {
         // Clear validation marker only. Keep cached_boolean_geometry so ensureBooleanCache
         // can reuse it when getGeometryHash still matches (_booleanContentHash).
         this._lastHash = null;
-        this._boundsCache = null;
+        // The geometry is about to change, so a previously recorded "no rings for
+        // this hash" suppression must be lifted (see ensureBooleanCache).
+        this._booleanEmptyHash = null;
+        this._boundsCache.transform = null;
+        this._boundsCache.geometry = null;
+        this._boundsCache.legacy = null;
         this._matrixBoundsCache = null;
     }
 
     /** Invalidate bounds cache when node geometry changes (called by CurveStore) */
     _invalidateBounds() {
-        this._boundsCache = null;
+        this._boundsCache.transform = null;
+        this._boundsCache.geometry = null;
+        this._boundsCache.legacy = null;
         this._matrixBoundsCache = null;
     }
 
     getBounds(matrix = null, options = {}) {
+        // Cache slot per strokeMode: 'transform' includes smart-stroke width,
+        // 'geometry' excludes it, bare calls (viewport culling, LSB/RSB) use the
+        // legacy rule (include stroke for any positive stroke_width) — the hot
+        // render path must keep its own slot so mode-specific reads cannot poison it.
+        const strokeMode = options.strokeMode || 'legacy';
+        const cacheSlot = strokeMode === 'transform' ? 'transform' : strokeMode === 'none' ? 'geometry' : strokeMode === 'legacy' ? 'legacy' : null;
         // Fast path: cached non-matrix bounds (viewport culling, LSB/RSB)
-        if (!matrix && this._boundsCache) {
-            return this._boundsCache;
+        if (!matrix) {
+            const cached = cacheSlot ? this._boundsCache[cacheSlot] : null;
+            if (cached) return cached;
         }
         // Fast path: cached matrix-transformed bounds
         let _mk = null;
@@ -97,7 +113,6 @@ export class Curve {
 
         if (minX === Infinity) return null;
 
-        const strokeMode = options.strokeMode || 'legacy';
         const includeStroke =
             strokeMode === 'none'
                 ? false
@@ -108,9 +123,9 @@ export class Curve {
         let expandD = includeStroke ? this.stroke_width / 2 : 0;
         if (matrix && expandD > 0) { let scaleAvg = Math.sqrt(matrix.a * matrix.a + matrix.b * matrix.b); expandD *= scaleAvg; }
         const result = { minX: minX - expandD, minY: minY - expandD, maxX: maxX + expandD, maxY: maxY + expandD };
-        // Cache bounds for fast viewport culling / LSB-RSB
+        // Cache bounds per strokeMode for fast viewport culling / LSB-RSB / property panel
         if (!matrix) {
-            this._boundsCache = result;
+            if (cacheSlot) this._boundsCache[cacheSlot] = result;
         } else if (_mk) {
             if (!this._matrixBoundsCache) this._matrixBoundsCache = new Map();
             if (this._matrixBoundsCache.size < 16) {
@@ -252,6 +267,144 @@ export class Curve {
     }
 
     find_node_by_dom(main_node) { return this.domMap.get(main_node) ?? null; }
+
+    /**
+     * Merge a node into its previous node when the two are (nearly) coincident,
+     * transferring the dropped node's outgoing handle to the kept node.
+     *
+     * This must NOT go through remove_node_by_dom: its reconstruction solves for
+     * a through-point cubic (prev → next passing through the removed node), which
+     * degenerates when keep ≈ drop — the t parameter collapses toward 0 and the
+     * rebuilt handle lengths explode, visibly changing the path shape.
+     * Instead, keep's outgoing segment inherits drop→next's curve by carrying over
+     * drop.control1, and drop's incoming handle (part of the vanishing keep→drop
+     * sliver) is discarded.
+     *
+     * @param {CurveNode} keep node that survives (must be drop.lastOnCurve)
+     * @param {CurveNode} drop node to remove (must be keep.nextOnCurve)
+     * @returns {boolean} true when the merge happened
+     */
+    mergeCoincidentNodeIntoPrev(keep, drop) {
+        const manager = this._ownerManager();
+        if (!keep || !drop || drop.type === null) return false;
+        if (keep.nextOnCurve !== drop) return false; // only adjacent, keep before drop
+
+        const next = drop.nextOnCurve;
+
+        // The keep→drop sliver vanishes, so keep's old outgoing handle (if any)
+        // is meaningless and must be removed before transferring drop's.
+        if (keep.control1) {
+            this.domMap.delete(keep.control1.main_node);
+            manager.domMap.delete(keep.control1.main_node);
+            keep.control1 = null;
+            if (!drop.control1 && (keep.control_mode === 1 || keep.control_mode === 2)) keep.control_mode = 0;
+        }
+
+        // Carry drop's outgoing handle over to keep so the keep→next segment
+        // keeps the drop→next segment's shape (keep ≈ drop, so the vector
+        // translates nearly unchanged). The handle object keeps its domMap entry.
+        if (drop.control1) {
+            drop.control1.x = keep.x + (drop.control1.x - drop.x);
+            drop.control1.y = keep.y + (drop.control1.y - drop.y);
+            drop.control1.nextOnCurve = keep;
+            keep.control1 = drop.control1;
+            drop.control1 = null;
+            // Handles are no longer symmetric around keep — drop the smooth/
+            // "symmetric" flag so later set_both_control() calls cannot snap
+            // shape unexpectedly.
+            if (keep.control_mode === 1 || keep.control_mode === 2) keep.control_mode = 0;
+        }
+
+        // drop's incoming handle belonged to the vanishing keep→drop sliver.
+        if (drop.control2) {
+            this.domMap.delete(drop.control2.main_node);
+            manager.domMap.delete(drop.control2.main_node);
+            drop.control2 = null;
+        }
+
+        // Unlink drop from the chain and update endpoints.
+        keep.nextOnCurve = next;
+        if (next) next.lastOnCurve = keep;
+        if (this.startNode === drop) this.startNode = keep;
+        if (this.endNode === drop) this.endNode = keep;
+
+        this.domMap.delete(drop.main_node);
+        manager.domMap.delete(drop.main_node);
+
+        if (this.startNode === null) manager.remove_curve(this.id);
+        else if (this.groupId) manager.invalidateGroupCache(this.groupId);
+        else manager.notifyModelUpdate();
+        return true;
+    }
+
+    /**
+     * Merge the closed-contour endpoints (startNode and endNode) when they
+     * nearly coincide.
+     *
+     * The chain is stored linearly (startNode → … → endNode with
+     * endNode.nextOnCurve = null); the closing segment endNode→startNode is
+     * implicit. Because the two endpoints are never adjacent in a chain scan,
+     * the coincide-merge loop misses them — and duplicated start/end points are
+     * the most common duplicated-node case in imported font contours.
+     *
+     * keep = chain head (startNode), drop = chain tail (endNode). drop's
+     * incoming handle (end of the prev→drop segment) is transferred to keep,
+     * so that segment's shape is preserved as the new prev→keep closing
+     * segment. keep's old incoming handle (part of the vanishing drop→keep
+     * closing segment) and drop's outgoing handle are discarded.
+     *
+     * @param {CurveNode} keep chain head (this.startNode)
+     * @param {CurveNode} drop chain tail (this.endNode)
+     * @returns {boolean} true when the merge happened
+     */
+    mergeClosedEndpointIntoStart(keep, drop) {
+        const manager = this._ownerManager();
+        if (!keep || !drop || !this.closed) return false;
+        if (keep === drop || drop.type === null) return false;
+        if (keep !== this.startNode || drop !== this.endNode) return false;
+        const prevOfDrop = drop.lastOnCurve;
+        if (!prevOfDrop || prevOfDrop === keep) return false; // need ≥3 nodes; degenerate otherwise
+
+        // keep's old incoming handle belonged to the vanishing drop→keep closing
+        // segment — discard it before transferring the new one.
+        if (keep.control2) {
+            this.domMap.delete(keep.control2.main_node);
+            manager.domMap.delete(keep.control2.main_node);
+            keep.control2 = null;
+            if (!drop.control2 && (keep.control_mode === 1 || keep.control_mode === 2)) keep.control_mode = 0;
+        }
+
+        // Carry drop's incoming handle (prev→drop segment) over to keep so the
+        // new prev→keep closing segment keeps the old prev→drop shape (keep ≈ drop).
+        if (drop.control2) {
+            drop.control2.x = keep.x + (drop.control2.x - drop.x);
+            drop.control2.y = keep.y + (drop.control2.y - drop.y);
+            drop.control2.nextOnCurve = keep;
+            keep.control2 = drop.control2;
+            drop.control2 = null;
+            if (keep.control_mode === 1 || keep.control_mode === 2) keep.control_mode = 0;
+        }
+
+        // drop's outgoing handle belonged to the vanishing drop→keep closing segment.
+        if (drop.control1) {
+            this.domMap.delete(drop.control1.main_node);
+            manager.domMap.delete(drop.control1.main_node);
+            drop.control1 = null;
+        }
+
+        // Unlink drop: the previous node becomes the new chain tail (and thus
+        // the new closing-segment start with keep). Chain head stays stable.
+        prevOfDrop.nextOnCurve = null;
+        this.endNode = prevOfDrop;
+        drop.lastOnCurve = null;
+
+        this.domMap.delete(drop.main_node);
+        manager.domMap.delete(drop.main_node);
+
+        if (this.groupId) manager.invalidateGroupCache(this.groupId);
+        else manager.notifyModelUpdate();
+        return true;
+    }
 
     remove_node_by_dom(main_node) {
         const manager = this._ownerManager();

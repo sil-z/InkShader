@@ -39,46 +39,58 @@ export class BooleanEngine {
     }
 
     /**
-     * Reorient a Paper.js Path to clockwise winding, safely (no-op on null).
+     * Union semantics (per the editor's data model):
+     *  - Each selected curve's boolean cache (fill ∪ expanded stroke, already
+     *    united into clean rings by refreshCurveBooleanCache, outer ring
+     *    oriented by the curve's smart expand direction, holes as separate
+     *    reversed rings) is ONE paper operand.
+     *  - Paper.js unite() reorients each OPERAND independently but preserves
+     *    the internal winding relationships of a compound operand (verified:
+     *    unite(compound-donut, disjoint square) keeps [outer, −hole, square]),
+     *    so passing each curve as a single compound operand is what makes
+     *    holes survive. Splitting a curve's rings into separate operands is
+     *    exactly what made the old union fill every hole.
+     *  - The result's outer contour directions follow paper's reorient
+     *    (root rings CW under nonzero) — consistent with plain-path union
+     *    behaviour the boolean engine has always had.
      */
-    _reorientCW(p) {
-        if (p && typeof p.reorient === 'function') {
-            try { p.reorient(true, true); } catch (_) {}
-        }
-    }
-
     executeUnion(InkShaderCurves, targetGroupId) {
         if (!this.paperScope || !InkShaderCurves || InkShaderCurves.length < 2) {
             console.warn("[Boolean] Requires at least 2 selected paths.");
             return false;
         }
 
-        const { basePieces, operandPieces } = this._buildPaperPaths(InkShaderCurves);
-        if (basePieces.length === 0 || operandPieces.length === 0) return false;
+        const operands = this._buildOperands(InkShaderCurves);
+        if (operands.length === 0) return false;
 
         let results = [];
-        for (const base of basePieces) {
-            try {
-                let current = base;
-                for (const op of operandPieces) {
+        try {
+            let current = operands[0];
+            for (let i = 1; i < operands.length; i++) {
+                const op = operands[i];
+                try {
                     const opClone = op.clone();
+                    // epsilon nudge keeps paper from merging coincident boundary
+                    // segments of exactly-touching operands into shared seams
                     opClone.rotate(0.0001, opClone.position);
                     opClone.translate(new this.paperScope.Point(0.0001, 0.0001));
                     const temp = current.unite(opClone);
-                    current.remove();
                     opClone.remove();
+                    if (!temp) { op.remove(); continue; }
+                    try { current.remove(); } catch (_) { }
                     current = temp;
+                } catch (e) {
+                    console.warn("[Boolean] Union step failed for an operand", e);
+                    op.remove();
                 }
-                if (!current) continue;
-                const flat = this._unpackFragments(current);
-                for (const p of flat) results.push(p);
-                if (current && flat.length > 0 && current !== flat[0]) current.remove();
-            } catch (e) {
-                console.warn("[Boolean] Union fragment failed", e);
             }
+            const flat = this._unpackFragments(current);
+            for (const p of flat) results.push(p);
+            if (current && flat.length > 0 && current !== flat[0]) current.remove();
+        } catch (e) {
+            console.warn("[Boolean] Union failed", e);
+            return false;
         }
-
-        for (const op of operandPieces) op.remove();
 
         if (results.length === 0) return false;
 
@@ -97,16 +109,15 @@ export class BooleanEngine {
         return newInkShaderCurves;
     }
 
-    _buildPaperPaths(InkShaderCurves) {
-        // Returns [basePieces, operandPieces] where basePieces are the pieces
-        // of the first curve and operandPieces are pieces of all remaining curves.
-        // Each InkShader curve becomes a single Paper.js item (Path or CompoundPath)
-        // so that self-intersecting curves whose boolean cache was decomposed into
-        // multiple non-self-intersecting sub-paths remain one entity for boolean ops.
-        let basePieces = [];
-        let operandPieces = [];
-        for (let i = 0; i < InkShaderCurves.length; i++) {
-            const curve = InkShaderCurves[i];
+    /**
+     * Build ONE paper item (Path or CompoundPath) per curve from its boolean
+     * cache. The cache already contains the curve's unioned region (fill ∪
+     * stroke) as clean rings, so the compound operand carries correct hole
+     * winding into paper's boolean preprocessing.
+     */
+    _buildOperands(InkShaderCurves) {
+        const operands = [];
+        for (const curve of InkShaderCurves) {
             if (typeof curve.updateBooleanCache === 'function') {
                 curve.updateBooleanCache();
             }
@@ -114,11 +125,11 @@ export class BooleanEngine {
                 continue;
             }
             const subPaths = [];
-            for (let sub of curve.cached_boolean_geometry) {
+            for (const sub of curve.cached_boolean_geometry) {
                 if (sub.segments.length < 2) continue;
-                let p = new this.paperScope.Path();
+                const p = new this.paperScope.Path();
                 p.closed = sub.closed;
-                for (let seg of sub.segments) {
+                for (const seg of sub.segments) {
                     p.add(new this.paperScope.Segment(
                         new this.paperScope.Point(seg.x, seg.y),
                         new this.paperScope.Point(seg.inX, seg.inY),
@@ -128,80 +139,11 @@ export class BooleanEngine {
                 subPaths.push(p);
             }
             if (subPaths.length === 0) continue;
-            // Combine sub-paths of a self-intersecting curve into one entity
-            // so Paper.js boolean ops treat the whole curve as a single unit.
-            const piece = subPaths.length === 1
+            operands.push(subPaths.length === 1
                 ? subPaths[0]
-                : new this.paperScope.CompoundPath({ children: subPaths });
-            (i === 0 ? basePieces : operandPieces).push(piece);
+                : new this.paperScope.CompoundPath({ children: subPaths }));
         }
-        return { basePieces, operandPieces };
-    }
-
-    _executeBinaryOp(InkShaderCurves, targetGroupId, opFn) {
-        if (!this.paperScope || !InkShaderCurves || InkShaderCurves.length < 2) {
-            console.warn("[Boolean] Requires at least 2 selected paths.");
-            return false;
-        }
-
-        const { basePieces, operandPieces } = this._buildPaperPaths(InkShaderCurves);
-        if (basePieces.length === 0 || operandPieces.length === 0) return false;
-
-        // For each base sub-piece, apply opFn against all operand sub-pieces.
-        let results = [];
-        for (const base of basePieces) {
-            try {
-                let current = base;
-                for (const op of operandPieces) {
-                    // Clone operand for each base fragment — avoid double-remove
-                    // when multiple base fragments share the same operand.
-                    const opClone = op.clone();
-                    opClone.rotate(0.0001, opClone.position);
-                    opClone.translate(new this.paperScope.Point(0.0001, 0.0001));
-                    const temp = opFn(current, opClone);
-                    current.remove();
-                    opClone.remove();
-                    current = temp;
-                }
-                if (!current) continue;
-                const flat = this._unpackFragments(current);
-                for (const p of flat) results.push(p);
-                if (current && flat.length > 0 && current !== flat[0]) current.remove();
-            } catch (e) {
-                console.warn("[Boolean] Fragment op failed", e);
-            }
-        }
-
-        // Clean up operand originals
-        for (const op of operandPieces) op.remove();
-
-        if (results.length === 0) return false;
-
-        let resultPath;
-        if (results.length === 1) {
-            resultPath = results[0];
-        } else {
-            resultPath = new this.paperScope.CompoundPath({ children: results });
-        }
-
-        let newInkShaderCurves = this._paperToInkShaderCurves(resultPath, targetGroupId);
-        if (resultPath) resultPath.remove();
-        for (let curve of InkShaderCurves) {
-            this.cm.remove_curve(curve.id);
-        }
-        return newInkShaderCurves;
-    }
-
-    executeIntersection(InkShaderCurves, targetGroupId) {
-        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.intersect(b));
-    }
-
-    executeDifference(InkShaderCurves, targetGroupId) {
-        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.subtract(b));
-    }
-
-    executeExclusion(InkShaderCurves, targetGroupId) {
-        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.exclude(b));
+        return operands;
     }
 
     _paperToInkShaderCurves(paperItem, targetGroupId) {
@@ -226,9 +168,9 @@ export class BooleanEngine {
 
             if (!pPath.segments || pPath.segments.length < 2) continue;
 
-            let InkShaderCurve = this.cm.create_temp_curve("a"); 
+            let InkShaderCurve = this.cm.create_temp_curve("a");
             InkShaderCurve.closed = pPath.closed;
-            InkShaderCurve.stroke_width = 0; 
+            InkShaderCurve.stroke_width = 0;
             InkShaderCurve.fill_color = param_set["1"].boolean_fill;
 
             let lastCreatedNode = null;
@@ -236,18 +178,18 @@ export class BooleanEngine {
             for (let i = 0; i < pPath.segments.length; i++) {
                 let seg = pPath.segments[i];
                 let pt = seg.point;
-                
-                let controlMode = 0; 
+
+                let controlMode = 0;
                 if (!seg.handleIn.isZero() && !seg.handleOut.isZero()) {
                     let vIn = seg.handleIn.normalize();
                     let vOut = seg.handleOut.normalize();
                     if (vIn.add(vOut).length < 0.01) {
-                        controlMode = 1; 
+                        controlMode = 1;
                     }
                 }
 
                 const marker = generateMarker("vertex");
-                
+
                 let node = new CurveNode(marker, "vertex", pt.x, pt.y, null, lastCreatedNode, `n_${marker.id}`);
                 node.curve = InkShaderCurve;
                 node.control_mode = controlMode;
@@ -276,7 +218,7 @@ export class BooleanEngine {
                 if (lastCreatedNode) lastCreatedNode.nextOnCurve = node;
 
                 lastCreatedNode = node;
-                
+
                 if (i === pPath.segments.length - 1) {
                     InkShaderCurve.endNode = node;
                 }
@@ -287,5 +229,73 @@ export class BooleanEngine {
         }
 
         return generatedCurves;
+    }
+
+    _executeBinaryOp(InkShaderCurves, targetGroupId, opFn) {
+        if (!this.paperScope || !InkShaderCurves || InkShaderCurves.length < 2) {
+            console.warn("[Boolean] Requires at least 2 selected paths.");
+            return false;
+        }
+
+        const operands = this._buildOperands(InkShaderCurves);
+        if (operands.length < 2) return false;
+
+        // For each base operand, apply opFn against all other operands.
+        let results = [];
+        for (let bi = 0; bi < operands.length; bi++) {
+            const base = operands[bi];
+            try {
+                let current = base;
+                for (let oi = 0; oi < operands.length; oi++) {
+                    if (oi === bi) continue;
+                    const opClone = operands[oi].clone();
+                    opClone.rotate(0.0001, opClone.position);
+                    opClone.translate(new this.paperScope.Point(0.0001, 0.0001));
+                    const temp = opFn(current, opClone);
+                    opClone.remove();
+                    if (!temp) continue;
+                    if (current !== base) { try { current.remove(); } catch (_) { } }
+                    current = temp;
+                }
+                if (!current) continue;
+                const flat = this._unpackFragments(current);
+                for (const p of flat) results.push(p);
+                if (current && flat.length > 0 && current !== flat[0]) current.remove();
+            } catch (e) {
+                console.warn("[Boolean] Fragment op failed", e);
+            }
+        }
+
+        // Clean up operand originals (base pieces may have been consumed by
+        // unite/subtract — remove() is a no-op on removed items).
+        for (const op of operands) { try { op.remove(); } catch (_) { } }
+
+        if (results.length === 0) return false;
+
+        let resultPath;
+        if (results.length === 1) {
+            resultPath = results[0];
+        } else {
+            resultPath = new this.paperScope.CompoundPath({ children: results });
+        }
+
+        let newInkShaderCurves = this._paperToInkShaderCurves(resultPath, targetGroupId);
+        if (resultPath) resultPath.remove();
+        for (let curve of InkShaderCurves) {
+            this.cm.remove_curve(curve.id);
+        }
+        return newInkShaderCurves;
+    }
+
+    executeIntersection(InkShaderCurves, targetGroupId) {
+        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.intersect(b));
+    }
+
+    executeDifference(InkShaderCurves, targetGroupId) {
+        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.subtract(b));
+    }
+
+    executeExclusion(InkShaderCurves, targetGroupId) {
+        return this._executeBinaryOp(InkShaderCurves, targetGroupId, (a, b) => a.exclude(b));
     }
 }

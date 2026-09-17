@@ -820,6 +820,16 @@ export class TreeStore {
                     geometryBounds: geometryBounds ? { ...geometryBounds } : null,
                     snapshot: this._createBoundsEditSnapshot(selectedCurves, selectedRefs)
                 };
+            } else if (options.commitBoundsSession === true) {
+                // The panel fires one dispatch per keystroke; only the final blur
+                // carries commitBoundsSession=true. If the user clicks away
+                // without the popup issuing a commit (focus stolen, popup torn
+                // down, synthetic change lost), the session would otherwise be
+                // re-created on the next recordHistory call with stale bounds
+                // and re-apply the (already-applied) value — moving the object
+                // a second time. Record the commit request on the live session
+                // so the next dispatch commits AND clears it.
+                this.boundsEditSession.commitRequested = true;
             }
             this._restoreBoundsEditSnapshot(this.boundsEditSession);
             bounds = this.boundsEditSession.bounds;
@@ -990,10 +1000,17 @@ export class TreeStore {
         }
 
         if (changed) {
+            // Mutated node coords directly above — invalidate each affected curve's
+            // bounds cache, otherwise the next getSelectionBounds() (property panel
+            // change event, commit dispatch) reads the PRE-move bounds and applies
+            // the edit a second time (paths "fly away" / panel shows stale values).
+            for (let curve of selectedCurves) {
+                if (curve && curve.visible !== false && curve.locked !== true) curve._invalidateBounds();
+            }
             for (let gid of affectedGroups) this.invalidateGroupCache(gid);
             for (let rid of affectedRefs) this.invalidateGroupCache(rid);
         }
-        if (useSession && options.commitBoundsSession === true) {
+        if (useSession && (options.commitBoundsSession === true || this.boundsEditSession?.commitRequested === true)) {
             this._clearBoundsEditSession();
         }
         return changed;

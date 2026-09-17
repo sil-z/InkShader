@@ -47,6 +47,7 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_CHANGE_SELECTED_OBJECTS_BOUNDS, action: CANVAS_ACTIONS.CHANGE_SELECTED_OBJECTS_BOUNDS, mapPayload: (d) => ({ prop: d?.prop, value: d?.value, options: d?.options || {} }) },
     { event: CANVAS_EVENTS.REQUEST_RENAME_TREE_ITEM, action: CANVAS_ACTIONS.RENAME_TREE_ITEM, mapPayload: (d) => ({ id: d?.id, newName: d?.newName }), assignResult: true },
     { event: CANVAS_EVENTS.REQUEST_SET_GROUP_ADVANCE, action: CANVAS_ACTIONS.SET_GROUP_ADVANCE, mapPayload: (d) => ({ id: d?.id, value: d?.value, options: d?.options || {} }) },
+    { event: CANVAS_EVENTS.REQUEST_MARK_GROUP_EXPLICIT, action: CANVAS_ACTIONS.MARK_GROUP_EXPLICIT, mapPayload: (d) => ({ id: d?.id }), assignResult: true },
     { event: CANVAS_EVENTS.REQUEST_SET_KERNING_PAIRS, action: CANVAS_ACTIONS.SET_KERNING_PAIRS, mapPayload: (d) => ({ pairs: d?.pairs || [], options: d?.options || {} }) },
 
     { event: CANVAS_EVENTS.REQUEST_UPDATE_NODE_PROPERTY, action: CANVAS_ACTIONS.UPDATE_NODE_PROPERTY, mapPayload: (d) => ({ marker: d?.marker, propId: d?.propId, value: d?.value, options: d?.options || {} }) },
@@ -77,19 +78,43 @@ export const REQUEST_ACTION_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_OPTIMIZE_PATH, action: CANVAS_ACTIONS.OPTIMIZE_PATH, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_ROUND_NODES, action: CANVAS_ACTIONS.ROUND_NODES, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_SMOOTH_CURVES, action: CANVAS_ACTIONS.SMOOTH_CURVES, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_CORRECT_DIRECTION, action: CANVAS_ACTIONS.CORRECT_DIRECTION, mapPayload: () => ({}) },
+    { event: CANVAS_EVENTS.REQUEST_REMOVE_OVERLAP, action: CANVAS_ACTIONS.REMOVE_OVERLAP, mapPayload: () => ({}) },
     { event: CANVAS_EVENTS.REQUEST_IMPORT, action: CANVAS_ACTIONS.IMPORT_IMAGE, mapPayload: () => ({}) }
 ];
 
+import { desktopApi, isDesktop } from "./app_mode.js";
+
 export const REQUEST_IO_ROUTES = [
     { event: CANVAS_EVENTS.REQUEST_SAVE, handler: (c) => c.io.triggerSave() },
+    { event: CANVAS_EVENTS.REQUEST_SAVE_AS, handler: (c) => c.io.saveAsJson() },
     { event: CANVAS_EVENTS.REQUEST_LOAD, handler: (c) => c.io.triggerLoad() },
     { event: CANVAS_EVENTS.REQUEST_EXPORT, handler: (c) => c.io.exportToUFO() },
     {
+        // 新建项目：始终新开窗口/标签页（Inkscape 式），绝不复用当前窗口——
+        // 即使当前项目是没改过的空壳文件，也保持每个项目一个窗口，避免
+        // 销毁/替换用户眼前的编辑视图。
+        //   - 桌面客户端（pywebview）：向后端请求新开一个原生编辑器窗口；
+        //     桥未就绪的极端情况退回原位新建（几乎不会发生）。
+        //   - 浏览器：弹新标签页（?new=1 触发全新项目）。
         event: CANVAS_EVENTS.REQUEST_NEW_PROJECT,
         handler: async (c) => {
-            if (c.projectManager) {
-                await c.projectManager.createNewProject();
-                c.is_dirty = true;
+            if (isDesktop()) {
+                const api = desktopApi();
+                if (api && typeof api.open_new_project === "function") {
+                    api.open_new_project();
+                } else {
+                    // 桥尚未注入的兜底：原位新建，避免 New 菜单无响应
+                    await c.projectManager?.createNewProject();
+                }
+                return;
+            }
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set("new", "1");
+                window.open(url.toString(), "_blank");
+            } catch (e) {
+                console.error("[IO] Failed to open new project tab:", e);
             }
         }
     },

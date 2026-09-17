@@ -303,6 +303,15 @@ function applyEditorField(canvas, cm, path, value, shouldExist, snapshotObj) {
                 cm.applyTreeChildOrder(null, value);
                 return true;
             }
+            // Index-level patch (["editor_root_order", i]) from a legacy history
+            // entry: the root order as a whole is the only meaningful unit here
+            // (a single index is meaningless without the rest), and the snapshot
+            // object handed to this applier has already had every patch applied,
+            // so it holds the authoritative target order.
+            if (Array.isArray(snapshotObj?.editor_root_order)) {
+                cm.applyTreeChildOrder(null, snapshotObj.editor_root_order);
+                return true;
+            }
             return false;
         case "editor_sequence":
             cm.sequenceText = value || "";
@@ -331,6 +340,24 @@ function applyEditorField(canvas, cm, path, value, shouldExist, snapshotObj) {
             return true;
         case "editor_guideline_lock":
             canvas.guideline_lock = !!value;
+            return true;
+        case "editor_rulers":
+            // Rulers are file data and participate in undo/redo. Array-replace
+            // patches arrive whole (patch engine treats length changes as
+            // replace); per-element field patches support endpoint drags.
+            if (Array.isArray(value)) {
+                canvas.rulers = value.map(r => ({ id: r.id, x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2 }));
+                return true;
+            }
+            if (path.length === 3 && Array.isArray(canvas.rulers)) {
+                const rIdx = Number(path[1]);
+                const rField = path[2];
+                const ruler = Number.isInteger(rIdx) ? canvas.rulers[rIdx] : null;
+                if (ruler && ["id", "x1", "y1", "x2", "y2"].includes(rField)) {
+                    ruler[rField] = value;
+                    return true;
+                }
+            }
             return true;
         case "canvas_size_width":
             if (Number.isFinite(Number(value)) && Number(value) > 0) canvas.canvas_size_width = Number(value);
@@ -502,7 +529,12 @@ export async function syncRuntimeFromSnapshotObject(canvas, snapshotObj) {
     if (snapshotObj.editor_guideline_lock !== undefined) {
         canvas.guideline_lock = !!snapshotObj.editor_guideline_lock;
     }
-    // Canvas size (em box, design units) - legacy files predate the field.
+    if (Array.isArray(snapshotObj.editor_rulers)) {
+        canvas.rulers = snapshotObj.editor_rulers.map(r => ({
+            id: canvas._nextRulerId++,
+            x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2
+        }));
+    }
     const snapshotCanvasW = Number(snapshotObj.canvas_size_width);
     if (Number.isFinite(snapshotCanvasW) && snapshotCanvasW > 0) canvas.canvas_size_width = snapshotCanvasW;
     const snapshotCanvasH = Number(snapshotObj.canvas_size_height);
