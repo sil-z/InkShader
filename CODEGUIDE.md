@@ -374,3 +374,84 @@ console.table(metrics);
 > **允许**：`console.warn` 和 `console.error` 用于正式日志。
 > **禁止**：`console.log`、`console.debug`、`console.info`、`console.trace`、`console.table`——仅限临时调试用，提交前必须清除。
 ```
+
+---
+
+## G011. 文档写作
+
+适用于仓库内的 `.md` 文档（`README.md`、`SPECIFICATION.md`、`AGENTS.md`、本文件、模块说明等）。
+
+**G011a. 只描述当前状态**
+
+文档描述代码与流程“现在是什么样”，不记录“本次改了什么”。会话过程、调试经历、
+临时结论不写入参考文档；需要保留时另建记录文件，并在开头写明时间与范围。
+
+```markdown
+<!-- ✅ 当前状态 -->
+依赖版本记录在 `backend/requirements.lock.txt`。
+
+<!-- ❌ 改动叙述 / 会话记录 -->
+本次把依赖版本写进了 lock 文件，解决了之前版本漂移的问题。
+```
+
+**G011b. 不写主观评价**
+
+不使用判断性表述（“严重问题”“很优雅”“显然更好”“完美”“一堆乱七八糟”），
+只写可核对的事实：文件路径、符号名、数值、命令、版本。
+
+**G011c. 范围与前提写清楚**
+
+每个文档开头说明它覆盖什么。命令给出可直接复制的完整形式，并注明运行位置
+（哪个目录）与前提（需要先启动什么、需要哪个版本）。
+
+**G011d. 来源可追溯**
+
+引用第三方版本、协议、上游地址时给出处（URL、包名、文件名）。无法从文件或
+上游确认的信息标注为未确认，不推测、不补齐。
+
+**G011e. 同一事实只维护一处**
+
+同一个事实（版本号、目录职责、命令）只在一个文档中定义，其他位置引用其路径，
+避免多处副本互相矛盾。
+
+**G011f. 格式**
+
+- 不修改既有章节编号；新增内容追加新编号（G011、G012…）。
+- 术语与代码中的命名一致（例如 `smart_stroke`、`boolean cache`）。
+- 表格用于并列事实；命令与代码用围栏代码块并标注语言。
+- 说明文字用中文；代码、标识符、文件名、命令保持原样。
+
+---
+
+## G012. 测试与静态检查
+
+### G012a. 探针不得依赖仓库外的绝对路径
+
+`test/probe_*.mjs` 一律通过 `test/probe_env.mjs` 取路径（仓库根、临时目录、
+示例工程）。示例工程优先读仓库内的 `test/fixtures/`，换输入时用 `PROBE_EXAMPLE`
+覆盖。同一套件必须在其他机器、其他用户名、Linux 与 CI 上都能运行。
+
+### G012b. 回归套件必须给出断言汇总
+
+套件输出含 `checks`（`[{name, ok}]`）的 JSON，或逐行 `PASS` / `FAIL`，并按断言结果
+设置退出码。只打印数据、没有断言的脚本属于诊断工具，不作为回归套件。
+
+### G012c. 入口
+
+| 目的 | 命令 |
+|------|------|
+| 前端探针（全部，串行） | `npm test` |
+| 前端探针（筛选） | `npm test -- --only <文件名包含的字符串>` |
+| 后端单元测试 | `./dev.ps1 test`（即 `python -m pytest backend/tests`） |
+| 静态检查（前端与探针） | `npm run lint`（ESLint，`eslint.config.mjs`） |
+| 静态检查（后端） | `./dev.ps1 lint`（即 `python -m ruff check backend`） |
+| 格式化 | `npm run format`（Prettier，配置见 `.prettierrc.json`） |
+
+`test/run_probes.mjs` 负责静态服务器、无头浏览器、CDP 端口与临时目录；探针默认
+串行执行（共用同一 origin，并行会互相污染）。
+
+### G012d. 依赖声明只有一处
+
+后端依赖写在 `backend/pyproject.toml`（范围，含 `build` / `test` / `lint` extras），
+精确版本记录在 `backend/requirements.lock.txt`；不再新增与之并行的 `requirements*.txt`。
+前端不使用 npm 构建，根目录 `package.json` 只声明测试与静态检查所需的开发依赖。

@@ -1,0 +1,33 @@
+{
+  "name": "inkshader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-build static frontend for InkShader plus the toolchain for its regression probes. The frontend itself never runs through npm; this manifest only declares development dependencies and check commands.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sil-z/InkShader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sil-z/InkShader/issues"
+  },
+  "homepage": "https://github.com/sil-z/InkShader#readme",
+  "scripts": {
+    "test": "node test/run_probes.mjs",
+    "test:all": "node test/run_probes.mjs --all",
+    "test:list": "node test/run_probes.mjs --list",
+    "check:i18n": "node test/check_i18n.mjs",
+    "lint": "eslint . && node test/check_i18n.mjs",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "eslint": "^9.15.0",
+    "prettier": "^3.4.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

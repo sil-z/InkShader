@@ -1,0 +1,26 @@
+# Editor defaults. Line endings are governed by git (.gitattributes) plus the
+# few overrides below; this file covers charset, indentation and file endings so
+# that incidental whitespace never shows up as a diff.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+end_of_line = lf
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{json,jsonc,yml,yaml,html,css}]
+indent_size = 2
+
+# Windows PowerShell 5.1 reads scripts using the ANSI code page, so non-ASCII
+# comments need CRLF (and a BOM) to avoid mojibake.
+[*.ps1]
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab

@@ -1,0 +1,7 @@
+# Shell scripts must keep LF: a CRLF shebang fails on Linux with
+# "bad interpreter: /bin/bash^M".
+*.sh text eol=lf
+
+# Third-party builds. Excluded from language statistics and treated as binary
+# so a version bump does not produce a megabyte of meaningless diff.
+js/vendor/*.min.js linguist-vendored -diff

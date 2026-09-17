@@ -92,6 +92,7 @@ pyinstaller packaging/web.spec
 要点：
 - `console=False`（`--windowed`）：Windows 下不弹黑色控制台窗口；调试构建另出 `console=True` 的版本。
 - **退出机制**：`--windowed` 下没有 stdin，`webbrowser.open` 后进程无法感知浏览器关闭，必须提供应用内退出入口（`/api/shutdown`）+ 可选托盘图标。这是"浏览器模式"的固有代价，桌面模式（方案 B）天然规避。
+  - 最终落地：形态 3 改为**带控制台的纯命令行后端**（无 pywebview/pystray），退出即 `Ctrl+C`/关闭控制台，`/api/shutdown` 保留给脚本调用，因此上述代价不再存在。
 
 ### 3.2 方案 B：类 Electron（pywebview 桌面窗口）
 
@@ -275,7 +276,9 @@ addOpenTypeFeaturesFromString(ttf, fea_text)   # 实测 GSUB/GPOS 生成
 
 ```
 backend/
-├─ pyproject.toml / requirements.txt
+├─ pyproject.toml            # 依赖与工具配置（唯一来源）
+├─ requirements.lock.txt     # 已验证的精确版本
+├─ tests/                    # pytest 单元测试
 ├─ src/
 │  ├─ main.py                # 入口：模式分发（web/desktop）
 │  ├─ build_info.py          # 构建期生成：MODE/VERSION/GIT_SHA
@@ -317,12 +320,15 @@ backend/
 | brotli | 1.2.0 | WOFF2 压缩（fonttools woff2 依赖） |
 | skia-pathops | 0.9.2 | remove overlap 的快速后端（`overlapsBackend="pathops"` / `ttLib.removeOverlaps`） |
 
-**建议的 requirements 拆分**（详见 [backend/requirements.txt](backend/requirements.txt)）：
+**依赖声明**（详见 [backend/pyproject.toml](backend/pyproject.toml)）：
 
-- `requirements.txt`（runtime）：fonttools、ufo2ft、booleanOperations、ufoLib2、fastapi、uvicorn、python-multipart、brotli、skia-pathops（pywebview 仅 desktop 模式，用 `requirements-desktop.txt` 或 extra）
-- `requirements-build.txt`（构建期）：pyinstaller
+- `[project.dependencies]`（runtime）：fonttools、ufo2ft、booleanOperations、ufoLib2、fastapi、uvicorn、python-multipart、brotli、skia-pathops、pywebview（仅 desktop 模式）
+- extras：`build`（pyinstaller、Pillow）、`test`（pytest）、`lint`（ruff）
+- `backend/requirements.lock.txt`：已验证的精确版本，由上述依赖生成
 
-> 注意：`.gitignore` 当前忽略 `*.py`（`start_server.py` 即因此未纳入版本控制）。**若开始实施后端，需先修改 `.gitignore` 放行 `backend/src/` 下的 `.py`**，否则后端源码不会被提交。
+> 早期方案里拆成 `requirements.txt` / `requirements-build.txt` 两个文件并与 pyproject 手工同步，会必然漂移；现已合并为单一来源。
+
+> 版本控制：`.gitignore` 只忽略仓库根目录的一次性脚本（`/*.py`、`/*.txt`、`scratch_*`）；`backend/` 的源码、`pyproject.toml`、`requirements.lock.txt`、`packaging/web.spec` 与 `dev.ps1`/`dev.sh` 均正常入库。依赖安装与打包命令见 README.md。
 
 ---
 
@@ -339,16 +345,15 @@ backend/
 
 ---
 
-## 8. 建议实施顺序（本次未实施）
+## 8. 实施顺序与现状
 
-1. 修改 `.gitignore` 放行后端源码；建 `backend/` 骨架（FastAPI + `/api/meta` + 静态托管）
-2. `POST /api/font/export`（TTF/OTF/WOFF2，同步版）→ 前端「导出字体」菜单接入
-3. `POST /api/font/qa/remove-overlap`（含报告）→ 前端 QA 面板
-4. `POST /api/fea/parse` + `/api/fea/compile` → .fea 编辑/校验 UI
-5. ServerFileStorage（Ctrl+S 直接写盘）
-6. `packaging/web.spec` → 出 `InkShader-web.exe`（浏览器模式）
-7. `packaging/desktop.spec` + pywebview → 出 `InkShader-desktop.exe`（窗口模式）
-8. 需要时：job 化、Nuitka 优化、fontbakery QA 加强
+已实施：`.gitignore` 放行后端源码；`backend/` 骨架（FastAPI + `/api/meta` + 静态托管）；`POST /api/font/export`（OTF/TTF，前端 File 菜单接入）；`POST /api/font/qa/remove-overlap` 与方向修正（前端 Edit 菜单接入）；`packaging/web.spec` 单 spec 覆盖两种运行模式，产物 `InkShader.exe`（浏览器模式）与 `InkShader-desktop.exe`（窗口模式）；ServerFileStorage（Ctrl+S 直接写盘）。
+
+待实施：
+
+1. `POST /api/fea/parse` + `/api/fea/compile` → .fea 编辑/校验 UI
+2. WOFF2 导出入口
+3. 需要时：job 化、Nuitka 优化、fontbakery QA 加强
 
 ---
 

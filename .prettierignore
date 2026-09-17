@@ -1,0 +1,12 @@
+# Vendored minified builds. Never reformatted.
+js/vendor/
+*.min.js
+
+# Dependencies and build output.
+node_modules/
+backend/dist/
+backend/build/
+__pycache__/
+
+# Archived one-off probes.
+test/_archive/
