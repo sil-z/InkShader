@@ -233,15 +233,22 @@ try {
     assert(B10.seqMenuPos === "static", "B16 glyph sequence-add-menu overridden to static", B10.seqMenuPos);
 
     // i18n dynamic title translation (MutationObserver path).
-    const B17 = await evalJs(ws, `(() => {
-        window.I18n.setLang('zh');
-        const zh = ['font-popup','kern-popup','glyph-popup'].map(s => document.querySelector(s + ' .panel_title').textContent);
-        window.I18n.setLang('en');
-        const en = ['font-popup','kern-popup','glyph-popup'].map(s => document.querySelector(s + ' .panel_title').textContent);
-        return { zh, en };
+    // English is the only shipped locale, so instead of switching languages we
+    // inject a fresh node carrying a data-i18n attribute: the observer must
+    // translate it without an explicit translateDOM() call.
+    const B17 = await evalJs(ws, `(async () => {
+        const probe = document.createElement('div');
+        probe.setAttribute('data-i18n', 'panel.kerning');
+        probe.textContent = 'PLACEHOLDER';
+        document.querySelector('kern-popup').appendChild(probe);
+        await new Promise(r => setTimeout(r, 50));
+        const translated = probe.textContent;
+        probe.remove();
+        const titles = ['font-popup','kern-popup','glyph-popup'].map(s => document.querySelector(s + ' .panel_title').textContent);
+        return { translated, titles };
     })()`);
-    assert(JSON.stringify(B17.zh) === '["字体","字偶距","字形"]', "B17 title bars translate (zh)", B17.zh);
-    assert(JSON.stringify(B17.en) === '["Font","Kerning","Glyphs"]', "B18 title bars revert (en)", B17.en);
+    assert(B17.translated === 'Kerning', "B17 MutationObserver translates injected i18n nodes", B17.translated);
+    assert(JSON.stringify(B17.titles) === '["Font","Kerning","Glyphs"]', "B18 title bars use the English table", B17.titles);
 
     // dataset.panelHidden lifecycle (Session 27): hiding removes the leaf from
     // the dock tree (no title, no space) but the component is kept ALIVE in the
@@ -339,18 +346,18 @@ try {
     assert(D1.canvas && D1.objects && D1.properties && D1.console && D1.sample && D1.font && D1.kern && D1.glyphs,
         "D1 Layout menu has 8 panel toggles", D1);
 
+    // English-only build: a leftover language setting from an older version must
+    // not resurrect a removed locale (I18nManager.lang is fixed to 'en').
     const D2 = await evalJs(ws, `(() => {
-        window.I18n.setLang('zh');
-        document.getElementById('menu_layout').click();
-        const dd = document.querySelector('dropdown-menu');
-        const labels = [...dd.querySelectorAll('.save-dropdown-label')].map(e => e.textContent);
-        const has = (s) => !!labels.find(l => l.includes(s));
-        const zh = { canvas: has('画布'), objects: has('对象'), properties: has('属性'), console: has('控制台'), sample: has('样张') };
-        window.I18n.setLang('en');
-        return zh;
+        localStorage.setItem('InkShader_lang', 'zh');
+        const lang = window.I18n.lang;
+        const label = window.I18n.t('panel.canvas');
+        const switched = (window.I18n.setLang('zh'), window.I18n.lang);
+        localStorage.removeItem('InkShader_lang');
+        return { lang, label, switched };
     })()`);
-    assert(D2.canvas && D2.objects && D2.properties && D2.console && D2.sample,
-        "D2 zh labels for the five core panel toggles", D2);
+    assert(D2.lang === 'en' && D2.label === 'Canvas',
+        "D2 English is the only locale (stale stored language ignored)", D2);
 
     // D3/D4: console is a CORE panel — hide/show must work like the trio.
     const D3 = await evalJs(ws, `(() => {

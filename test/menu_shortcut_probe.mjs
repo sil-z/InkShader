@@ -1,5 +1,6 @@
 // Menu shortcut-label regression probe (pure Node CDP, no npm deps):
-//  - File menu renders Ctrl+N/O/S + Ctrl+Shift+E/S labels; import items have none
+//  - File menu renders Ctrl+N/O + Save(Ctrl+S) / Save As JSON(Ctrl+Shift+J) /
+//    Ctrl+Shift+E/S labels; import items have none
 //  - Edit menu keeps Ctrl+C/V/D + Del (regression)
 //  - Help menu entry opens help-modal; close via OK button
 //  - help list has >= 20 entries; zh help.s.* keys resolve
@@ -31,8 +32,9 @@ const PROBE = `
     }
     check('File menu opened', dd._visible === true, dd._visible);
     check('File New has Ctrl+N', labelShortcuts['New Project'] === 'Ctrl+N', labelShortcuts['New Project']);
-    check('File Open has Ctrl+O', labelShortcuts['Load Project (JSON)'] === 'Ctrl+O', labelShortcuts['Load Project (JSON)']);
-    check('File Save has Ctrl+S', labelShortcuts['Save as JSON Project'] === 'Ctrl+S', labelShortcuts['Save as JSON Project']);
+    check('File Open has Ctrl+O', labelShortcuts['Open Project (JSON)'] === 'Ctrl+O', labelShortcuts['Open Project (JSON)']);
+    check('File Save has Ctrl+S', labelShortcuts['Save'] === 'Ctrl+S', labelShortcuts['Save']);
+    check('File Save As JSON has Ctrl+Shift+J', labelShortcuts['Save as JSON Project'] === 'Ctrl+Shift+J', labelShortcuts['Save as JSON Project']);
     check('File Export UFO has Ctrl+Shift+E', labelShortcuts['Save as UFO Project'] === 'Ctrl+Shift+E', labelShortcuts['Save as UFO Project']);
     check('File Export SVG has Ctrl+Shift+S', labelShortcuts['Save as SVG File'] === 'Ctrl+Shift+S', labelShortcuts['Save as SVG File']);
     // Import items must NOT have a shortcut (none bound)
@@ -65,9 +67,11 @@ const PROBE = `
     check('help-modal opened', hm && hm.overlay.classList.contains('active'), hm && hm.overlay.classList.contains('active'));
     const helpLis = hm ? hm.querySelectorAll('.help_list li').length : 0;
     check('help list complete (>= 20 entries)', helpLis >= 20, helpLis);
-    // zh locale: keys resolve (help.s.* translated)
+    // english-only build: help.s.* must still resolve through the i18n table
+    // (rather than falling back to the raw key)
     const I18n = window.I18n;
-    check('zh help.s.tools resolves', I18n && I18n.t('help.s.tools').length > 10, I18n && I18n.t('help.s.tools'));
+    const tools = I18n && I18n.t('help.s.tools');
+    check('help.s.tools resolves via i18n', !!tools && tools.length > 10 && tools !== 'help.s.tools', tools);
     // close via OK button
     hm.querySelector('#btn_help_ok').click();
     await sleep(200);

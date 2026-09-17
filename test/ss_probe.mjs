@@ -7,6 +7,7 @@
 // Also saves PNGs for visual confirmation.
 const DEBUG_PORT = 9222;
 import fs from 'node:fs';
+import { repoPath } from './probe_env.mjs';
 
 async function cdp() {
     const list = await (await fetch(`http://localhost:${DEBUG_PORT}/json/list`)).json();
@@ -153,7 +154,7 @@ async function cdp() {
     const v = JSON.parse(r.result.result.value);
     const { pngOld, pngNew, ...rest } = v;
     console.log('SS:', JSON.stringify(rest));
-    fs.writeFileSync('C:/Users/z/Desktop/InkShader/InkShader/test/ss_old.png', Buffer.from(pngOld, 'base64'));
-    fs.writeFileSync('C:/Users/z/Desktop/InkShader/InkShader/test/ss_new.png', Buffer.from(pngNew, 'base64'));
+    fs.writeFileSync(repoPath('test', 'ss_old.png'), Buffer.from(pngOld, 'base64'));
+    fs.writeFileSync(repoPath('test', 'ss_new.png'), Buffer.from(pngNew, 'base64'));
     ws.close();
 })().catch(e => { console.error('FATAL', e.message); process.exit(1); });

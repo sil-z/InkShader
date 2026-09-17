@@ -1,0 +1,1227 @@
+{
+    "version": "1.0",
+    "canvas_size_width": 4000,
+    "canvas_size_height": 4000,
+    "editor_guidelines": [
+        {
+            "id": 1,
+            "x": 4723.7,
+            "y": 800,
+            "angle": 0
+        }
+    ],
+    "editor_rulers": [],
+    "editor_sequence": "i j",
+    "editor_active_indices": [
+        0,
+        2,
+        1
+    ],
+    "family_name": "InkShader Roundhand",
+    "project_name": "InkShader_Roundhand",
+    "basic_spacing": 4000,
+    "font_style": "Regular",
+    "postscript_name": "",
+    "preferred_family": "",
+    "preferred_subfamily": "",
+    "style_map_family": "",
+    "copyright": "",
+    "designer": "",
+    "designer_url": "",
+    "manufacturer": "",
+    "manufacturer_url": "",
+    "license": "",
+    "license_url": "",
+    "trademark": "",
+    "description": "",
+    "sample_text": "acdei",
+    "upm": 4000,
+    "weight_class": 400,
+    "width_class": 5,
+    "ascender": 2400,
+    "descender": -1600,
+    "x_height": 800,
+    "cap_height": 2400,
+    "italic_angle": 0,
+    "font_version": "1.0",
+    "glyphs": {
+        "space": {
+            "name": "space",
+            "char_code": " ",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "lturn_shade": {
+            "name": "lturn_shade",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path",
+                    "closed": true,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 550.3739877243147,
+                            "y": 1600,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 555.2567448350851,
+                                "y": 1600
+                            },
+                            "control_2": {
+                                "x": 502.488052066979,
+                                "y": 1600
+                            }
+                        },
+                        {
+                            "x": 252.8025388183296,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 119.28158720152351,
+                                "y": 2150.899024744389
+                            },
+                            "control_2": {
+                                "x": 395.050918851648,
+                                "y": 1797.9303762833342
+                            }
+                        },
+                        {
+                            "x": 48.041621497227425,
+                            "y": 2379.3255260477226,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": -2.335134619510427,
+                                "y": 2337.0544085702604
+                            },
+                            "control_2": {
+                                "x": -9.515024999253,
+                                "y": 2331.0297652007253
+                            }
+                        },
+                        {
+                            "x": 122.8025388183296,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 175.48611025185932,
+                                "y": 1912.5681035896077
+                            },
+                            "control_2": {
+                                "x": -32.63354579006318,
+                                "y": 2178.9491158353676
+                            }
+                        },
+                        {
+                            "x": 322.4435199273829,
+                            "y": 1729.3068265157026,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 381.88447547116675,
+                                "y": 1656.3612608384788
+                            },
+                            "control_2": {
+                                "x": 256.17509650136725,
+                                "y": 1810.631017708891
+                            }
+                        },
+                        {
+                            "x": 435.3423052374466,
+                            "y": 1600,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 507.0154775295152,
+                                "y": 1600
+                            },
+                            "control_2": {
+                                "x": 429.72322698507355,
+                                "y": 1600
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "oval_lhline": {
+            "name": "oval_lhline",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_3",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 103.26298593322448,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -174.29551502893386,
+                                "y": 2310.781340676716
+                            }
+                        },
+                        {
+                            "x": -667.1241787573554,
+                            "y": 2741.95475,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": -493.9932515733951,
+                                "y": 2605.4855624350494
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "d": {
+            "name": "d",
+            "char_code": "d",
+            "advance": 1240.3784200812051,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "lturn_long_Ref",
+                    "component_id": "lturn_long",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        580,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_shade_Ref_2",
+                    "component_id": "oval_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_lhline_Ref_2",
+                    "component_id": "oval_lhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_rhline_Ref_1",
+                    "component_id": "oval_rhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "oval_rhline": {
+            "name": "oval_rhline",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_13",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 637.0941643285992,
+                            "y": 1622.3544570691865,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 791.5427873680364,
+                                "y": 1580.9700732536705
+                            }
+                        },
+                        {
+                            "x": 663.4420736139198,
+                            "y": 2005,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 430.43398496558444,
+                                "y": 2282.688226750164
+                            },
+                            "control_2": {
+                                "x": 966.95230858001,
+                                "y": 1643.2905870900486
+                            }
+                        },
+                        {
+                            "x": 48.04162149722738,
+                            "y": 2379.3255260477226,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 145.157697999373,
+                                "y": 2460.8155900220577
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "n": {
+            "name": "n",
+            "char_code": "n",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "one": {
+            "name": "one",
+            "char_code": "1",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "lturn": {
+            "name": "lturn",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "lturn_rhline_empty_Ref_1",
+                    "component_id": "lturn_rhline_empty",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "lturn_shade_Ref",
+                    "component_id": "lturn_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "i_dot": {
+            "name": "i_dot",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_14",
+                    "closed": true,
+                    "stroke_width": 16,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 863.4823456305858,
+                            "y": 1155,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 863.4823456305858,
+                                "y": 1180.9573832406
+                            },
+                            "control_2": {
+                                "x": 863.4823456305858,
+                                "y": 1129.0426167594
+                            }
+                        },
+                        {
+                            "x": 816.4823456305858,
+                            "y": 1202,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 790.5249623899863,
+                                "y": 1202
+                            },
+                            "control_2": {
+                                "x": 842.4397288711853,
+                                "y": 1202
+                            }
+                        },
+                        {
+                            "x": 769.4823456305858,
+                            "y": 1155,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 769.4823456305858,
+                                "y": 1129.0426167594
+                            },
+                            "control_2": {
+                                "x": 769.4823456305858,
+                                "y": 1180.9573832406
+                            }
+                        },
+                        {
+                            "x": 816.4823456305858,
+                            "y": 1108,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 842.4397288711853,
+                                "y": 1108
+                            },
+                            "control_2": {
+                                "x": 790.5249623899863,
+                                "y": 1108
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "lturn_long": {
+            "name": "lturn_long",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "lturn_rhline_empty_Ref",
+                    "component_id": "lturn_rhline_empty",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "path",
+                    "name": "Path_4",
+                    "closed": true,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 1181.9366342883059,
+                            "y": 800,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1186.8193913990763,
+                                "y": 800
+                            },
+                            "control_2": {
+                                "x": 1134.0506986309701,
+                                "y": 800
+                            }
+                        },
+                        {
+                            "x": 252.8025388183296,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 119.28158720152351,
+                                "y": 2150.899024744389
+                            },
+                            "control_2": {
+                                "x": 395.050918851648,
+                                "y": 1797.9303762833342
+                            }
+                        },
+                        {
+                            "x": 48.041621497227425,
+                            "y": 2379.3255260477226,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": -2.335134619510427,
+                                "y": 2337.0544085702604
+                            },
+                            "control_2": {
+                                "x": -9.515024999253,
+                                "y": 2331.0297652007253
+                            }
+                        },
+                        {
+                            "x": 122.8025388183296,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 222.74182670879884,
+                                "y": 1852.0835447372597
+                            },
+                            "control_2": {
+                                "x": -32.63354579006375,
+                                "y": 2178.949115835367
+                            }
+                        },
+                        {
+                            "x": 1061.618459271291,
+                            "y": 800,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1133.2916315633595,
+                                "y": 800
+                            },
+                            "control_2": {
+                                "x": 1049.7348879015772,
+                                "y": 800
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "u": {
+            "name": "u",
+            "char_code": "u",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "lturn_rhline_empty": {
+            "name": "lturn_rhline_empty",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_2",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 936.0520454458839,
+                            "y": 1802.4671104094873,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 336.08337187514314,
+                                "y": 2402.0059162816437
+                            }
+                        },
+                        {
+                            "x": 48.04162149722738,
+                            "y": 2379.3255260477226,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 103.82433201094427,
+                                "y": 2426.1327778658515
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "e": {
+            "name": "e",
+            "char_code": "e",
+            "advance": 684.748009466401,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "oval_lhline_Ref_1",
+                    "component_id": "oval_lhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_shade_Ref_1",
+                    "component_id": "oval_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "path",
+                    "name": "Path_6",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 637.0941643285992,
+                            "y": 1622.3544570691865,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 755.4052954189565,
+                                "y": 1590.6530850379127
+                            }
+                        },
+                        {
+                            "x": 634.799897734083,
+                            "y": 1794.1758889311598,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 556.6601543678297,
+                                "y": 1866.6380215367658
+                            },
+                            "control_2": {
+                                "x": 744.5859818778393,
+                                "y": 1692.3668293571195
+                            }
+                        },
+                        {
+                            "x": 237.03093075189508,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 373.789386690437,
+                                "y": 1960.5895673274265
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "component",
+                    "name": "lturn_rhline_empty_Ref_3",
+                    "component_id": "lturn_rhline_empty",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "oval_shade": {
+            "name": "oval_shade",
+            "char_code": null,
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_12",
+                    "closed": true,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 637.0941643285992,
+                            "y": 1622.3544570691865,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": 505.70130960155427,
+                                "y": 1657.5610663845182
+                            },
+                            "control_2": {
+                                "x": 452.2581832581244,
+                                "y": 1671.8811089292346
+                            }
+                        },
+                        {
+                            "x": 237.03093075189517,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 94.85035125759819,
+                                "y": 2149.444216409455
+                            },
+                            "control_2": {
+                                "x": 385.54679514804445,
+                                "y": 1803.0056850486544
+                            }
+                        },
+                        {
+                            "x": 48.04162149722738,
+                            "y": 2379.3255260477226,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": -2.3351346195098897,
+                                "y": 2337.0544085702604
+                            },
+                            "control_2": {
+                                "x": -9.515024999252393,
+                                "y": 2331.0297652007253
+                            }
+                        },
+                        {
+                            "x": 103.26298593322448,
+                            "y": 1980,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 250.54528753666372,
+                                "y": 1804.4757879385575
+                            },
+                            "control_2": {
+                                "x": -36.86228136474989,
+                                "y": 2146.9947907155847
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "c": {
+            "name": "c",
+            "char_code": "c",
+            "advance": 669.7410405222084,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "oval_lhline_Ref_3",
+                    "component_id": "oval_lhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_shade_Ref_3",
+                    "component_id": "oval_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "lturn_rhline_empty_Ref_4",
+                    "component_id": "lturn_rhline_empty",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "path",
+                    "name": "Path_5",
+                    "closed": true,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 637.0941643285993,
+                            "y": 1622.3544570691865,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": 726.6271573839564,
+                                "y": 1598.3641638840622
+                            },
+                            "control_2": {
+                                "x": 718.9931000002972,
+                                "y": 1600.4097033949865
+                            }
+                        },
+                        {
+                            "x": 778.2650111812848,
+                            "y": 1677.7434165689992,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 784.4241603044735,
+                                "y": 1719.5779272085545
+                            },
+                            "control_2": {
+                                "x": 772.1961282767371,
+                                "y": 1636.5220170927892
+                            }
+                        },
+                        {
+                            "x": 710.2798343157386,
+                            "y": 1745.766462298092,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 677.4603660613456,
+                                "y": 1736.4859940307294
+                            },
+                            "control_2": {
+                                "x": 743.0993025701317,
+                                "y": 1755.0469305654544
+                            }
+                        },
+                        {
+                            "x": 718.7065932724933,
+                            "y": 1662.1324647943725,
+                            "control_mode": "symmetric",
+                            "control_1": {
+                                "x": 773.770876422568,
+                                "y": 1637.6385743566007
+                            },
+                            "control_2": {
+                                "x": 663.6423101224185,
+                                "y": 1686.6263552321443
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "o": {
+            "name": "o",
+            "char_code": "o",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "oval_lhline_Ref_4",
+                    "component_id": "oval_lhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_shade_Ref_4",
+                    "component_id": "oval_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "a": {
+            "name": "a",
+            "char_code": "a",
+            "advance": 1252.2676987366694,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "component",
+                    "name": "oval_shade_Ref",
+                    "component_id": "oval_shade",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_lhline_Ref",
+                    "component_id": "oval_lhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "oval_rhline_Ref",
+                    "component_id": "oval_rhline",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "lturn_Ref_1",
+                    "component_id": "lturn",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        580,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                }
+            ]
+        },
+        "quotesingle": {
+            "name": "quotesingle",
+            "char_code": "'",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "j": {
+            "name": "j",
+            "char_code": "j",
+            "advance": 1000,
+            "locked": false,
+            "visible": true,
+            "children": []
+        },
+        "i": {
+            "name": "i",
+            "char_code": "i",
+            "advance": 692.7558877893994,
+            "locked": false,
+            "visible": true,
+            "children": [
+                {
+                    "type": "path",
+                    "name": "Path_1",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 322.443519927383,
+                            "y": 1729.3068265157026,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -64.89095504338752,
+                                "y": 2204.6412508121175
+                            }
+                        },
+                        {
+                            "x": -698.1997012573552,
+                            "y": 2729.0340675,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": -458.8902059281449,
+                                "y": 2536.8592679867998
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "component",
+                    "name": "lturn_Ref",
+                    "component_id": "lturn",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "component",
+                    "name": "i_dot_Ref",
+                    "component_id": "i_dot",
+                    "transform": [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        0
+                    ],
+                    "visible": true,
+                    "locked": false
+                },
+                {
+                    "type": "path",
+                    "name": "Path_8",
+                    "closed": true,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 2445,
+                            "y": 1600,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2476.6871056300197,
+                                "y": 1600
+                            },
+                            "control_2": {
+                                "x": 2440.3799969080237,
+                                "y": 1600
+                            }
+                        },
+                        {
+                            "x": 2560,
+                            "y": 1600,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2564.2145782721973,
+                                "y": 1600
+                            },
+                            "control_2": {
+                                "x": 2525.335392095676,
+                                "y": 1600
+                            }
+                        },
+                        {
+                            "x": 1512.0446401058127,
+                            "y": 2966.084507109135,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 1307.6960857610673,
+                                "y": 3214.0334863481835
+                            },
+                            "control_2": {
+                                "x": 1789.3975292498963,
+                                "y": 2629.5547676510355
+                            }
+                        },
+                        {
+                            "x": 683.4695750002126,
+                            "y": 3759.9703203889158,
+                            "control_mode": "corner",
+                            "control_1": {
+                                "x": 964.0790974070318,
+                                "y": 3563.4854175062346
+                            },
+                            "control_2": {
+                                "x": 1017.6113907281587,
+                                "y": 3526.001702185128
+                            }
+                        },
+                        {
+                            "x": 1581.1573646749996,
+                            "y": 2741.51695829395,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 2024.379012566335,
+                                "y": 2153.725694601409
+                            },
+                            "control_2": {
+                                "x": 1334.090908275793,
+                                "y": 3069.171316590394
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "path",
+                    "name": "Path_9",
+                    "closed": false,
+                    "stroke_width": 8,
+                    "smart_stroke": true,
+                    "smart_stroke_clockwise": false,
+                    "expand_round_cap": false,
+                    "visible": true,
+                    "locked": false,
+                    "vertices": [
+                        {
+                            "x": 683.4695750002126,
+                            "y": 3759.9703203889158,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": -59.66837121155436,
+                                "y": 4280.321112256077
+                            }
+                        },
+                        {
+                            "x": 542.654086092483,
+                            "y": 3327.415325770288,
+                            "control_mode": "smooth",
+                            "control_1": {
+                                "x": 875.9064261974129,
+                                "y": 3036.466803066714
+                            },
+                            "control_2": {
+                                "x": -34.0248578778627,
+                                "y": 3830.889320190251
+                            }
+                        },
+                        {
+                            "x": 1774.7769634586043,
+                            "y": 2564.3592786183635,
+                            "control_mode": "smooth",
+                            "control_2": {
+                                "x": 1301.0830061956758,
+                                "y": 2758.2716984880703
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "editor_root_order": [
+        "a",
+        "oval_shade",
+        "lturn_shade",
+        "i",
+        "space",
+        "oval_lhline",
+        "e",
+        "d",
+        "oval_rhline",
+        "n",
+        "one",
+        "lturn_rhline_empty",
+        "lturn",
+        "i_dot",
+        "lturn_long",
+        "u",
+        "c",
+        "o",
+        "quotesingle",
+        "j"
+    ]
+}
