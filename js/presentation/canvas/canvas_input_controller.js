@@ -1,6 +1,28 @@
 import { CanvasDispatcher } from "../../app/canvas_dispatcher.js";
 import { resolveActiveCanvasTool, snapshotIncludesCurve, snapshotIncludesRef } from "../../app/editor_interaction_state.js";
 import { desktopApi } from "../../app/app_mode.js";
+import { CANVAS_EVENTS } from "../../app/canvas_events.js";
+
+/**
+ * Translation shorthand for the edit dialogs below: table first, English literal
+ * as the fallback. Named `tr` because several methods already bind a local `t`.
+ */
+const tr = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
+/**
+ * Repaint the mouse readout from the last known position. The readout is written on
+ * mousemove, so without this a language switch would leave the old label on screen
+ * until the pointer happens to move again.
+ */
+function paintMousePosLabel(c) {
+    if (!c) return;
+    if (!c.mouse_pos_output) c.mouse_pos_output = c.env.queryDOM('#mouse_pos');
+    if (!c.mouse_pos_output) return;
+    const pos = c._lastMousePos || { x: 0, y: 0 };
+    c._pendingMouseText = tr('canvas.mouse_pos', 'Mouse Pos') + " "
+        + pos.x.toFixed(2) + " " + pos.y.toFixed(2);
+}
+
 /**
  * CanvasInputController: binds DOM events to canvas interaction layer.
  *
@@ -81,8 +103,9 @@ export class CanvasInputController {
         if (c.mouse_pos_output && c.current_state !== 'PANNING') {
             const worldX = (mouseX - offsetX) / c.scale, worldY = (mouseY - offsetY) / c.scale;
             const baselineWorldY = c.fontSettings?.ascender ?? 800;
-            const posLabel = window.I18n ? window.I18n.t('canvas.mouse_pos', 'Mouse Pos') : 'Mouse Pos';
-            c._pendingMouseText = posLabel + " " + worldX.toFixed(2) + " " + (baselineWorldY - worldY).toFixed(2);
+            // Kept as numbers so the readout can be repainted in another language.
+            c._lastMousePos = { x: worldX, y: baselineWorldY - worldY };
+            paintMousePosLabel(c);
         }
         if (c._rulerIndicatorH && c._rulerIndicatorV && c.painting_area) {
             // The markers are children of the stage and sit on the ruler strips, which are
@@ -284,6 +307,7 @@ export class CanvasInputController {
                 }
             }, true);
             c.addGlobalListener('window', "mousemove", (e) => this.handleWindowMouseMove(e));
+            c.addGlobalListener('window', CANVAS_EVENTS.LANGUAGE_CHANGED, () => paintMousePosLabel(c));
             c.addGlobalListener(c.canvasObj, "mouseleave", () => {
                 if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
                 if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
@@ -346,140 +370,8 @@ export class CanvasInputController {
                 }
                 return;
             });
-            c.addGlobalListener('window', "mousemove", (e) => {
-                if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
-                const div = c._draggingDivider;
-                if (!div._dragStarted) {
-                    if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
-                    div._dragStarted = true;
-                }
-                c.canvasObj.dataset.cursor = 'ew-resize';
-                const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
-                const dx = pointer.x - div.startScreenX;
-                const deltaAdv = dx / c.scale;
-                const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
-                const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
-                if (leftGroup && rightGroup) {
-                    if (div.modifyRight) {
-                        // RIGHT active: right group advance decreases (LSB shrinks), canvas translates
-                        const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                        leftGroup.advance = div.startLeftAdvance;
-                        leftGroup.is_modified = true;
-                        rightGroup.advance = newRightAdv;
-                        rightGroup.is_modified = true;
-                        if (!div._rightNodeOrigins) {
-                            div._rightNodeOrigins = [];
-                            const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
-                            for (const cd of curves) {
-                                let node = cd.curve?.startNode;
-                                while (node) {
-                                    div._rightNodeOrigins.push({
-                                        node, x: node.x,
-                                        c1x: node.control1?.x,
-                                        c2x: node.control2?.x
-                                    });
-                                    node = node.nextOnCurve;
-                                }
-                            }
-                        }
-                        for (const o of div._rightNodeOrigins) {
-                            o.node.x = o.x - deltaAdv;
-                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
-                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
-                        }
-                        // Invalidate curve bounds + boolean caches so getBounds() and boolean rendering use
-                        // current node positions (boolean cache was built at pre-shift positions).
-                        for (const o of div._rightNodeOrigins) {
-                            if (o.node.curve) o.node.curve._invalidateBounds();
-                        }
-                        {
-                            const invalidated = new Set();
-                            for (const o of div._rightNodeOrigins) {
-                                if (o.node.curve && !invalidated.has(o.node.curve)) {
-                                    invalidated.add(o.node.curve);
-                                    o.node.curve.invalidateBooleanCache();
-                                }
-                            }
-                        }
-                        c.offset.x = div.startOffsetX + dx;
-                        c.curve_manager.calculateSequenceOffsets();
-                    } else {
-                        // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
-                        const newLeftAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
-                        leftGroup.advance = newLeftAdv;
-                        leftGroup.is_modified = true;
-                        rightGroup.advance = div.startRightAdvance;
-                        rightGroup.is_modified = true;
-                        c.curve_manager.calculateSequenceOffsets();
-                    }
-                } else if (!leftGroup && rightGroup && div.isLeftEdge) {
-                    // Leftmost divider: same pattern as modifyRight=true â€” decrease first
-                    // glyph's advance and shift its nodes LEFT. calculateSequenceOffsets
-                    // propagates the change to all subsequent seqOffsets, canceling with
-                    // the canvas offset shift for all downstream content.
-                    const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                    rightGroup.advance = newAdv;
-                    rightGroup.is_modified = true;
-                    if (!div._rightNodeOrigins) {
-                        div._rightNodeOrigins = [];
-                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
-                        for (const cd of curves) {
-                            let node = cd.curve?.startNode;
-                            while (node) {
-                                div._rightNodeOrigins.push({
-                                    node, x: node.x,
-                                    c1x: node.control1?.x,
-                                    c2x: node.control2?.x
-                                });
-                                node = node.nextOnCurve;
-                            }
-                        }
-                    }
-                        for (const o of div._rightNodeOrigins) {
-                            o.node.x = o.x - deltaAdv;
-                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
-                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
-                        }
-                        // Invalidate curve bounds + boolean caches so getBounds() and boolean rendering use
-                        // current node positions (boolean cache was built at pre-shift positions).
-                        for (const o of div._rightNodeOrigins) {
-                            if (o.node.curve) o.node.curve._invalidateBounds();
-                        }
-                        {
-                            const invalidated = new Set();
-                            for (const o of div._rightNodeOrigins) {
-                                if (o.node.curve && !invalidated.has(o.node.curve)) {
-                                    invalidated.add(o.node.curve);
-                                    o.node.curve.invalidateBooleanCache();
-                                }
-                            }
-                        }
-                        c.offset.x = div.startOffsetX + dx;
-                        c.curve_manager.calculateSequenceOffsets();
-                } else if (rightGroup) {
-                    // Right-only group (includes leftmost divider if isLeftEdge wasn't caught above)
-                    if (div.modifyRight) {
-                        // RIGHT active: right group widens rightward
-                        const newAdv = Math.max(0, div.startRightAdvance + deltaAdv);
-                        rightGroup.advance = newAdv;
-                        rightGroup.is_modified = true;
-                        c.curve_manager.calculateSequenceOffsets();
-                    } else {
-                        // LEFT active: right group shrinks from right
-                        const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                        rightGroup.advance = newAdv;
-                        rightGroup.is_modified = true;
-                        c.curve_manager.calculateSequenceOffsets();
-                    }
-                } else if (leftGroup) {
-                    // Rightmost divider: only left group exists (right edge of last glyph)
-                    const newAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
-                    leftGroup.advance = newAdv;
-                    leftGroup.is_modified = true;
-                    c.curve_manager.calculateSequenceOffsets();
-                }
-                c.is_dirty = true;
-            });
+            c.addGlobalListener('window', "mousemove", (e) => handleDividerDragMove(c, e))
+            c.addGlobalListener('window', "mouseup", (e) => handleDividerDragEnd(c, e));
             c.addGlobalListener('window', "mouseup", (e) => {
                 if (c.current_state === 'DRAGGING_METRIC_GUIDE' && c._draggingMetricGuide) {
                     const mg = c._draggingMetricGuide;
@@ -683,68 +575,7 @@ export class CanvasInputController {
                 }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
-                if (c.divider_locked) return;
-                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
-                if (hasInteractiveHit) return;
-                const isFirstLeftEdge = divHit.isLeftEdge && divHit.seqIndex === 0;
-                const isRightEdge = !!divHit.isRight;
-                let leftGroupId = null;
-                let rightGroupId = null;
-                let seqIndex = divHit.seqIndex;
-                let modifyRight = false;
-                if (isFirstLeftEdge) {
-                    // Left edge of first glyph â€” hoverable but not draggable, shows LSB of first glyph
-                    rightGroupId = divHit.groupId;
-                    seqIndex = 0;
-                } else if (isRightEdge) {
-                    // Right edge of last glyph â€” divider at the right edge of the last glyph
-                    leftGroupId = divHit.groupId;
-                    rightGroupId = null;
-                    seqIndex = divHit.seqIndex;
-                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
-                    if (!activeGroupId && leftGroupId) {
-                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
-                    }
-                } else {
-                    // Left edge of glyph i (i > 0) â€” divider between glyph i-1 and glyph i
-                    const seqTokens = c.curve_manager.sequenceTokens || [];
-                    const prevToken = seqTokens[divHit.seqIndex - 1];
-                    leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
-                    rightGroupId = divHit.groupId;
-                    seqIndex = divHit.seqIndex - 1;
-                    const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
-                    if (leftGroup && leftGroup.locked) return;
-                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
-                    if (rightGroupId && activeGroupId === rightGroupId) {
-                        modifyRight = true;
-                    } else if (!activeGroupId && leftGroupId) {
-                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
-                    }
-                }
-                const rightGroup = rightGroupId ? c.curve_manager.treeItems.get(rightGroupId) : null;
-                const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
-                e.preventDefault();
-                e.stopPropagation();
-                c._hoveredDividerId = null;
-                c.current_state = 'DRAGGING_DIVIDER';
-                c._draggingDivider = {
-                    leftGroupId: leftGroupId,
-                    rightGroupId: rightGroupId,
-                    groupId: rightGroupId || leftGroupId,
-                    modifyRight: modifyRight,
-                    isLeftEdge: isFirstLeftEdge,
-                    dividerId: isRightEdge
-                        ? divHit.groupId + "-" + divHit.seqIndex + "-r"
-                        : divHit.groupId + "-" + divHit.seqIndex + "-l",
-                    startScreenX: divHit.screenX,
-                    startLeftAdvance: leftGroup ? leftGroup.advance : 0,
-                    startRightAdvance: rightGroup ? rightGroup.advance : 1000,
-                    startOffsetX: c.offset.x,
-                    _clientX: e.clientX,
-                    _clientY: e.clientY,
-                    _dragStarted: false
-                };
-                return;
+                return startDividerDrag(c, e, divHit, hasInteractiveHit);
             }
             // Metric guide drag
             const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
@@ -999,6 +830,9 @@ export class CanvasInputController {
             }
         });
         c.addGlobalListener('window', "mousemove", (e) => this.handleWindowMouseMove(e));
+        c.addGlobalListener('window', CANVAS_EVENTS.LANGUAGE_CHANGED, () => paintMousePosLabel(c));
+        // Seed the readout so the stale literal in the markup never survives boot.
+        paintMousePosLabel(c);
         c.addGlobalListener(c.canvasObj, "mouseleave", () => {
             if (c._rulerIndicatorH) c._rulerIndicatorH.classList.remove('is-visible');
             if (c._rulerIndicatorV) c._rulerIndicatorV.classList.remove('is-visible');
@@ -1088,82 +922,7 @@ export class CanvasInputController {
             guide.y = (pointer.y - offsetY) / c.scale;
             c.is_dirty = true;
         });
-        c.addGlobalListener('window', "mousemove", (e) => {
-            if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
-            const div = c._draggingDivider;
-            if (!div._dragStarted) {
-                if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
-                div._dragStarted = true;
-            }
-            c.canvasObj.dataset.cursor = 'ew-resize';
-            const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
-            const dx = pointer.x - div.startScreenX;
-            const deltaAdv = dx / c.scale;
-            const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
-            const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
-                if (leftGroup && rightGroup) {
-                    if (div.modifyRight) {
-                        // RIGHT active: right group advance decreases (LSB shrinks), canvas translates
-                        const newRightAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                        leftGroup.advance = div.startLeftAdvance;
-                        leftGroup.is_modified = true;
-                        rightGroup.advance = newRightAdv;
-                        rightGroup.is_modified = true;
-                        if (!div._rightNodeOrigins) {
-                            div._rightNodeOrigins = [];
-                            const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
-                            for (const cd of curves) {
-                                let node = cd.curve?.startNode;
-                                while (node) {
-                                    div._rightNodeOrigins.push({
-                                        node, x: node.x,
-                                        c1x: node.control1?.x,
-                                        c2x: node.control2?.x
-                                    });
-                                    node = node.nextOnCurve;
-                                }
-                            }
-                        }
-                        for (const o of div._rightNodeOrigins) {
-                            o.node.x = o.x - deltaAdv;
-                            if (o.node.control1) o.node.control1.x = o.c1x - deltaAdv;
-                            if (o.node.control2) o.node.control2.x = o.c2x - deltaAdv;
-                        }
-                        c.offset.x = div.startOffsetX + dx;
-                        c.curve_manager.calculateSequenceOffsets();
-                    } else {
-                    // LEFT active: left expands (divider follows mouse), right shifts via seqOffset
-                    const newLeftAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
-                    leftGroup.advance = newLeftAdv;
-                    leftGroup.is_modified = true;
-                    rightGroup.advance = div.startRightAdvance;
-                    rightGroup.is_modified = true;
-                    c.curve_manager.calculateSequenceOffsets();
-                }
-            } else if (rightGroup) {
-                // Left edge: no left group, just adjust right group's advance
-                if (div.modifyRight) {
-                    // RIGHT active: right group widens rightward
-                    const newAdv = Math.max(0, div.startRightAdvance + deltaAdv);
-                    rightGroup.advance = newAdv;
-                    rightGroup.is_modified = true;
-                    c.curve_manager.calculateSequenceOffsets();
-                } else {
-                    // LEFT active: right group shrinks from right
-                    const newAdv = Math.max(0, div.startRightAdvance - deltaAdv);
-                    rightGroup.advance = newAdv;
-                    rightGroup.is_modified = true;
-                    c.curve_manager.calculateSequenceOffsets();
-                }
-            } else if (leftGroup) {
-                // Rightmost divider: only left group exists (right edge of last glyph)
-                const newAdv = Math.max(0, div.startLeftAdvance + deltaAdv);
-                leftGroup.advance = newAdv;
-                leftGroup.is_modified = true;
-                c.curve_manager.calculateSequenceOffsets();
-            }
-            c.is_dirty = true;
-        });
+        c.addGlobalListener('window', "mousemove", (e) => handleDividerDragMove(c, e));
         c.addGlobalListener('window', "mousemove", (e) => {
             if (c.current_state !== 'DRAGGING_METRIC_GUIDE' || !c._draggingMetricGuide) return;
             const mg = c._draggingMetricGuide;
@@ -1235,85 +994,8 @@ export class CanvasInputController {
             c.is_dirty = true;
         });
         // Divider drag mouseup
-        const commitDividerDrag = (div) => {
-            const leftGroup = div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null;
-            const rightGroup = div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null;
-            if (div._dragStarted) {
-                if (div.modifyRight) {
-                    // RIGHT active: keep LSB node shift + canvas offset, snapshot current state
-                    if (leftGroup) {
-                        leftGroup.is_modified = true;
-                        c.curve_manager.invalidateGroupCache(div.leftGroupId);
-                    }
-                    if (rightGroup) {
-                        rightGroup.is_modified = true;
-                        c.curve_manager.invalidateGroupCache(div.rightGroupId);
-                    }
-                    // Invalidate curve bounds cache so getBounds() / LSB/RSB / hit-testing use correct positions
-                    if (div.rightGroupId) {
-                        const curves = c.curve_manager.getCurvesForGroup(div.rightGroupId);
-                        for (const cd of curves) {
-                            if (cd.curve) cd.curve._invalidateBounds();
-                        }
-                    }
-                    if (leftGroup || rightGroup) {
-                        c.curve_manager.calculateSequenceOffsets();
-                    }
-                    // Rebuild spatial grid after node position mutation during drag
-                    const dirtyIds = new Set();
-                    if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
-                    if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
-                    c.curve_manager.rebuildSpatialGrid(dirtyIds);
-                    delete div._rightNodeOrigins;
-                    CanvasDispatcher.requestHistoryCommit("dividerDragRight", { groupId: div.rightGroupId });
-                } else {
-                    // LEFT active: commit advance changes
-                    if (leftGroup && rightGroup) {
-                        const currentLeftAdv = leftGroup.advance;
-                        leftGroup.advance = div.startLeftAdvance;
-                        rightGroup.advance = div.startRightAdvance;
-                        CanvasDispatcher.requestSetGroupAdvance(div.leftGroupId, currentLeftAdv, { recordHistory: true });
-                    } else if (rightGroup) {
-                        // Left edge LEFT active: commit right group's advance shrink
-                        const currentAdv = rightGroup.advance;
-                        rightGroup.advance = div.startRightAdvance;
-                        CanvasDispatcher.requestSetGroupAdvance(div.rightGroupId, currentAdv, { recordHistory: true });
-                    } else if (leftGroup) {
-                        // Rightmost divider: commit left group's advance increase
-                        const currentAdv = leftGroup.advance;
-                        leftGroup.advance = div.startLeftAdvance;
-                        CanvasDispatcher.requestSetGroupAdvance(div.leftGroupId, currentAdv, { recordHistory: true });
-                    }
-                    // Rebuild spatial grid so seqOffsetX in grid entries matches new sequence offsets
-                    const dirtyIds = new Set();
-                    if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
-                    if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
-                    c.curve_manager.rebuildSpatialGrid(dirtyIds);
-                }
-            } else if (leftGroup && rightGroup) {
-                // Click without drag: restore originals
-                leftGroup.advance = div.startLeftAdvance;
-                leftGroup.is_modified = true;
-                rightGroup.advance = div.startRightAdvance;
-                rightGroup.is_modified = true;
-                c.curve_manager.calculateSequenceOffsets();
-                const dirtyIds = new Set();
-                if (div.leftGroupId) dirtyIds.add(div.leftGroupId);
-                if (div.rightGroupId) dirtyIds.add(div.rightGroupId);
-                c.curve_manager.rebuildSpatialGrid(dirtyIds);
-            }
-            // Bump geometry epoch to invalidate all rendering caches
-            // (stable scene, node layer) after node position / advance
-            // mutation during divider drag.
-            c.bumpGeometryEpoch();
-        };
-        c.addGlobalListener('window', "mouseup", (e) => {
-            if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
-            const div = c._draggingDivider;
-            c._draggingDivider = null;
-            c.current_state = 'IDLE';
-            commitDividerDrag(div);
-        });
+        // divider drag commit lives in handleDividerDragEnd() (shared by both paths)
+        c.addGlobalListener('window', "mouseup", (e) => handleDividerDragEnd(c, e));
         c.addGlobalListener(c.canvasObj, "mousemove", (e) => {
             if (c.current_state === 'DRAGGING_USER_GUIDE' || c.current_state === 'DRAGGING_DIVIDER' || c.current_state === 'DRAGGING_METRIC_GUIDE') return;
             if (c.current_state === 'TRANSFORMING_OBJECTS' || c.current_state === 'PANNING' || c.current_state === 'DRAGGING_NODE') return;
@@ -1461,78 +1143,7 @@ export class CanvasInputController {
             }
             const divHit = c.utils.hitTestDividerLines(pointer.x, pointer.y);
             if (divHit) {
-                if (c.divider_locked) return;
-                if (tool === 'DRAW' || tool === 'ELLIPSE') return;
-                if (hasInteractiveHit) return;
-                const isFirstLeftEdge = divHit.isLeftEdge && divHit.seqIndex === 0;
-                const isRightEdge = !!divHit.isRight;
-                let leftGroupId = null;
-                let rightGroupId = null;
-                let seqIndex = divHit.seqIndex;
-                let rightSeqIndex = -1;
-                let modifyRight = false;
-                if (isFirstLeftEdge) {
-                    // Left edge of first glyph â€” hoverable but not draggable, shows LSB of first glyph
-                    rightGroupId = divHit.groupId;
-                    rightSeqIndex = 0;
-                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
-                    if (rightGroupId && activeGroupId === rightGroupId) {
-                        modifyRight = true;
-                    }
-                } else if (isRightEdge) {
-                    // Right edge of last glyph â€” divider at the right edge of the last glyph
-                    leftGroupId = divHit.groupId;
-                    rightGroupId = null;
-                    rightSeqIndex = -1;
-                    seqIndex = divHit.seqIndex;
-                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
-                    if (!activeGroupId && leftGroupId) {
-                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
-                    }
-                } else {
-                    // Left edge of glyph i (i > 0) â€” divider between glyph i-1 and glyph i
-                    const seqTokens = c.curve_manager.sequenceTokens || [];
-                    const prevToken = seqTokens[divHit.seqIndex - 1];
-                    leftGroupId = prevToken ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value) : null;
-                    rightGroupId = divHit.groupId;
-                    rightSeqIndex = divHit.seqIndex;
-                    seqIndex = divHit.seqIndex - 1;
-                    const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
-                    if (leftGroup && leftGroup.locked) return;
-                    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
-                    if (rightGroupId && activeGroupId === rightGroupId) {
-                        modifyRight = true;
-                    } else if (!activeGroupId && leftGroupId) {
-                        CanvasDispatcher.requestActivateGroup?.(leftGroupId);
-                    }
-                }
-                const rightGroup = rightGroupId ? c.curve_manager.treeItems.get(rightGroupId) : null;
-                const leftGroup = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
-                const startRightSeqOffset = rightSeqIndex >= 0 ? c.curve_manager.getSeqOffset(rightSeqIndex) : 0;
-                e.preventDefault();
-                e.stopPropagation();
-                c._hoveredDividerId = null;
-                c.current_state = 'DRAGGING_DIVIDER';
-                c._draggingDivider = {
-                    leftGroupId: leftGroupId,
-                    rightGroupId: rightGroupId,
-                    groupId: rightGroupId || leftGroupId,
-                    rightSeqIndex: rightSeqIndex,
-                    startRightSeqOffset: startRightSeqOffset,
-                    modifyRight: modifyRight,
-                    isLeftEdge: isFirstLeftEdge,
-                    dividerId: isRightEdge
-                        ? divHit.groupId + "-" + divHit.seqIndex + "-r"
-                        : divHit.groupId + "-" + divHit.seqIndex + "-l",
-                    startScreenX: divHit.screenX,
-                    startLeftAdvance: leftGroup ? leftGroup.advance : 0,
-                    startRightAdvance: rightGroup ? rightGroup.advance : 1000,
-                    startOffsetX: c.offset.x,
-                    _clientX: e.clientX,
-                    _clientY: e.clientY,
-                    _dragStarted: false
-                };
-                return;
+                return startDividerDrag(c, e, divHit, hasInteractiveHit);
             }
             // Metric guide drag (first-time path)
             const metricKey = c.utils.hitTestMetricGuidelines(pointer.x, pointer.y);
@@ -1668,7 +1279,7 @@ export class CanvasInputController {
             const viewY = asc - guide.y;
             dlg.innerHTML = `<div class="field-row"><label>X</label><input type="number" step="1" value="${guide.x.toFixed(1)}" data-field="x"></div>
                 <div class="field-row"><label>Y</label><input type="number" step="1" value="${viewY.toFixed(1)}" data-field="y"></div>
-                <div class="field-row"><label>Angle</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>`;
+                <div class="field-row"><label>${tr('prop.angle', 'Angle')}</label><input type="number" step="1" value="${(guide.angle || 0).toFixed(1)}" data-field="angle"></div>`;
             overlay.appendChild(dlg);
             document.body.appendChild(overlay);
             const rect = dlg.getBoundingClientRect();
@@ -1850,8 +1461,8 @@ export class CanvasInputController {
                 <div class="field-row"><label>X2</label><input type="number" step="0.1" value="${ruler.x2.toFixed(1)}" data-field="x2"></div>
                 <div class="field-row"><label>Y2</label><input type="number" step="0.1" value="${ruler.y2.toFixed(1)}" data-field="y2"></div>
                 <div class="field-row"><label>L</label><input type="number" step="0.1" value="${len.toFixed(1)}" data-field="length"></div>
-                <div class="field-row"><label>Angle</label><input type="number" step="0.1" value="${angleDeg.toFixed(1)}" data-field="angle"></div>
-                <div class="btn-row"><button class="btn-delete">Delete</button><button class="btn-ok">OK</button></div>`;
+                <div class="field-row"><label>${tr('prop.angle', 'Angle')}</label><input type="number" step="0.1" value="${angleDeg.toFixed(1)}" data-field="angle"></div>
+                <div class="btn-row"><button class="btn-delete">${tr('tree.menu.delete', 'Delete')}</button><button class="btn-ok">${tr('common.ok', 'OK')}</button></div>`;
             overlay.appendChild(dlg);
             document.body.appendChild(overlay);
             const rect = dlg.getBoundingClientRect();
@@ -1972,14 +1583,7 @@ export class CanvasInputController {
                 c.is_dirty = true;
                 return;
             }
-            if (c.current_state === 'DRAGGING_DIVIDER') {
-                const div = c._draggingDivider;
-                c._draggingDivider = null;
-                c.current_state = 'IDLE';
-                if (div) commitDividerDrag(div);
-                c.is_dirty = true;
-                return;
-            }
+            // divider drag mouseup is owned by the shared handleDividerDragEnd listener
             if (c.current_state === 'DRAGGING_METRIC_GUIDE' && c._draggingMetricGuide) {
                 const mg = c._draggingMetricGuide;
                 c._draggingMetricGuide = null;
@@ -2248,4 +1852,212 @@ function handleWindowKeydown(c, e) {
 /** Global keyup: clears temporary-pan flag. */
 function handleWindowKeyup(c, e) {
     if (e.code === 'Space') c._spaceDown = false;
+}
+
+// =============================================================================
+// Advance divider drag - shared by BOTH listener registration paths
+// =============================================================================
+// The divider between glyph L and glyph R is drawn at L's origin + L.advance and
+// is dragged to change one side bearing, decided by which glyph is active:
+//
+//   L active, or neither side active -> L's RSB. L.advance grows by d. No node
+//       coordinate is edited at all: the whole right side is displaced by the
+//       sequence layout, and the view stays put, so the ruler does not move.
+//   R active -> R's LSB. R's outline shifts by -d and R.advance shrinks by d, so
+//       R's ink and every later glyph keep their place on screen; the view pans
+//       by dx so the divider still follows the mouse (ruler and left side move
+//       with it).
+//
+// Both cases look identical to the user - the grabbed divider tracks the mouse -
+// while exactly one number in the document changes meaning. A divider with only
+// one glyph next to it always edits that glyph: the leftmost divider (first
+// glyph's origin) has no left glyph whose advance could move it, so it edits the
+// right glyph's LSB like the R-active case; the rightmost divider has no right
+// glyph, so it edits the last glyph's RSB like the L-active case.
+//
+// The gesture delta is clamped so the edited advance never goes below zero, and
+// the clamped delta is what the outline shift and the view pan use as well -
+// otherwise a clamped drag would leave the ink drifting against the divider.
+
+/** Glyph groups on either side of the divider being dragged. */
+function dividerDragGroups(c, div) {
+    return {
+        left: div.leftGroupId ? c.curve_manager.treeItems.get(div.leftGroupId) : null,
+        right: div.rightGroupId ? c.curve_manager.treeItems.get(div.rightGroupId) : null,
+    };
+}
+
+/**
+ * Snapshot every on-curve x (and its handles' x) of a group. The drag re-applies
+ * an absolute offset to this snapshot on every mousemove, so no per-frame error
+ * can accumulate. The seen-set guards against a wrapped node chain.
+ */
+function captureGroupNodeOrigins(c, groupId) {
+    const origins = [];
+    for (const cd of c.curve_manager.getCurvesForGroup(groupId)) {
+        let node = cd.curve?.startNode;
+        const seen = new Set();
+        while (node && !seen.has(node)) {
+            seen.add(node);
+            origins.push({ node, x: node.x, c1x: node.control1?.x, c2x: node.control2?.x });
+            node = node.nextOnCurve;
+        }
+    }
+    return origins;
+}
+
+function shiftGroupNodesX(origins, offset) {
+    for (const o of origins) {
+        o.node.x = o.x + offset;
+        if (o.node.control1) o.node.control1.x = o.c1x + offset;
+        if (o.node.control2) o.node.control2.x = o.c2x + offset;
+    }
+}
+
+/**
+ * Drop every cached quantity derived from a group's node positions. The drag
+ * writes x directly, so curve bounds (LSB/RSB readouts, hit-testing) and the
+ * boolean geometry cache (smart-stroke rendering) are stale until this runs.
+ */
+function invalidateGroupGeometry(c, groupId) {
+    if (!groupId) return;
+    c.curve_manager.invalidateGroupCache?.(groupId);
+    const seen = new Set();
+    for (const cd of c.curve_manager.getCurvesForGroup(groupId)) {
+        const curve = cd?.curve;
+        if (!curve || seen.has(curve)) continue;
+        seen.add(curve);
+        curve._invalidateBounds?.();
+        curve.invalidateBooleanCache?.();
+    }
+}
+
+/**
+ * Begin an advance-divider drag from a mousedown on a divider line.
+ * @returns {boolean} true when the event was consumed (caller must stop).
+ */
+function startDividerDrag(c, e, divHit, hasInteractiveHit) {
+    if (!divHit) return false;
+    if (c.divider_locked) return true;
+    const tool = c.getActiveTool();
+    if (tool === 'DRAW' || tool === 'ELLIPSE') return true;
+    if (hasInteractiveHit) return true;
+
+    const isFirstLeftEdge = divHit.isLeftEdge && divHit.seqIndex === 0;
+    const isRightEdge = !!divHit.isRight;
+    let leftGroupId = null;
+    let rightGroupId = null;
+    if (isRightEdge) {
+        leftGroupId = divHit.groupId;
+    } else if (isFirstLeftEdge) {
+        rightGroupId = divHit.groupId;
+    } else {
+        const prevToken = (c.curve_manager.sequenceTokens || [])[divHit.seqIndex - 1];
+        leftGroupId = prevToken
+            ? (prevToken.isChar ? c.curve_manager.getDefaultGroupForChar(prevToken.value) : prevToken.value)
+            : null;
+        rightGroupId = divHit.groupId;
+    }
+
+    const left = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+    const right = rightGroupId ? c.curve_manager.treeItems.get(rightGroupId) : null;
+    if (!left && !right) return true;
+    if (left && left.locked) return true;
+
+    const activeGroupId = c.getInteractionSnapshot?.()?.activeGroupId ?? null;
+    // Which side bearing this drag edits. "Neither side active" also lands on the
+    // left, and a missing side falls back to the only glyph that exists.
+    const mode = !left ? 'right' : (!right ? 'left' : (activeGroupId === rightGroupId ? 'right' : 'left'));
+
+    e.preventDefault();
+    e.stopPropagation();
+    c._hoveredDividerId = null;
+    c.current_state = 'DRAGGING_DIVIDER';
+    c._draggingDivider = {
+        mode: mode,
+        leftGroupId: leftGroupId,
+        rightGroupId: rightGroupId,
+        dividerId: divHit.groupId + '-' + divHit.seqIndex + (isRightEdge ? '-r' : '-l'),
+        startScreenX: divHit.screenX,
+        startLeftAdvance: left ? left.advance : 0,
+        startRightAdvance: right ? right.advance : 1000,
+        startOffsetX: c.offset.x,
+        _clientX: e.clientX,
+        _clientY: e.clientY,
+        _dragStarted: false,
+    };
+    return true;
+}
+
+/** Mousemove during an advance-divider drag. */
+function handleDividerDragMove(c, e) {
+    if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
+    const div = c._draggingDivider;
+    if (!div._dragStarted) {
+        if (Math.abs(e.clientX - div._clientX) <= 4 && Math.abs(e.clientY - div._clientY) <= 4) return;
+        div._dragStarted = true;
+    }
+    c.canvasObj.dataset.cursor = 'ew-resize';
+    const pointer = c.getViewportMousePosition(e.clientX, e.clientY);
+    const deltaAdv = (pointer.x - div.startScreenX) / c.scale;
+    const { left, right } = dividerDragGroups(c, div);
+    if (div.mode === 'right') {
+        if (!right) return;
+        // R's LSB: outline left, advance down. Both use the same clamped delta.
+        const d = Math.min(deltaAdv, div.startRightAdvance);
+        right.advance = div.startRightAdvance - d;
+        right.is_modified = true;
+        if (!div._nodeOrigins) div._nodeOrigins = captureGroupNodeOrigins(c, div.rightGroupId);
+        shiftGroupNodesX(div._nodeOrigins, -d);
+        invalidateGroupGeometry(c, div.rightGroupId);
+        c.offset.x = div.startOffsetX + d * c.scale;
+    } else {
+        if (!left) return;
+        // L's RSB: advance grows, geometry untouched, view untouched.
+        const d = Math.max(deltaAdv, -div.startLeftAdvance);
+        left.advance = div.startLeftAdvance + d;
+        left.is_modified = true;
+    }
+    c.curve_manager.calculateSequenceOffsets();
+    c.is_dirty = true;
+}
+
+/**
+ * Mouseup that ends an advance-divider drag. A click without movement edits and
+ * records nothing.
+ */
+function handleDividerDragEnd(c) {
+    if (c.current_state !== 'DRAGGING_DIVIDER' || !c._draggingDivider) return;
+    const div = c._draggingDivider;
+    c._draggingDivider = null;
+    c.current_state = 'IDLE';
+    if (!div._dragStarted) { c.bumpGeometryEpoch(); return; }
+
+    const { leftGroupId, rightGroupId } = div;
+    const dirtyIds = new Set();
+    if (leftGroupId) dirtyIds.add(leftGroupId);
+    if (rightGroupId) dirtyIds.add(rightGroupId);
+
+    if (div.mode === 'right') {
+        const { left, right } = dividerDragGroups(c, div);
+        if (left) left.is_modified = true;
+        if (right) right.is_modified = true;
+        invalidateGroupGeometry(c, leftGroupId);
+        invalidateGroupGeometry(c, rightGroupId);
+        c.curve_manager.calculateSequenceOffsets();
+        c.curve_manager.rebuildSpatialGrid(dirtyIds);
+        delete div._nodeOrigins;
+        CanvasDispatcher.requestHistoryCommit("dividerDragRight", { groupId: rightGroupId });
+    } else {
+        // Advance-only edit: restore the pre-drag value and re-apply it through the
+        // command layer, so the history entry is taken against the pre-drag document.
+        const left = leftGroupId ? c.curve_manager.treeItems.get(leftGroupId) : null;
+        if (left) {
+            const value = left.advance;
+            left.advance = div.startLeftAdvance;
+            CanvasDispatcher.requestSetGroupAdvance(leftGroupId, value, { recordHistory: true });
+        }
+        c.curve_manager.rebuildSpatialGrid(dirtyIds);
+    }
+    c.bumpGeometryEpoch();
 }

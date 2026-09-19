@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>boolean ops orientation</title></head>
+<body>
+<script src="../js/vendor/paper-full.min.js"></script>
+<script type="module">
+// Measures whether paper.js subtract / intersect / exclude depend on the winding
+// DIRECTION of their operands. The metric is the rasterized NONZERO REGION of the
+// result, not the signed area: XOR lobes are disjoint and can carry opposite
+// signs, so a signed sum would misreport the region they cover.
+window.__res = null; window.__err = null;
+try {
+    const { configurePaperScope, getPaperScope } = await import('/js/core/paper_scope.js');
+    configurePaperScope(() => document.createElement('canvas'));
+    const scope = getPaperScope();
+
+    function rect(cx, cy, s, positive) {
+        const a = [[cx - s, cy - s], [cx + s, cy - s], [cx + s, cy + s], [cx - s, cy + s]];
+        if (!positive) a.reverse();
+        const p = new scope.Path({ closed: true });
+        for (const [x, y] of a) p.add(new scope.Point(x, y));
+        return p;
+    }
+
+    const cv = document.createElement('canvas');
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+
+    /** Nonzero fill area of a paper item, in square units (1 px == 1 unit). */
+    function region(item) {
+        if (!item) return null;
+        const leaves = [];
+        const walk = (it) => {
+            if (!it) return;
+            if (it instanceof scope.CompoundPath) { for (const c of it.children) walk(c); }
+            else if (it instanceof scope.Path && it.segments.length >= 2) leaves.push(it);
+        };
+        walk(item);
+        if (!leaves.length) return { filled: 0, rings: 0 };
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of leaves) for (const s of p.segments) {
+            if (s.point.x < minX) minX = s.point.x;
+            if (s.point.x > maxX) maxX = s.point.x;
+            if (s.point.y < minY) minY = s.point.y;
+            if (s.point.y > maxY) maxY = s.point.y;
+        }
+        const pad = 4;
+        const ox = Math.floor(minX - pad), oy = Math.floor(minY - pad);
+        const w = Math.ceil(maxX - minX + 2 * pad) + 2, h = Math.ceil(maxY - minY + 2 * pad) + 2;
+        cv.width = w; cv.height = h;
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w, h);
+        // paper's y axis points up; flip so the raster is a faithful image.
+        ctx.setTransform(1, 0, 0, -1, -ox, h + oy);
+        const pp = new Path2D();
+        for (const p of leaves) {
+            const segs = p.segments;
+            pp.moveTo(segs[0].point.x, segs[0].point.y);
+            for (let i = 0; i < segs.length; i++) {
+                const a = segs[i], b = segs[(i + 1) % segs.length];
+                const c1 = a.handleOut, c2 = b.handleIn;
+                if ((c1 && !c1.isZero()) || (c2 && !c2.isZero())) {
+                    pp.bezierCurveTo(a.point.x + (c1 ? c1.x : 0), a.point.y + (c1 ? c1.y : 0),
+                        b.point.x + (c2 ? c2.x : 0), b.point.y + (c2 ? c2.y : 0), b.point.x, b.point.y);
+                } else {
+                    pp.lineTo(b.point.x, b.point.y);
+                }
+            }
+            pp.closePath();
+        }
+        ctx.fillStyle = '#000';
+        ctx.fill(pp, 'nonzero');
+        const data = ctx.getImageData(0, 0, w, h).data;
+        let filled = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 127) filled++;
+        return { filled, rings: leaves.length };
+    }
+
+    const attempt = (fn) => {
+        try { return region(fn()); }
+        catch (e) { return { err: String(e && e.message || e) }; }
+    };
+
+    const out = {};
+    const A = () => rect(0, 0, 100, true);
+    const Bpos = () => rect(100, 0, 100, true);
+    const Bneg = () => rect(100, 0, 100, false);
+
+    // Regions of the operands themselves, for reference.
+    out.operandA = region(A());
+    out.operandBpos = region(Bpos());
+    out.operandBneg = region(Bneg());
+
+    // Overlap of the two squares is 100x200 = 20000 square units.
+    out.subtract_sameDir = attempt(() => A().subtract(Bpos()));
+    out.subtract_oppositeDir = attempt(() => A().subtract(Bneg()));
+    out.intersect_sameDir = attempt(() => A().intersect(Bpos()));
+    out.intersect_oppositeDir = attempt(() => A().intersect(Bneg()));
+    out.exclude_sameDir = attempt(() => A().exclude(Bpos()));
+    out.exclude_oppositeDir = attempt(() => A().exclude(Bneg()));
+    out.subtract_reversedBase = attempt(() => rect(0, 0, 100, false).subtract(Bpos()));
+
+    // A compound operand carrying its own hole must keep that hole through a binary op.
+    const donut = (innerPositive) => new scope.CompoundPath({
+        children: [rect(0, 0, 100, true), rect(0, 0, 50, innerPositive)],
+    });
+    // Cutter crosses the right half of the outer ring, never touches the hole.
+    const cutter = () => rect(40, 0, 100, true);
+    out.donutHole_operand = region(donut(false));
+    out.donutHole_operandSameDir = region(donut(true));
+    out.donutHole_minusCutter = attempt(() => donut(false).subtract(cutter()));
+    out.donutHole_minusCutter_sameDirInner = attempt(() => donut(true).subtract(cutter()));
+    out.donutHole_intersectCutter = attempt(() => donut(false).intersect(cutter()));
+
+    // Do paper's binary ops CONSUME their operands? This decides what
+    // BooleanEngine._executeBinaryOp produces when it iterates every operand as
+    // a base: if operands survive, difference emits A\B and B\A and intersection
+    // emits A&B twice; if they are consumed, later bases produce nothing.
+    const state = (p) => ({
+        removed: !!(p && p.removed),
+        segs: p && p.segments ? p.segments.length : null,
+        parented: !!(p && p.parent),
+    });
+    {
+        const a = A(), b = Bpos();
+        let r = null; try { r = a.intersect(b); } catch (_) { }
+        out.afterIntersect = { a: state(a), b: state(b), result: region(r) };
+    }
+    {
+        const a = A(), b = Bpos();
+        let r = null; try { r = a.subtract(b); } catch (_) { }
+        out.afterSubtract = { a: state(a), b: state(b), result: region(r) };
+    }
+    {
+        const a = A(), b = Bpos();
+        let r = null; try { r = a.exclude(b); } catch (_) { }
+        out.afterExclude = { a: state(a), b: state(b), result: region(r) };
+    }
+    // Operand reused as a later base: does subtracting into it twice double-apply?
+    {
+        const a = A(), b = Bpos();
+        const r1 = a.subtract(b);
+        const r2 = b.subtract(a);
+        out.reuseBothBases = { r1: region(r1), r2: region(r2) };
+    }
+
+    window.__res = out;
+} catch (e) { window.__err = String(e && e.stack || e); }
+</script>
+</body>
+</html>

@@ -60,14 +60,9 @@ export class SnapshotSerializer {
     async loadFromSnapshotObject(data, messageReporter) {
         if (!data) return;
         this._treeStore.initTree();
-        // Force a full syncTreeWithSequence sweep: _prevInTextIds/_prevRootIds
-        // may hold stale state from a previously loaded project (e.g. the
-        // project auto-loaded at startup). Without this reset the incremental
-        // sync branch would never hide root groups that exist in both trees
-        // but are absent from the new sequence text — leaving ghost objects
-        // visible in the object tree.
-        this._sequenceService._prevInTextIds = null;
-        this._sequenceService._prevRootIds = null;
+        // Root-group visibility is derived by syncTreeWithSequence from the sequence
+        // text below, so replacing the tree cannot leave ghost glyphs: whatever the
+        // new sequence lists is visible, everything else is hidden.
         this._curveStore.curves = [];
         this._curveStore.domMap.clear();
         this._sequenceService.sequenceText = data.editor_sequence || '';

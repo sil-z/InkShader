@@ -5,6 +5,10 @@ import { appendCurveOutlinePath, curveGeneratesFillArea } from "../rendering/cur
 import { generateMarker } from "../../core/bezier/utils.js";
 import { CurveNode } from "../../core/bezier/node.js";
 import svgpath from "../../vendor/svgpath.js";
+
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 export class CanvasIOService {
     constructor(canvas) {
         this.canvas = canvas;
@@ -157,7 +161,7 @@ export class CanvasIOService {
                     c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
                 } catch (err) {
                     console.error("[CanvasIO] Critical error during file loading:", err);
-                    alert("Critical error during file loading: " + err.message);
+                    alert(t("err.critical_load", "Critical error during file loading: ") + err.message);
                 }
             }
             return;
@@ -189,7 +193,7 @@ export class CanvasIOService {
                         c.editorStore?.seedFromCanvas?.({ applyToRuntime: true });
                     } catch (err) {
                         console.error("[CanvasIO] Critical error during file loading:", err);
-                        alert("Critical error during file loading: " + err.message);
+                        alert(t("err.critical_load", "Critical error during file loading: ") + err.message);
                     }
                 }
             };
@@ -362,7 +366,7 @@ export class CanvasIOService {
             active.blur();
         }
         if (typeof JSZip === "undefined") {
-            alert("JSZip library is not loaded. Cannot export UFO.");
+            alert(t("err.jszip_missing_ufo", "JSZip library is not loaded. Cannot export UFO."));
             return;
         }
         const esc = (s) => this._escXml(s);
@@ -898,7 +902,7 @@ ${kernDict.join('\n')}
                 return true;
             } catch (e) {
                 console.error("[IO] file_save_binary failed:", e);
-                alert("Save failed: " + (e?.message || e));
+                alert(t("err.save_failed", "Save failed: ") + (e?.message || e));
                 return false;
             }
         }
@@ -942,12 +946,12 @@ ${kernDict.join('\n')}
      */
     async exportBinaryFont(fmt) {
         if (!(await this.backendAvailable())) {
-            alert("This feature requires the local backend (fonttools). "
-                + "It is unavailable in the frontend-only build.");
+            alert(t("err.backend_required", "This feature requires the local backend (fonttools). "
+                + "It is unavailable in the frontend-only build."));
             return;
         }
         if (typeof JSZip === "undefined") {
-            alert("JSZip library is not loaded.");
+            alert(t("err.jszip_missing", "JSZip library is not loaded."));
             return;
         }
         try {
@@ -955,7 +959,7 @@ ${kernDict.join('\n')}
             const res = await fetch(`/api/font/export?fmt=${fmt}`, { method: "POST", body: blob });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                alert("Export failed: " + (err?.error || res.status));
+                alert(t("err.export_failed", "Export failed: ") + (err?.error || res.status));
                 return;
             }
             const buf = await res.arrayBuffer();
@@ -963,7 +967,7 @@ ${kernDict.join('\n')}
             await this._saveBinary(buf, `${base}.${fmt}`);
         } catch (e) {
             console.error("[IO] exportBinaryFont failed:", e);
-            alert("Export failed: " + (e?.message || e));
+            alert(t("err.export_failed", "Export failed: ") + (e?.message || e));
         }
     }
 
@@ -1395,7 +1399,7 @@ ${kernDict.join('\n')}
 
         const fontEl = doc.querySelector('font');
         if (!fontEl) {
-            alert('No <font> element found in the SVG file.');
+            alert(t("err.svg_no_font", "No <font> element found in the SVG file."));
             return false;
         }
 
@@ -1414,7 +1418,7 @@ ${kernDict.join('\n')}
         // Find all glyph elements
         const glyphs = fontEl.querySelectorAll('glyph');
         if (glyphs.length === 0) {
-            alert('No <glyph> elements found in the SVG font.');
+            alert(t("err.svg_no_glyph", "No <glyph> elements found in the SVG font."));
             return false;
         }
 
@@ -1431,7 +1435,8 @@ ${kernDict.join('\n')}
 
         // Check cache for duplicate project name (same pattern as loadFromFile)
         if (await StorageUtils.projectExists(projectName)) {
-            const msg = `Project "${projectName}" already exists in cache. Overwrite?`;
+            const msg = t("dialog.cache_overwrite", 'Project "{name}" already exists in cache. Overwrite?')
+                .replace('{name}', projectName);
             if (!confirm(msg)) {
                 return false; // User cancelled
             }
@@ -1546,7 +1551,6 @@ ${kernDict.join('\n')}
             // group during creation).
             const seqService = c.curve_manager.seqService;
             seqService.sequenceText = '';
-            seqService._prevInTextIds = null;   // Force full sweep on next syncTreeWithSequence
             seqService.rebuildDefaultGlyphs();
 
             // Resolve data-refs now that every glyph group exists AND the
@@ -1568,11 +1572,10 @@ ${kernDict.join('\n')}
             // ref-only glyphs already have their refs).
             seqService.updateSequenceParsing();
 
-            // Full tree sync (same invariant as JSON load): _prevInTextIds
-            // was reset above, so syncTreeWithSequence performs a full sweep
-            // and hides every root group not in the (empty) sequence — no
-            // ghost objects in the object tree. Imported groups carry
-            // is_modified: true, so they are hidden, never deleted.
+            // Full tree sync: syncTreeWithSequence always derives root-group
+            // visibility from the sequence, so every group not in the (empty)
+            // sequence is hidden — no ghost objects in the object tree. Imported
+            // groups carry is_modified: true, so they are hidden, never deleted.
             seqService.syncTreeWithSequence(null, null, null, () => c.curve_manager.notifyTreeUpdate());
 
             // Activate all sequence positions (all imported glyphs should be active)
@@ -1608,7 +1611,7 @@ ${kernDict.join('\n')}
     triggerImportUFO() {
         const c = this.canvas;
         if (typeof JSZip === "undefined") {
-            alert("JSZip library is not loaded. Cannot import UFO.");
+            alert(t("err.jszip_missing_import", "JSZip library is not loaded. Cannot import UFO."));
             return;
         }
         const input = c.env.createDOMElement("input");
@@ -1628,7 +1631,7 @@ ${kernDict.join('\n')}
                 await this._importUFOFromZip(zip);
             } catch (err) {
                 console.error("[UFO Import] Error:", err);
-                alert("Failed to import UFO: " + err.message);
+                alert(t("err.ufo_import_failed", "Failed to import UFO: ") + err.message);
             }
         };
         input.click();
@@ -1637,7 +1640,7 @@ ${kernDict.join('\n')}
     /** 供新窗口启动时从暂存字节执行 UFO 导入（与 triggerImportUFO 同一路径）。 */
     async importUFOFromBytes(arrayBuffer, fileName, opts = {}) {
         if (typeof JSZip === "undefined") {
-            alert("JSZip library is not loaded. Cannot import UFO.");
+            alert(t("err.jszip_missing_import", "JSZip library is not loaded. Cannot import UFO."));
             return false;
         }
         try {
@@ -1645,7 +1648,7 @@ ${kernDict.join('\n')}
             return await this._importUFOFromZip(zip, opts);
         } catch (err) {
             console.error("[UFO Import] Error:", err);
-            alert("Failed to import UFO: " + err.message);
+            alert(t("err.ufo_import_failed", "Failed to import UFO: ") + err.message);
             return false;
         }
     }
@@ -1664,7 +1667,7 @@ ${kernDict.join('\n')}
         const fiStr = zip.file("font.ufo/fontinfo.plist")?.async?.("string")
             || zip.file("fontinfo.plist")?.async?.("string");
         if (!fiStr) {
-            alert("Invalid UFO: missing fontinfo.plist");
+            alert(t("err.ufo_no_fontinfo", "Invalid UFO: missing fontinfo.plist"));
             return false;
         }
         const fiText = await fiStr;
@@ -1674,7 +1677,7 @@ ${kernDict.join('\n')}
         const contentsStr = zip.file("font.ufo/glyphs/contents.plist")?.async?.("string")
             || zip.file("glyphs/contents.plist")?.async?.("string");
         if (!contentsStr) {
-            alert("Invalid UFO: missing glyphs/contents.plist");
+            alert(t("err.ufo_no_contents", "Invalid UFO: missing glyphs/contents.plist"));
             return false;
         }
         const contentsText = await contentsStr;
@@ -1696,7 +1699,8 @@ ${kernDict.join('\n')}
         // 5. Check cache for duplicate project name (same pattern as loadFromFile)
         // 原位操作跳过确认：项目名不变，处理结果直接覆盖缓存。
         if (!opts?.inPlace && await StorageUtils.projectExists(projectName)) {
-            const msg = `Project "${projectName}" already exists in cache. Overwrite?`;
+            const msg = t("dialog.cache_overwrite", 'Project "{name}" already exists in cache. Overwrite?')
+                .replace('{name}', projectName);
             if (!confirm(msg)) {
                 return false; // User cancelled
             }
@@ -1796,7 +1800,6 @@ ${kernDict.join('\n')}
             // 原位操作（correct direction / remove overlap）恢复原序列；
             // 否则保持导入惯例（空序列）
             seqService.sequenceText = savedSequence != null ? savedSequence : '';
-            seqService._prevInTextIds = null;   // Force full sweep on next syncTreeWithSequence
             seqService.rebuildDefaultGlyphs();
 
             // 6a. Resolve <component> references now that every glyph exists
@@ -1813,11 +1816,10 @@ ${kernDict.join('\n')}
             // ref-only glyphs already have their refs).
             seqService.updateSequenceParsing();
 
-            // Full tree sync (same invariant as JSON load): _prevInTextIds
-            // was reset above, so syncTreeWithSequence performs a full sweep
-            // and hides every root group not in the (empty) sequence — no
-            // ghost objects in the object tree. Imported groups carry
-            // is_modified: true, so they are hidden, never deleted.
+            // Full tree sync: syncTreeWithSequence always derives root-group
+            // visibility from the sequence, so every group not in the (empty)
+            // sequence is hidden — no ghost objects in the object tree. Imported
+            // groups carry is_modified: true, so they are hidden, never deleted.
             seqService.syncTreeWithSequence(null, null, null, () => c.curve_manager.notifyTreeUpdate());
 
             // Activate all sequence positions (all imported glyphs should be active)
@@ -1852,7 +1854,7 @@ ${kernDict.join('\n')}
         }
 
         if (glyphCount === 0) {
-            alert("No valid glyphs found in the UFO file.");
+            alert(t("err.ufo_no_glyphs", "No valid glyphs found in the UFO file."));
         }
         return glyphCount > 0;
     }
@@ -2462,8 +2464,9 @@ ${kernDict.join('\n')}
      * Infer control_mode (0=corner, 1=smooth, 2=symmetric) from actual handle
      * geometry. Imported outlines (UFO/SVG) carry no handle-type information;
      * CurveNode defaults to control_mode=2, which is wrong for arbitrary
-     * geometry. Convention matches curve_store handle-delete behavior:
-     * no handles → 0, single handle → 1, both handles → classify collinearity.
+     * geometry. Import convention: no handles → 0, single handle → 1 (an open
+     * path's endpoint legitimately carries one handle, SPEC S004b4), both
+     * handles → classify collinearity.
      */
     _classifyControlModeFromGeometry(node) {
         const c1 = node.control1, c2 = node.control2;

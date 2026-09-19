@@ -5,6 +5,10 @@ import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { createEmptyEditorInteractionState } from "../app/editor_interaction_state.js";
 import * as EditorModel from "../app/editor_read_facade.js";
 import { readElementRect } from "../app/layout_metrics_service.js";
+
+/** Translation shorthand: table first, English literal as the fallback. */
+const tr = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 const TEMPLATE_HTML = `
     <div class="placeholder tree_panel" id="object_tree" tabindex="0">
         <div class="title_panel">
@@ -269,9 +273,12 @@ export class ObjectTree extends HTMLElement {
         let canPaste = clip.canPaste;
         let pasteText = t('tree.menu.paste', 'Paste');
         if (canPaste) {
-            let typeText = clip.firstType === 'group' ? 'Group Ref' : 'Curve';
-            let count = clip.count;
-            pasteText = `${t('tree.menu.paste', 'Paste')} (${count} ${typeText}${count > 1 ? 's' : ''})`;
+            // One key per clipboard kind: English pluralises by adding "s" while Chinese
+            // counts with a measure word, so a shared "{n} item" template would read wrong
+            // in one of the two languages.
+            pasteText = (clip.firstType === 'group'
+                ? t('tree.menu.paste_group', 'Paste ({n} Group Ref)')
+                : t('tree.menu.paste_curve', 'Paste ({n} Curve)')).replace('{n}', String(clip.count));
         }
         const createItem = (label, shortcut, action, contextId = null, disabled = false) => {
             const div = document.createElement("div");
@@ -358,7 +365,7 @@ export class ObjectTree extends HTMLElement {
         const lockBtn = document.createElement("button");
         lockBtn.className = "tree_lock_btn";
         lockBtn.type = "button";
-        lockBtn.title = "Lock";
+        lockBtn.title = tr('tree.lock', 'Lock');
         const lockImg = document.createElement("img");
         lockImg.src = "./assets/icons/lock.svg";
         lockBtn.appendChild(lockImg);
@@ -378,7 +385,7 @@ export class ObjectTree extends HTMLElement {
         const hideBtn = document.createElement("button");
         hideBtn.className = "tree_hide_btn";
         hideBtn.type = "button";
-        hideBtn.title = "Hide";
+        hideBtn.title = tr('tree.hide', 'Hide');
         const hideImg = document.createElement("img");
         hideImg.src = "./assets/icons/show.svg";
         hideBtn.appendChild(hideImg);
@@ -462,8 +469,8 @@ export class ObjectTree extends HTMLElement {
         const isHidden = item.visible === false;
         parts.lockBtn.classList.toggle("is-active", isLocked);
         parts.hideBtn.classList.toggle("is-active", isHidden);
-        parts.lockBtn.title = isLocked ? "Unlock" : "Lock";
-        parts.hideBtn.title = isHidden ? "Show" : "Hide";
+        parts.lockBtn.title = isLocked ? tr('tree.unlock', 'Unlock') : tr('tree.lock', 'Lock');
+        parts.hideBtn.title = isHidden ? tr('tree.show', 'Show') : tr('tree.hide', 'Hide');
         if (isLocked) {
             if (parts.lockImg.getAttribute("src") !== "./assets/icons/lock.svg") parts.lockImg.src = "./assets/icons/lock.svg";
         } else {

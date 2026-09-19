@@ -10,7 +10,7 @@ import {
 } from "./input_validation.js";
 
 const POPUP_HTML = `
-<div class="property_group_title">Ellipse Tool Settings</div>
+<div class="property_group_title" data-i18n="prop.ellipse_settings">Ellipse Tool Settings</div>
 <div class="npp-fields">
     <div class="npp-row">
         <label data-i18n="prop.weight">Weight</label>

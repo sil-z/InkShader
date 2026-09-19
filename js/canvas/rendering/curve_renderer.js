@@ -10,6 +10,7 @@ import {
     buildBooleanPath2D
 } from "../../core/bezier/path_emitter.js";
 import { createViewportTransform } from "./viewport_transform.js";
+import { getPaperScope } from "../../core/paper_scope.js";
 
 export function isCurveStrokePreview(canvas, curveId, refId = null) {
     return !!canvas?.isCurveInInteractiveStrokePreview?.(curveId, refId ?? null);
@@ -96,6 +97,104 @@ export function fillSmartStrokePath2D(ctx, curve, viewport, fillStyle) {
     return true;
 }
 
+/** Local recorder with the same interface as the path emitter expects. */
+class OutlineRecorder {
+    constructor() {
+        this.paths = [];
+        this.curr = null;
+    }
+    moveTo(x, y) { this.curr = []; this.paths.push(this.curr); this.curr.push({ t: "M", x, y }); }
+    lineTo(x, y) { if (this.curr) this.curr.push({ t: "L", x, y }); }
+    bezierCurveTo(a, b, c, d, e, f) { if (this.curr) this.curr.push({ t: "C", a, b, c, d, e, f }); }
+    closePath() { if (this.curr) this.curr.push({ t: "Z" }); }
+}
+
+/** Signed area of the closed skeleton ring, in model space (0 when there is none). */
+function skeletonRingSign(curve, pScope) {
+    if (!curve?.startNode) return 0;
+    const segs = curve.getSkeletonBezierSegments();
+    if (!segs || segs.length < 2) return 0;
+    const p = new pScope.Path();
+    p.moveTo(new pScope.Point(segs[0].p0.x, segs[0].p0.y));
+    for (const s of segs) {
+        p.cubicCurveTo(
+            new pScope.Point(s.p1.x, s.p1.y),
+            new pScope.Point(s.p2.x, s.p2.y),
+            new pScope.Point(s.p3.x, s.p3.y)
+        );
+    }
+    p.closed = true;
+    const sign = Math.sign(p.area || 0);
+    p.remove();
+    return sign;
+}
+
+/**
+ * The expanded stroke band of a CLOSED smart path, with every band ring oriented
+ * like the skeleton ring, as emitter-ready subpaths.
+ *
+ * Why the orientation matters: the fallback below paints the band and the
+ * skeleton ring into the same nonzero fill, so a band ring wound against the
+ * skeleton SUBTRACTS from the fill instead of adding to it. Measured on the
+ * self-intersecting figure-eight in example/bug_test.json: the raw band pulled
+ * 7.4% of the filled region (a whole lobe) out of the fallback — 97,981 instead
+ * of the cached 105,852 — so the object painted one region while a gesture was
+ * running and a different one once the cache was rebuilt. Aligning each band
+ * ring with the skeleton's sign makes the fallback reproduce the cached region
+ * (105,684 vs 105,852, i.e. inside rasterisation noise) without any boolean.
+ *
+ * The result is memoised per geometry hash so a drag does not rebuild it every
+ * frame; the boolean cache is the expensive thing being avoided here, not this.
+ */
+function cheapBandSubpaths(curve, { roundCap, halfWidth }) {
+    const hash = curve.getGeometryHash();
+    const memo = curve._cheapBandSubpaths;
+    if (memo && memo.hash === hash) return memo.subpaths;
+
+    const pScope = getPaperScope();
+    if (!pScope) return null;
+
+    const rec = new OutlineRecorder();
+    const outline = curve.computeExpandedStrokeOutline(halfWidth);
+    if (!outline) return null;
+    emitExpandedStrokeOutline(rec, outline, (x, y) => ({ x, y }), {
+        roundCap,
+        curve: roundCap ? curve : null,
+        halfWidth: roundCap ? halfWidth : 0
+    });
+
+    const sign = skeletonRingSign(curve, pScope);
+    const subpaths = [];
+    for (const sub of rec.paths) {
+        if (!sub.length) continue;
+        const p = new pScope.Path();
+        for (const cmd of sub) {
+            if (cmd.t === "M") p.moveTo(new pScope.Point(cmd.x, cmd.y));
+            else if (cmd.t === "L") p.lineTo(new pScope.Point(cmd.x, cmd.y));
+            else if (cmd.t === "C") p.cubicCurveTo(new pScope.Point(cmd.a, cmd.b), new pScope.Point(cmd.c, cmd.d), new pScope.Point(cmd.e, cmd.f));
+            else if (cmd.t === "Z") p.closed = true;
+        }
+        if (p.segments.length < 2) { p.remove(); continue; }
+        if (sign !== 0 && Math.sign(p.area || 0) !== 0 && Math.sign(p.area || 0) !== sign) {
+            try { p.reverse(); } catch (_) { /* keep the drawn orientation */ }
+        }
+        subpaths.push({
+            closed: p.closed,
+            segments: p.segments.map(seg => ({
+                x: seg.point.x,
+                y: seg.point.y,
+                inX: seg.handleIn.x,
+                inY: seg.handleIn.y,
+                outX: seg.handleOut.x,
+                outY: seg.handleOut.y
+            }))
+        });
+        p.remove();
+    }
+    curve._cheapBandSubpaths = { hash, subpaths };
+    return subpaths;
+}
+
 function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = true, allowRebuild = true } = {}) {
     if (!curve?.smart_stroke || curve.stroke_width <= 0) return false;
     const halfWidth = curve.stroke_width / 2;
@@ -111,9 +210,19 @@ function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = tr
         }
     }
 
+    const roundCap = !curve.closed && curve._expandRoundCap === true;
+    const closedRing = isCurveClosedRing(curve);
+    if (closedRing) {
+        // Closed ring: the skeleton is filled together with the band, so the band
+        // must not wind against it (see cheapBandSubpaths).
+        const subpaths = cheapBandSubpaths(curve, { roundCap, halfWidth });
+        if (!subpaths) return false;
+        emitBooleanSubpaths(ctx, subpaths, mapPoint);
+        emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: true });
+        return true;
+    }
     const outline = curve.computeExpandedStrokeOutline(halfWidth);
     if (!outline) return false;
-    const roundCap = !curve.closed && curve._expandRoundCap === true;
     emitExpandedStrokeOutline(ctx, outline, mapPoint, {
         roundCap,
         curve: roundCap ? curve : null,
@@ -126,12 +235,12 @@ function appendSmartStrokeOutline(ctx, curve, mapPoint, { allowBooleanCache = tr
     // allowRebuild=false，松手回到 IDLE 才重建缓存，填充就「突然出现」。
     //
     // 修法：把骨架环一并放进填充路径。填充区 ∪ 描边带 恰好就是 Expand Stroke
-    // 物化出来的区域（内圈环在带的外侧轮廓之内、内偏移轮廓之外，nonzero 下
-    // 三者相加不为零），所以这样渲染出来的近似与最终结果一致，代价只是一次
-    // 骨架贝塞尔遍历。
-    if (isCurveClosedRing(curve)) {
-        emitCubicBezierSegments(ctx, curve.getSkeletonBezierSegments(), mapPoint, { close: true });
-    }
+    // 物化出来的区域（内圈环在带的外侧轮廓之内、内偏移轮廓之外），所以这样
+    // 渲染出来的近似与最终结果一致，代价只是一次骨架贝塞尔遍历。
+    //
+    // 闭合路径走上面的 cheapBandSubpaths 分支（带必须先按骨架方向归一化，
+    // 否则它会从填充里扣掉一块）；这里只剩开放路径，开放路径没有填充区，
+    // 带与骨架不会互相抵消。
     return true;
 }
 

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>union semantics</title></head>
+<body>
+<script src="../js/vendor/paper-full.min.js"></script>
+<script type="module">
+// Drives the REAL BooleanEngine._resolveUnion with synthetic rings, so the
+// winding-aware composition is verified against measured paper.js behaviour.
+// Metric: the SIGNED area sum — the nonzero region of a set of oriented rings.
+window.__res = null; window.__err = null;
+try {
+    const { configurePaperScope, getPaperScope } = await import('/js/core/paper_scope.js');
+    configurePaperScope(() => document.createElement('canvas'));
+    const scope = getPaperScope();
+    const { BooleanEngine } = await import('/js/core/boolean.js');
+    const engine = new BooleanEngine(null);
+
+    function rect(cx, cy, s, positive) {
+        const a = [[cx - s, cy - s], [cx + s, cy - s], [cx + s, cy + s], [cx - s, cy + s]];
+        if (!positive) a.reverse();
+        const p = new scope.Path({ closed: true });
+        for (const [x, y] of a) p.add(new scope.Point(x, y));
+        return p;
+    }
+    function bowtie() {
+        const p = new scope.Path({ closed: true });
+        for (const [x, y] of [[-100, -100], [100, -100], [-100, 100], [100, 100]]) p.add(new scope.Point(x, y));
+        return p;
+    }
+    const areas = (items) => (items || []).map(k => Math.round(k.area));
+    const signed = (items) => areas(items).reduce((s, a) => s + a, 0);
+
+    const cases = {
+        // The reported bug: a hole drawn as its own reversed path.
+        donut_twoRings: { rings: () => [rect(0, 0, 100, true), rect(0, 0, 50, false)], want: 30000, wantRings: 2 },
+        // Plain overlapping fills must still merge.
+        overlapSquares: { rings: () => [rect(0, 0, 100, true), rect(100, 0, 100, true)], want: 60000, wantRings: 1 },
+        // A square crossing the hole consumes it where it overlaps.
+        donut_plus_crossingSquare: { rings: () => [rect(0, 0, 100, true), rect(0, 0, 50, false), rect(40, 0, 100, true)], want: 48000 },
+        // Same-direction nesting is a solid region.
+        nested_sameDirection: { rings: () => [rect(0, 0, 100, true), rect(0, 0, 50, true)], want: 40000, wantRings: 1 },
+        // Disjoint shapes stay separate.
+        disjoint_pair: { rings: () => [rect(0, 0, 100, true), rect(1000, 0, 100, true)], want: 80000, wantRings: 2 },
+        // A self-intersecting ring resolves into its nonzero lobes.
+        figure8: { rings: () => [bowtie()], want: 20000 },
+        // Island inside the hole (all non-crossing) must be preserved.
+        donut_plus_island: { rings: () => [rect(0, 0, 100, true), rect(0, 0, 60, false), rect(0, 0, 20, true)], want: 27200, wantRings: 3 },
+        // Donut plus an unrelated shape outside it.
+        donut_plus_disjoint: { rings: () => [rect(0, 0, 100, true), rect(0, 0, 50, false), rect(1000, 0, 100, true)], want: 70000, wantRings: 3 },
+        // The engine's real input: two curves each carrying a donut.
+        twoDonuts: {
+            rings: () => [rect(0, 0, 100, true), rect(0, 0, 50, false), rect(300, 0, 100, true), rect(300, 0, 50, false)],
+            want: 60000, wantRings: 4,
+        },
+    };
+
+    const out = {};
+    for (const [name, def] of Object.entries(cases)) {
+        const rings = def.rings();
+        let flat = null, err = null;
+        try { flat = engine._resolveUnion(rings); }
+        catch (e) { err = String(e && e.message || e); }
+        out[name] = {
+            gotSigned: flat ? signed(flat) : null,
+            gotRings: flat ? flat.length : null,
+            areas: flat ? areas(flat) : null,
+            want: def.want, wantRings: def.wantRings, err,
+        };
+    }
+    // Object-level cases: one array of rings PER SELECTED PATH, driving the real
+    // _resolveUnionPerObject. This is where "each path resolves on its own first,
+    // then the paths unite with each other" differs from the old global ring
+    // regrouping, which crossed object boundaries.
+    const objectCases = {
+        // Each path is a donut: resolved on its own, the donuts survive, then the
+        // two objects unite.
+        obj_twoDonuts: {
+            groups: () => [[rect(0, 0, 100, true), rect(0, 0, 50, false)], [rect(300, 0, 100, true), rect(300, 0, 50, false)]],
+            want: 60000, wantRings: 4,
+        },
+        // One path's own outer+hole (a single object), plus another object sitting
+        // inside that hole: the nesting is between objects, so the unite resolves
+        // it instead of rebinding one path's ring into the other's compound.
+        obj_insideOtherHole: {
+            groups: () => [[rect(0, 0, 100, true), rect(0, 0, 60, false)], [rect(0, 0, 20, true)]],
+            want: 27200, wantRings: 3,
+        },
+        // A reversed ring that is its OWN path, nested inside a same-glyph
+        // forward ring. The glyph renders them with nonzero winding, so the
+        // reversed ring punches a hole into the forward one. The union must
+        // keep the rendered appearance: a hole, not a fill.
+        obj_reversedNestedIsHole: {
+            groups: () => [[rect(0, 0, 100, true)], [rect(0, 0, 50, false)]],
+            want: 30000, wantRings: 2,
+        },
+        // Two separate same-glyph paths of opposite direction that OVERLAP:
+        // the overlap cancels. Keeping the drawn winding means the symmetric
+        // difference is the result, not the union of the two areas.
+        obj_oppositeOverlapCancels: {
+            groups: () => [[rect(0, 0, 100, true)], [rect(100, 0, 100, false)]],
+            want: 40000, wantRings: 2,
+        },
+        // Overlapping paths: a plain merge, unaffected by the regrouping.
+        obj_overlapSquares: {
+            groups: () => [[rect(0, 0, 100, true)], [rect(100, 0, 100, true)]],
+            want: 60000, wantRings: 1,
+        },
+        // Crossing paths where one also carries its own hole.
+        obj_crossingWithOwnHole: {
+            groups: () => [[rect(0, 0, 100, true), rect(0, 0, 50, false)], [rect(40, 0, 100, true)]],
+            want: 48000,
+        },
+    };
+    for (const [name, def] of Object.entries(objectCases)) {
+        const groups = def.groups();
+        let flat = null, err = null;
+        try { flat = engine._resolveUnionPerObject(groups); }
+        catch (e) { err = String(e && e.message || e); }
+        out[name] = {
+            gotSigned: flat ? signed(flat) : null,
+            gotRings: flat ? flat.length : null,
+            areas: flat ? areas(flat) : null,
+            want: def.want, wantRings: def.wantRings, err,
+        };
+    }
+
+    // ── Raw paper.js measurements (recorded facts, NOT assertions) ───────────
+    // The composition the editor needs is "the nonzero region of ALL the selected
+    // paths' rings, each keeping the winding it was drawn with". Which paper
+    // primitive can produce that? These entries record what the primitives
+    // actually do; they carry the `_` prefix so the probe reports them without
+    // asserting them. A primitive changing its behaviour must be visible, but
+    // these are measurements of paper, not of this engine.
+    //
+    // MEASURED (2026-09, paper 0.12.17):
+    //   unite(outer+, inner−)            -> 40000 / 1 ring   HOLE FILLED
+    //     unite reorients each operand, so an operand's own winding is discarded.
+    //     This is the exact mechanism behind "union filled the hole".
+    //   resolveCrossings([outer+, inner−]) -> 30000 / 2 rings  hole PRESERVED
+    //     so a compound DOES carry reversed inner rings correctly...
+    //   resolveCrossings([overlapA+, overlapB+]) -> 80000 / 2 rings  NOT merged
+    //   resolveCrossings([overlapA+, overlapB−]) -> 0 / 2 rings      NOT merged
+    //   resolveCrossings([bowtie])               -> 0 / 2 rings      split, signs kept
+    //     ...but it does not resolve crossings BETWEEN children, so overlapping
+    //     paths are neither merged nor simplified.
+    // Conclusion: no single paper primitive yields "nonzero region, directions
+    // preserved, crossings simplified". See the report accompanying this change.
+    const leavesOf = (item) => {
+        const out = [];
+        const walk = (it) => {
+            if (!it) return;
+            if (it instanceof scope.CompoundPath) { for (const k of it.children) walk(k); }
+            else if (it instanceof scope.Path && it.segments.length >= 2) out.push(it);
+        };
+        walk(item);
+        return out;
+    };
+    const cpOf = (rings) => new scope.CompoundPath({ children: rings.map(r => r.clone({ insert: false })) });
+    const rawCases = {};
+    const record = (name, item) => {
+        const leaves = item ? leavesOf(item) : null;
+        rawCases['_' + name] = {
+            signed: leaves ? signed(leaves) : null,
+            rings: leaves ? leaves.length : null,
+            areas: leaves ? areas(leaves) : null,
+        };
+    };
+
+    // unite() of two separate operands: an outer ring plus its reversed inner ring.
+    {
+        const outer = rect(0, 0, 100, true), inner = rect(0, 0, 50, false);
+        let t = null;
+        try { t = outer.unite(inner); } catch (_) { t = null; }
+        record('unite_outer_plus_reversed', t);
+    }
+    // resolveCrossings() on ONE compound holding the same two rings.
+    {
+        const cp = cpOf([rect(0, 0, 100, true), rect(0, 0, 50, false)]);
+        let r = cp;
+        try { r = cp.resolveCrossings() || cp; } catch (_) { r = cp; }
+        record('resolveCrossings_outer_plus_reversed', r);
+    }
+    // resolveCrossings() on two overlapping SAME-direction rings: the overlap
+    // must merge into one clean outline (no interior vertices kept).
+    {
+        const cp = cpOf([rect(0, 0, 100, true), rect(100, 0, 100, true)]);
+        let r = cp;
+        try { r = cp.resolveCrossings() || cp; } catch (_) { r = cp; }
+        record('resolveCrossings_overlap_sameDirection', r);
+    }
+    // resolveCrossings() on two overlapping OPPOSITE-direction rings: nonzero
+    // cancels in the overlap, which must be carved out.
+    {
+        const cp = cpOf([rect(0, 0, 100, true), rect(100, 0, 100, false)]);
+        let r = cp;
+        try { r = cp.resolveCrossings() || cp; } catch (_) { r = cp; }
+        record('resolveCrossings_overlap_oppositeDirection', r);
+    }
+    // resolveCrossings() on a self-intersecting ring.
+    {
+        const cp = cpOf([bowtie()]);
+        let r = cp;
+        try { r = cp.resolveCrossings() || cp; } catch (_) { r = cp; }
+        record('resolveCrossings_bowtie', r);
+    }
+    Object.assign(out, rawCases);
+
+    window.__res = out;
+} catch (e) { window.__err = String(e && e.stack || e); }
+</script>
+</body>
+</html>

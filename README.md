@@ -1,141 +1,181 @@
 # InkShader
 
-Web 字体编辑器。前端是零构建步骤的 ES module 应用；可选后端（FastAPI）提供
-fonttools 字体运算与桌面外壳。
+InkShader is a lightweight font editor intended to help calligraphers create handwriting-style fonts.
 
-## 运行形态
+[中文](README.zh-CN.md)
 
-| 形态 | 前端 | 后端 | 产物 |
-|------|------|------|------|
-| 1. 纯前端 | 静态托管，浏览器直接访问 | 无（相关菜单项置灰） | 静态目录 |
-| 2. 桌面编辑器 | pywebview 窗口内加载本地服务 | 同进程 | 单文件可执行程序（`--runtime desktop`） |
-| 3. 后端 + 浏览器 | 浏览器访问 `http://127.0.0.1:<port>` | 纯命令行后端（无 GUI 依赖） | 单文件可执行程序（`--runtime web`） |
+## Availability
 
-形态 2、3 的后端为同一份代码，仅运行模式不同（`INKSHADER_RUNTIME` /
-`--mode`）。形态 3 不创建任何窗口，也不链接 GUI 库：启动后在控制台打印访问
-地址、唤起系统浏览器，`Ctrl+C`（或关闭控制台窗口）退出。
+InkShader comes in three forms:
 
-## 环境要求
+| Form | Description |
+|------|-------------|
+| Online | Visit `app.inkshader.com` and start immediately. The online version does not include the binary font export features powered by fonttools. |
+| Desktop | Download the full desktop application. |
+| Browser | Download the full version and run it in your browser. |
 
-- Python 3.11+
-- 打包需 PyInstaller（`backend/pyproject.toml` 的 `build` extra）
-- 运行探针需 Node.js 18+；依赖 `ws`（`npm install`），无需构建前端
-- 只有 desktop 形态需要额外的系统包：pywebview 依赖 WebKitGTK（pip 无法安装）。
-  纯命令行后端（形态 3）不链接任何 GUI 库，无需系统包。Debian/Ubuntu 示例：
-  `libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 python3-gi`
+## Interface and Layout
 
-## 安装与运行
+The interface is composed of components. Use layout to choose which components are shown; drag a component's edge or title bar to rearrange the layout.
 
-```bash
-python -m venv .venv
-. .venv/bin/activate                 # Windows: .\.venv\Scripts\Activate.ps1
-./dev.ps1 install                    # Windows；Linux/macOS 用 ./dev.sh install
-./dev.ps1 run                        # 默认 web 模式（命令行后端 + 浏览器）
-./dev.ps1 run --mode desktop         # desktop 模式（原生窗口编辑器）
-./dev.ps1 run --no-browser --port 9000
-```
+The canvas is the area where glyphs are drawn. Before drawing, specify the target glyph through the glyph sequence at the top of the canvas.
 
-`dev.ps1` / `dev.sh` 只做参数转接，实际命令是：
+The toolbar on the left side of the canvas is used to select editing modes and run path operations. If the screen is too short to show the whole toolbar, place the cursor over the toolbar and scroll the mouse wheel to reach every tool.
 
-| 命令 | 等价于 |
-|------|--------|
-| `./dev.ps1 install` | `python -m pip install -e ./backend` |
-| `./dev.ps1 install-dev` | `python -m pip install -e "./backend[build,test,lint]"` |
-| `./dev.ps1 install-lock` | `python -m pip install -r backend/requirements.lock.txt` |
-| `./dev.ps1 run [args]` | `python backend/run.py [args]` |
-| `./dev.ps1 build [args]` | `python backend/build.py [args]` |
-| `./dev.ps1 test` | `python -m pytest backend/tests` |
-| `./dev.ps1 lint` | `python -m ruff check backend` |
+### Canvas View
 
-依赖声明的唯一来源是 `backend/pyproject.toml`（运行依赖在 `[project.dependencies]`，
-`build` / `test` / `lint` 分组在 extras）；已验证的精确版本见
-`backend/requirements.lock.txt`。前端不使用 npm 构建；根目录 `package.json`
-只声明探针与静态检查所需的开发依赖。
+| Action | Shortcut / Mouse |
+|--------|------------------|
+| Zoom centered on the cursor | Ctrl + wheel |
+| Zoom centered on the screen | Alt + wheel, or Ctrl + `+` / `-` |
+| Pan | Ctrl + Left/Right arrow; middle-button drag; scroll the wheel over the ruler |
+| Rotate | Alt + left-button drag, or Alt + Left/Right arrow |
 
-## 打包
+Rotating the canvas makes the ruler display inconsistent with the actual coordinates.
 
-```bash
-./dev.ps1 build frontend             # 纯前端静态包 -> backend/dist/frontend/ + InkShader-frontend-<平台>.zip
-./dev.ps1 build exe                  # 单文件可执行程序（默认 desktop）
-./dev.ps1 build exe --runtime web    # 形态 3 的变体
-./dev.ps1 build exe --no-upx         # 禁用 UPX 压缩（杀软误报时）
-```
+## Glyphs
 
-两个 exe 的差别只在构建期写入的 `MODE` 与是否携带 GUI 栈：`desktop` 为 windowed
-且包含 pywebview；`web` 保留控制台，并在打包时排除 webview / pythonnet / pystray /
-PIL 与各平台 GUI 绑定。
+### Glyph Sequence
 
-产物输出到 `backend/dist/`，zip 名中的平台为构建主机（`windows` / `linux` /
-`macos`）。PyInstaller 不支持交叉编译：Windows 产物在 Windows 构建，Linux 产物在
-Linux 构建。
+Multiple glyphs can be added to the glyph sequence. They are displayed in order on the canvas, each occupying its own advance width.
 
-## 目录结构
+- Newly drawn paths belong to the active glyph.
+- Actions such as editing an existing path or clicking the corresponding position in the sequence automatically make that glyph active.
+- A glyph can be removed from the sequence. Removing it does not delete its data; it can be added back through the glyphs component.
+- The edit menu switches how ruler coordinates are displayed when multiple glyphs are present.
 
-```
-index.html  css/  js/  assets/   前端（仓库根即 web root，无构建步骤）
-  js/vendor/                     第三方库本地副本（见 js/vendor/README.md）
-  js/schemas/project_schema.json 项目文件格式定义
-backend/                         后端
-  src/inkshader/                 api/、desktop/、font_ops.py、config.py、server.py
-  src/main.py                    进程入口（模式分发 / 持久化目录 / 端口分配）
-  tests/                         单元测试（pytest）
-  run.py                         开发运行入口
-  build.py + packaging/web.spec  打包入口与 PyInstaller 配置
-  pyproject.toml                 依赖与工具配置（唯一来源）
-dev.ps1  dev.sh                  一键脚本（run / install / build / test / lint）
-test/                            回归探针（probe_*.mjs）与 fixture（fixtures/）
-```
+### glyphs Component
 
-## 测试
+The standalone glyphs component in the interface is the same component as the “click to add glyphs” button in the sequence. It contains common characters. New glyphs can be added manually, and those newly added glyphs can be deleted manually in the glyphs component.
 
-**前端探针**（`test/probe_*.mjs`）：CDP 驱动的端到端测试——起静态服务器与无头
-浏览器，派发真实鼠标/键盘事件，再读回应用状态与画布像素做断言。
+### Names and Codepoints
 
-```bash
-npm install                 # 只需一次：安装 ws
-npm test                    # 串行跑全部回归套件，输出汇总
-npm run test:all            # 连同历史 driver 一起跑
-npm run test:list           # 列出会跑哪些文件
-npm test -- --only rotation # 只跑文件名含 rotation 的
-```
+A glyph has two attributes: name and codepoint. The name is the glyph's unique identifier; the codepoint may be empty. An empty codepoint usually means the glyph is a substitute glyph or a component. In the software's logic, glyphs with and without codepoints are not distinguished.
 
-运行入口 `test/run_probes.mjs` 负责服务器、浏览器、端口与临时目录，探针自身
-不再需要手工准备环境。串行执行是刻意的：多个探针共用同一 origin，并行会互相污染。
-退出码非 0 表示有断言失败；没有断言汇总的（纯诊断）探针标记为 `warn`，不参与判定。
+Glyph names and path/object names both have format requirements. A rename attempt that does not meet them is automatically cancelled.
 
-单个探针也可以直接运行：设 `PROBE_SRV` / `PROBE_PORT` 指向已启动的服务器与
-浏览器调试端口即可。样例工程由 `test/probe_env.mjs` 解析（优先 `test/fixtures/`，
-可用 `PROBE_EXAMPLE` 覆盖）。
+### References and Components
 
-**后端单元测试**（`backend/tests/`）：pytest。
+There are two ways to add a glyph to another glyph as a component:
 
-```bash
-./dev.ps1 test              # python -m pytest backend/tests
-```
+- Copy its reference and paste it into the target glyph's menu item;
+- Drag the glyph directly into the target glyph.
 
-**静态检查**：`./dev.ps1 lint`（后端 ruff）、`npm run lint`（前端与探针 ESLint，
-并附带 `npm run check:i18n`）。
-格式化配置为 Prettier（`npm run format`），尚未对全量文件执行过。
+Note the difference: dragging an ordinary object item into another glyph moves that object, whereas dragging a glyph into another glyph creates a reference to the former inside the latter. A reference object is essentially equivalent to a path for object-level transforms, but editing its nodes is synchronized directly to the original glyph and all its other references. A reference can be unlinked from its original glyph.
 
-**UI 文案表**：全部用户可见字符串定义在 `js/services/i18n.js` 的 `en` 表里，
-标记（`data-i18n` / `data-i18n-tip` / `data-i18n-placeholder`）与 JS（`t('key', 'Fallback')`）
-都按键引用它；查不到键时回退到调用方给的兜底文案，不会把键名写进界面。
-`npm run check:i18n` 静态校验两个方向：引用而缺失（DANGLING）与定义而无人引用
-（ORPHANED），后者是文案悄悄失效的典型原因。`test/probe_i18n_runtime.mjs` 在真实
-浏览器里复核这套回退约定、以及表中取值确实覆盖到了 DOM。
+### Locking and Hiding
 
-## 文档
+Glyphs can be locked and hidden; locking or hiding applies to all paths inside the glyph.
 
-| 文件 | 内容 |
-|------|------|
-| `SPECIFICATION.md` | 功能规约（架构、约束、不变量） |
-| `CODEGUIDE.md` | 编码与文档规范 |
-| `AGENTS.md` | 模块索引与仓库地图 |
-| `BACKEND_RESEARCH.md` | 后端方案研究与依赖选型 |
-| `ARCHITECTURE_DISCUSSION.md` | 前后端模式与文件存储方案讨论记录 |
-| `js/vendor/README.md` | 第三方库清单与升级步骤 |
-| `test/fixtures/README.md` | 探针输入 fixture 的来源 |
+## objects and properties
 
-## 许可
+All glyphs and paths present on the canvas are shown correspondingly in the objects component. Right-clicking an item in objects or an empty area of the canvas brings up the action menu.
 
-见 `LICENSE`。`js/vendor/` 下第三方库的许可见 `js/vendor/README.md`。
+The properties component holds the common properties at three levels: glyph, object, and node.
+
+- It always shows the properties of the active glyph, the selected object, and the selected node; when the selection list is empty, nothing is shown.
+- When more than one item is selected, some properties show a shared value (if one exists) and others show the value of one of the objects; if neither applies, the property item is disabled.
+- For numeric properties, editing the value of a single object still applies the same delta to all selected objects.
+
+For every text box in the interface, moving input focus away from the text box saves its content.
+
+## Editing Modes
+
+Five editing modes are available at the upper-left of the canvas:
+
+1. Select
+2. Node
+3. Pen (Bezier curves)
+4. Ellipse/Circle (fitted with a four-point Bezier curve)
+5. Measure
+
+### Pen and Ellipse
+
+The pen and the ellipse are the two main ways to create paths. Right-clicking their icons opens a settings menu where some key properties of the path to be drawn can be specified in advance.
+
+The pen follows the same interaction logic as in common graphics editors. The ellipse does too; holding Ctrl constrains the drawn ellipse to a circle. Once an ellipse is finished, a Bezier path with nothing special about it is created, not a special ellipse object.
+
+Even if the pen is set to draw open curves, when the last clicked node is connected back to the start point, the path still closes automatically and drawing ends. Otherwise, press Esc or right-click on the canvas to end drawing.
+
+### Node Editing
+
+Switching to node mode displays the nodes contained in every path drawn earlier on the canvas. Control points stay hidden unless a main node in the same path is selected. Selecting a main node also adds its path to the path selection list.
+
+All main nodes have three smoothness modes: corner, smooth, and symmetric. They can be set with the corresponding tools in the left toolbar, which changes the property of all selected nodes at once.
+
+Right-clicking a control point deletes it.
+
+There are several ways to multi-select nodes:
+
+- Hold Ctrl and click nodes repeatedly;
+- Drag a selection box in an empty area away from nodes;
+- Place the cursor over a node and scroll up or down to select/deselect nodes in their order within the path.
+
+### Node Snapping
+
+Different kinds of node snapping can be toggled in the edit menu:
+
+- Without Ctrl held, a main node can automatically snap to the same position as another main node when it comes close;
+- A stronger snapping can also be enabled, snapping a main node to a fully horizontal or vertical position when it comes close to a horizontal or vertical line centered on another main node;
+- With Ctrl held, dragging a main node constrains it to a horizontal or vertical position relative to its original position; dragging a control point constrains the angle of the control handle to a multiple of 5 degrees, to the angle of the other control handle, or to the angle of a control point of another main node located near the main node.
+
+Ctrl snapping cannot be turned off; in other words, not pressing Ctrl means the feature is off.
+
+### Inserting and Deleting Nodes
+
+- **I**: insert a node at the t-midpoint of every selected segment. A segment is selected if and only if both of its end main nodes are selected. In addition, double-clicking anywhere on a curve segment inserts a node at that position. Inserting a node never breaks the curve shape.
+- **D**: delete all selected nodes. The remaining nodes automatically try to fit the curve shape from before the deletion, but affect at most the two segments directly connected to the deleted node.
+
+Inserting and deleting nodes both break the symmetric-level symmetry of the nodes at both ends, but not their smooth-level symmetry.
+
+### Joining and Breaking Segments
+
+- **Join selected end nodes**: merges two end nodes into one, positioned at their midpoint. If more than 2 end nodes are selected, they are paired up in traversal order.
+- **Break path at selected nodes**: splits one node into two, each inheriting the control points on one side. The whole path goes from closed to open, or becomes two paths.
+- **Add segment between selected end nodes**: inserts a segment between two end nodes, inheriting the existing end control points (if any). This closes an open path or merges two paths into one. Likewise, selecting multiple nodes attempts to pair them up.
+- **Delete segment between selected nodes**: deletes every selected segment without deleting any nodes.
+
+### Select Mode and Object Transforms
+
+Switching to select mode allows editing paths and reference objects at the path object level:
+
+- Click a path's fill area to select it, or drag its fill area to translate it;
+- Hold Shift and click to multi-select paths;
+- A marquee can also be dragged in an area with no path fill to multi-select paths; a path is added to the selection list only when its fill area is fully enclosed.
+
+When selected, a path's bounding box has handles around it for scaling and deforming the path. Clicking again switches to rotate/shear mode. The bounding box of multiple selected paths is shown as the horizontal rectangular convex hull of all of them. Numeric path properties in the properties component are always properties of this box.
+
+As in node editing: holding Ctrl while translating a path keeps it horizontal/vertical, rotating a path limits it to specific angles, and scaling a path preserves its original proportions. An additional feature can be enabled in the edit menu, after which dragging a path automatically enables snapping for all nodes in that path.
+
+## Paths, Stroke, and live stroke
+
+A path has an open/closed property; whether it has a fill depends only on whether it is closed. A path also has a stroke width property.
+
+Stroke width does not exist as a property in font design. To create curves of uniform width, the stroke expand algorithm must therefore be applied to every curve that should have a stroke width, which destroys the original node data of the curve. The live stroke feature automates this process:
+
+- A path with live stroke enabled has the stroke expand algorithm applied automatically at the rendering layer, while its original node data is kept for frontend editing;
+- When exporting to a font product, every path with live stroke enabled has the stroke expand algorithm applied before export.
+
+Consequently, a path that has a stroke width but does not have live stroke enabled renders differently on the canvas than it exports; conversely, the software guarantees that canvas rendering is basically equivalent to the export result.
+
+Path boolean operations automatically apply the stroke expand algorithm to every live stroke path and discard the stroke width property of the remaining paths.
+
+All paths within each glyph are composited with the nonzero winding rule. A path contains only one independent (possibly cyclic) doubly linked list, so boolean operations / expand stroke may turn one path into several when holes are present. Boolean operations cannot be performed across glyphs.
+
+## Measure Tool and Guides
+
+The **measure tool** creates auxiliary measuring rulers. Double-clicking a created ruler lets you set its numeric properties; right-clicking a ruler deletes it.
+
+**Guides**: drag from the ruler onto the canvas to create a guide, and double-click it to set its properties precisely; dragging a guide back into the ruler area deletes it.
+
+In addition, the canvas has a vertical divider and a horizontal metric guide for separating glyphs. The latter is an important part of the font file, while dragging the former directly changes the advance width of the glyphs on both sides. Both can be locked or disabled in the edit menu; the lock button at the upper-left of the canvas locks/disables ruler-level guides.
+
+## Importing Images
+
+The image import feature can import images. Imported images are not yet saved in the file.
+
+## Other Components
+
+- **sample**: previews the rendering result of a given text.
+- **font**: edits font metadata; some properties are synchronized directly to the canvas.
+- **kerning**: adds kerning data. Only simple one-to-one kerning is supported for now.

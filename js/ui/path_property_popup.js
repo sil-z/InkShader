@@ -16,6 +16,13 @@ import {
 export const PATH_PROPS_DOCKED = 'ppp:docked';
 export const PATH_PROPS_UNDOCKED = 'ppp:undocked';
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+/** Shared label for the two direction rows; the toggle button shows the state. */
+const windingLabel = (winding) => (winding === 'cw'
+    ? t('prop.dir_cw', 'Clockwise')
+    : winding === 'ccw' ? t('prop.dir_ccw', 'Counter-clockwise') : t('prop.dir_open', 'Open'));
+
 const POPUP_HTML = `
 <div class="property_group_title npp-drag-handle" id="ppp_drag_handle" data-i18n="prop.path_props">Path Properties</div>
 <div class="npp-fields ppp-fields">
@@ -45,14 +52,14 @@ const POPUP_HTML = `
     </div>
     <div class="ppp-row ppp-single-path">
         <label data-i18n="prop.path_direction">Path Direction</label>
-            <div class="prop_direction_text_toggle" role="button" tabindex="0" id="ppp_reverse_dir_wrapper">
+            <div class="prop_direction_text_toggle" role="button" tabindex="0" id="ppp_reverse_dir_wrapper" data-i18n-tip="prop.toggle_path_direction" title="Toggle path direction">
                 <input type="text" readonly class="prop_direction_input" id="ppp_direction_text" value="">
                 <button type="button" id="ppp_reverse_dir_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
             </div>
     </div>
     <div class="ppp-row ppp-single-path">
         <label data-i18n="prop.smart_expand_direction">Smart Expand Direction</label>
-            <div class="prop_direction_text_toggle" role="button" tabindex="0" id="ppp_smart_winding_wrapper">
+            <div class="prop_direction_text_toggle" role="button" tabindex="0" id="ppp_smart_winding_wrapper" data-i18n-tip="prop.toggle_smart_expand_direction" title="Toggle stroke direction">
                 <input type="text" readonly class="prop_direction_input" id="ppp_smart_winding_text" value="">
                 <button type="button" id="ppp_smart_winding_toggle" class="prop_toggle_btn" aria-pressed="false" disabled></button>
             </div>
@@ -169,6 +176,16 @@ export class PathPropertyPopup extends HTMLElement {
 
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this._handleStoreStateChanged(e));
         this.addGlobalListener(appEventBus, PATH_PROPS_UNDOCKED, (e) => this._onUndocked(e));
+        // The direction rows print translated values, so a language switch has to
+        // rebuild them; markup-owned labels are handled by translateDOM.
+        this.addGlobalListener(window, CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+            if (this._focusedInput) return;
+            const curves = this._selectedCurveIds.map(id => {
+                const item = EditorModel.getTreeItem(id);
+                return item && item.type === 'curve' ? EditorModel.getCurveById(item.curveId) : null;
+            }).filter(Boolean);
+            this._patchValues(curves);
+        });
 
         this._restoreDockedState();
         this._initDrag();
@@ -313,17 +330,15 @@ export class PathPropertyPopup extends HTMLElement {
 
             const smartWinding = curve.smart_stroke_clockwise !== false ? 'cw' : 'ccw';
             const smartDirEl = this.container.querySelector('#ppp_smart_winding_text');
-            if (smartDirEl) smartDirEl.value = smartWinding === 'cw' ? 'Clockwise' : 'Counter-clockwise';
+            if (smartDirEl) smartDirEl.value = windingLabel(smartWinding);
             const smartBtn = this.container.querySelector('#ppp_smart_winding_toggle');
             if (smartBtn) {
                 const enableSmartWinding = curve.smart_stroke === true;
                 smartBtn.disabled = !enableSmartWinding;
                 smartBtn.setAttribute('aria-pressed', smartWinding === 'cw' ? 'true' : 'false');
             }
-            const smartWrapper = this.container.querySelector('#ppp_smart_winding_wrapper');
-            if (smartWrapper) {
-                smartWrapper.title = 'Toggle smart expand direction';
-            }
+            // The wrapper's tooltip lives in the markup (`data-i18n-tip`), so
+            // translateDOM keeps it in the current language. Nothing to set here.
         }
     }
 
@@ -346,15 +361,12 @@ export class PathPropertyPopup extends HTMLElement {
         // fall back to skeletonWinding from the curve model.
         const winding = (revBtn && revBtn.dataset && revBtn.dataset.winding) || (curve.skeletonWinding != null ? curve.skeletonWinding : 'open');
         if (dirEl) {
-            dirEl.value = winding === 'cw' ? 'Clockwise' : winding === 'ccw' ? 'Counter-clockwise' : 'Open';
+            dirEl.value = windingLabel(winding);
         }
         if (revBtn) {
             revBtn.setAttribute('aria-pressed', winding === 'cw' ? 'true' : 'false');
         }
-        const revWrapper = this.container.querySelector('#ppp_reverse_dir_wrapper');
-        if (revWrapper) {
-            revWrapper.title = 'Toggle path direction';
-        }
+        // Tooltip on #ppp_reverse_dir_wrapper is markup-owned (data-i18n-tip).
     }
 
     _dispatchChange(target, recordHistory) {
@@ -476,7 +488,7 @@ export class PathPropertyPopup extends HTMLElement {
                 const newWinding = isCw ? 'ccw' : 'cw';
                 revBtn.setAttribute('aria-pressed', newWinding === 'cw' ? 'true' : 'false');
                 revBtn.dataset.winding = newWinding;
-                dirEl.value = newWinding === 'cw' ? 'Clockwise' : 'Counter-clockwise';
+                dirEl.value = windingLabel(newWinding);
                 if (!this._manualDirWinding) this._manualDirWinding = {};
                 this._manualDirWinding[item.id] = newWinding;
             }

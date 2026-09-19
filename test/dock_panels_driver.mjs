@@ -346,18 +346,24 @@ try {
     assert(D1.canvas && D1.objects && D1.properties && D1.console && D1.sample && D1.font && D1.kern && D1.glyphs,
         "D1 Layout menu has 8 panel toggles", D1);
 
-    // English-only build: a leftover language setting from an older version must
-    // not resurrect a removed locale (I18nManager.lang is fixed to 'en').
+    // Two locales ship: switching retranslates the UI, persists the choice, and an
+    // unknown locale id is rejected instead of being stored.
     const D2 = await evalJs(ws, `(() => {
-        localStorage.setItem('InkShader_lang', 'zh');
-        const lang = window.I18n.lang;
-        const label = window.I18n.t('panel.canvas');
-        const switched = (window.I18n.setLang('zh'), window.I18n.lang);
+        const before = window.I18n.t('panel.canvas');
+        const tabBefore = document.querySelector('.dock-tab[data-panel-id="objects"]')?.textContent;
+        const accepted = window.I18n.setLang('zh');
+        const zh = window.I18n.t('panel.canvas');
+        const tabZh = document.querySelector('.dock-tab[data-panel-id="objects"]')?.textContent;
+        const stored = localStorage.getItem('InkShader_lang');
+        const badId = window.I18n.setLang('de');
+        const back = window.I18n.setLang('en');
         localStorage.removeItem('InkShader_lang');
-        return { lang, label, switched };
+        return { before, tabBefore, accepted, zh, tabZh, stored, badId, back, after: window.I18n.t('panel.canvas') };
     })()`);
-    assert(D2.lang === 'en' && D2.label === 'Canvas',
-        "D2 English is the only locale (stale stored language ignored)", D2);
+    assert(D2.before === 'Canvas' && D2.tabBefore === 'Objects' && D2.accepted === true
+        && D2.zh === '画布' && D2.tabZh === '对象' && D2.stored === 'zh'
+        && D2.badId === false && D2.back === true && D2.after === 'Canvas',
+        "D2 language switch retranslates (table + dock tabs), persists, and rejects unknown ids", D2);
 
     // D3/D4: console is a CORE panel — hide/show must work like the trio.
     const D3 = await evalJs(ws, `(() => {

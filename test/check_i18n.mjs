@@ -10,10 +10,17 @@
 //   ORPHANED — a key in the table that nothing references: dead text that rots
 //              silently. That is how the authored "(bottom minus top)" hint was
 //              lost — the markup had it, the table did not, and the table won.
+//   MISSING  — a key one locale defines and another does not. Every locale must
+//              cover the same key set, otherwise switching language silently falls
+//              back to English for the gap.
+//   UNTRANSLATED — a key whose value is byte-identical in both locales. Unless
+//              the string is language-neutral by nature (a glyph name, a unit),
+//              that means the translation was never written and the Chinese UI
+//              silently shows English.
 //
 // Usage:
 //   node test/check_i18n.mjs
-// Exits 1 when any DANGLING key exists, or any ORPHANED key outside STAGED.
+// Exits 1 when any DANGLING/MISSING key exists, or any ORPHANED key outside STAGED.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,11 +44,42 @@ const STAGED = new Set([
 ]);
 
 const source = readFileSync(TABLE, "utf8");
-const enBody = source.slice(
-    source.indexOf("en: {") + 5,
-    source.indexOf("\n};", source.indexOf("en: {"))
-);
-const defined = new Set([...enBody.matchAll(/"([a-z][a-zA-Z0-9_.]*)"\s*:/g)].map(m => m[1]));
+
+/** Values that are the same in every locale on purpose: proper nouns and ASCII art. */
+const LANGUAGE_NEUTRAL = new Set([
+    "app.title" // the product name
+]);
+
+/** Body of one locale object: `{"key": "value", ...}` of its top-level block. */
+function localeBody(name) {
+    // The last locale in the object closes with `};` instead of `    },`.
+    const body = source.match(new RegExp(`\\n    ${name}: \\{([\\s\\S]*?)\\n(?:    \\},|\\};)`));
+    if (!body) throw new Error(`locale "${name}" not found in ${TABLE}`);
+    return body[1];
+}
+
+/** key -> raw value (escapes kept as written) for one locale. */
+function localeValues(name) {
+    const out = new Map();
+    for (const m of localeBody(name).matchAll(/"([a-zA-Z][a-zA-Z0-9_.]*)"\s*:\s*"((?:\\.|[^"\\])*)"/g)) {
+        out.set(m[1], m[2]);
+    }
+    return out;
+}
+
+const enValues = localeValues("en");
+const zhValues = localeValues("zh");
+const enKeys = new Set(enValues.keys());
+const zhKeys = new Set(zhValues.keys());
+// The English table defines the canonical key set; `en` is also what every
+// markup fallback is written in, so it is the side that must never lose a key.
+const defined = enKeys;
+const missing = [...enKeys].filter(k => !zhKeys.has(k)).sort();
+const unknown = [...zhKeys].filter(k => !enKeys.has(k)).sort();
+const untranslated = [...enKeys]
+    .filter(k => zhKeys.has(k) && !LANGUAGE_NEUTRAL.has(k))
+    .filter(k => enValues.get(k) === zhValues.get(k))
+    .sort();
 
 // The namespaces the table declares. Restricting candidates to these keeps dots
 // in unrelated literals ("metainfo.plist", zip.folder("font.ufo")) out of the scan.
@@ -60,7 +98,10 @@ function jsFiles(dir, out = []) {
 const USAGE = [
     /data-i18n(?:-tip|-placeholder)?="([^"]+)"/g,   // markup
     /\bt\(\s*['"]([^'"]+)['"]/g,                      // t('key') / I18n.t('key')
-    /\b(?:i18n|key)\s*:\s*['"]([^'"]+)['"]/g,        // menu item / colour row
+    /\btCount\(\s*['"]([^'"]+)['"]/g,                // "{n}"-templated lookups
+    /\btr\(\s*['"]([^'"]+)['"]/g,                   // local alias of the same helper
+    /\bsetI18n(?:Text|Tip|Placeholder)\(\s*\w+\s*,\s*['"]([^'"]+)['"]/g,  // element + key
+    /\b(?:i18n|key)\s*:\s*['"]([^'"]+)['"]/g,        // menu item / colour row / preset
     /\b(?:makeItem|makeToggle|makePanelToggle)\(\s*['"]([^'"]+)['"]/g
 ];
 
@@ -84,14 +125,18 @@ const dangling = [...used.keys()].filter(k => !defined.has(k)).sort();
 const orphaned = [...defined].filter(k => !used.has(k) && !STAGED.has(k)).sort();
 const staleStaged = [...STAGED].filter(k => used.has(k) || !defined.has(k)).sort();
 
-console.log(`i18n keys defined ${defined.size} | referenced ${used.size} | staged ${STAGED.size}`);
+console.log(`i18n keys defined ${defined.size} (en) / ${zhKeys.size} (zh) | referenced ${used.size} | staged ${STAGED.size} | untranslated ${untranslated.length}`);
 
 for (const key of dangling) console.log(`  DANGLING  ${key}  <- ${[...used.get(key)].join(", ")}`);
 for (const key of orphaned) console.log(`  ORPHANED  ${key}  (defined but never referenced)`);
+for (const key of missing) console.log(`  MISSING   ${key}  (defined in en, absent from zh)`);
+for (const key of unknown) console.log(`  UNKNOWN   ${key}  (defined in zh, absent from en)`);
+for (const key of untranslated) console.log(`  UNTRANSLATED  ${key}  = "${enValues.get(key)}"`);
 for (const key of staleStaged) console.log(`  STALE     ${key}  (in STAGED but referenced or undefined)`);
 
-const failed = dangling.length || orphaned.length || staleStaged.length;
+const failed = dangling.length || orphaned.length || missing.length || unknown.length
+    || staleStaged.length || untranslated.length;
 console.log(failed
-    ? `\nFAIL: ${dangling.length} dangling, ${orphaned.length} orphaned, ${staleStaged.length} stale staged`
-    : "OK: every referenced key is defined, every defined key is either referenced or staged");
+    ? `\nFAIL: ${dangling.length} dangling, ${orphaned.length} orphaned, ${missing.length} missing, ${unknown.length} unknown, ${staleStaged.length} stale staged, ${untranslated.length} untranslated`
+    : "OK: locales match, every referenced key is defined, every defined key is referenced or staged, nothing left untranslated");
 process.exit(failed ? 1 : 0);

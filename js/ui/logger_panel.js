@@ -12,46 +12,60 @@ const TEMPLATE_HTML = `
     </div>
 `;
 
+/**
+ * Command id → { key, label }: `key` is the translation-table entry and `label`
+ * the English text used when the table is not available. Commands without an
+ * entry fall through to a mechanical Title Case rendering of their id.
+ */
 const COMMAND_LABELS = {
-    'changeControlNodePosition': 'Move Control Point',
-    'deleteControlNode': 'Delete Control Point',
-    'changeSelectedNodesPosition': 'Move Nodes',
-    'insertMainNode': 'Insert Node',
-    'finishAddingPathCommand': 'Add Path',
-    'deleteSelectedNodes': 'Delete Nodes',
-    'deleteSelectedObjects': 'Delete Objects',
-    'changeSelectedObjectsGroup': 'Change Group',
-    'changeSelectedObjectsTransform': 'Transform Objects',
-    'expandSelectedStroke': 'Expand Stroke',
-    'booleanUnionSelectedCurves': 'Boolean Union',
-    'unlinkSelectedReferences': 'Unlink Reference',
+    'changeControlNodePosition': { key: 'log.cmd.move_control_point', label: 'Move Control Point' },
+    'deleteControlNode': { key: 'log.cmd.delete_control_point', label: 'Delete Control Point' },
+    'changeSelectedNodesPosition': { key: 'log.cmd.move_nodes', label: 'Move Nodes' },
+    'insertMainNode': { key: 'log.cmd.insert_node', label: 'Insert Node' },
+    'finishAddingPathCommand': { key: 'log.cmd.add_path', label: 'Add Path' },
+    'deleteSelectedNodes': { key: 'log.cmd.delete_nodes', label: 'Delete Nodes' },
+    'deleteSelectedObjects': { key: 'log.cmd.delete_objects', label: 'Delete Objects' },
+    'changeSelectedObjectsGroup': { key: 'log.cmd.change_group', label: 'Change Group' },
+    'changeSelectedObjectsTransform': { key: 'log.cmd.transform_objects', label: 'Transform Objects' },
+    'expandSelectedStroke': { key: 'log.cmd.expand_stroke', label: 'Expand Stroke' },
+    'booleanUnionSelectedCurves': { key: 'log.cmd.boolean_union', label: 'Boolean Union' },
+    'unlinkSelectedReferences': { key: 'log.cmd.unlink_reference', label: 'Unlink Reference' },
 
-    'PASTE_COPIED_OBJECTS': 'Paste Objects',
-    'DUPLICATE_SELECTED_OBJECTS': 'Duplicate Objects',
-    'DELETE_SELECTED_OBJECTS': 'Delete Objects',
-    'CHANGE_SELECTED_OBJECTS_GROUP': 'Change Group',
-    'SET_SINGLE_OBJECT_PROPERTIES': 'Edit Properties',
-    'CHANGE_SELECTED_OBJECTS_BOUNDS': 'Resize Objects',
-    'RENAME_TREE_ITEM': 'Rename',
-    'SET_GROUP_ADVANCE': 'Set Advance Width',
-    'UPDATE_NODE_PROPERTY': 'Edit Node Property',
-    'SET_PEN_PROPERTIES': 'Pen Settings',
-    'SET_GROUP_CHAR_CODE': 'Set Character Code',
-    'SET_SEQUENCE_EDITOR_STATE': 'Edit Sequence',
-    'DELETE_GROUP_AND_UPDATE_SEQUENCE': 'Delete Group',
-    'EXPAND_STROKE': 'Expand Stroke',
-    'BOOLEAN_UNION': 'Boolean Union',
-    'UNLINK': 'Unlink Reference',
-    'IMPORT_IMAGE': 'Import Image',
-    'TOGGLE_SELECTED_OBJECTS_LOCK': 'Toggle Lock',
-    'TOGGLE_SELECTED_OBJECTS_DISPLAY': 'Toggle Visibility',
-    'COMMIT_HISTORY': 'Commit',
-    'COMMIT_SEQUENCE_HISTORY': 'Commit Sequence',
+    'PASTE_COPIED_OBJECTS': { key: 'log.cmd.paste_objects', label: 'Paste Objects' },
+    'DUPLICATE_SELECTED_OBJECTS': { key: 'log.cmd.duplicate_objects', label: 'Duplicate Objects' },
+    'DELETE_SELECTED_OBJECTS': { key: 'log.cmd.delete_objects', label: 'Delete Objects' },
+    'CHANGE_SELECTED_OBJECTS_GROUP': { key: 'log.cmd.change_group', label: 'Change Group' },
+    'SET_SINGLE_OBJECT_PROPERTIES': { key: 'log.cmd.edit_properties', label: 'Edit Properties' },
+    'CHANGE_SELECTED_OBJECTS_BOUNDS': { key: 'log.cmd.resize_objects', label: 'Resize Objects' },
+    'RENAME_TREE_ITEM': { key: 'log.cmd.rename', label: 'Rename' },
+    'SET_GROUP_ADVANCE': { key: 'log.cmd.set_advance', label: 'Set Advance Width' },
+    'UPDATE_NODE_PROPERTY': { key: 'log.cmd.edit_node_property', label: 'Edit Node Property' },
+    'SET_PEN_PROPERTIES': { key: 'log.cmd.pen_settings', label: 'Pen Settings' },
+    'SET_GROUP_CHAR_CODE': { key: 'log.cmd.set_char_code', label: 'Set Character Code' },
+    'SET_SEQUENCE_EDITOR_STATE': { key: 'log.cmd.edit_sequence', label: 'Edit Sequence' },
+    'DELETE_GROUP_AND_UPDATE_SEQUENCE': { key: 'log.cmd.delete_group', label: 'Delete Group' },
+    'EXPAND_STROKE': { key: 'log.cmd.expand_stroke', label: 'Expand Stroke' },
+    'BOOLEAN_UNION': { key: 'log.cmd.boolean_union', label: 'Boolean Union' },
+    'UNLINK': { key: 'log.cmd.unlink_reference', label: 'Unlink Reference' },
+    'IMPORT_IMAGE': { key: 'log.cmd.import_image', label: 'Import Image' },
+    'TOGGLE_SELECTED_OBJECTS_LOCK': { key: 'log.cmd.toggle_lock', label: 'Toggle Lock' },
+    'TOGGLE_SELECTED_OBJECTS_DISPLAY': { key: 'log.cmd.toggle_visibility', label: 'Toggle Visibility' },
+    'COMMIT_HISTORY': { key: 'log.cmd.commit', label: 'Commit' },
+    'COMMIT_SEQUENCE_HISTORY': { key: 'log.cmd.commit_sequence', label: 'Commit Sequence' },
 };
+
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
+/** Fill a "{n}"-style template key from the translation table. */
+function tCount(key, n, fallback) {
+    return t(key, fallback).replace('{n}', String(n));
+}
 
 function formatCommandName(name) {
     if (!name) return '';
-    if (COMMAND_LABELS[name]) return COMMAND_LABELS[name];
+    const entry = COMMAND_LABELS[name];
+    if (entry) return t(entry.key, entry.label);
 
     // SNAKE_CASE: CHANGE_NODE_SELECTION → "Change Node Selection"
     if (name.includes('_')) {
@@ -77,22 +91,22 @@ function formatCommandDetail(commandName, payload = {}) {
     if (/CHANGE_NODE_SELECTION|SET_TREE_SELECTION|CHANGE_OBJECT_SELECTION/.test(commandName)) {
         const parts = [];
         if (p.strategy) parts.push(p.strategy);
-        if (Array.isArray(p.markerIds) && p.markerIds.length) parts.push(`${p.markerIds.length} markers`);
-        if (Array.isArray(p.curveIds) && p.curveIds.length) parts.push(`${p.curveIds.length} curves`);
-        if (Array.isArray(p.ids) && p.ids.length) parts.push(`${p.ids.length} items`);
-        if (Array.isArray(p.refIds) && p.refIds.length) parts.push(`+${p.refIds.length} refs`);
+        if (Array.isArray(p.markerIds) && p.markerIds.length) parts.push(tCount('log.detail.markers', p.markerIds.length, '{n} markers'));
+        if (Array.isArray(p.curveIds) && p.curveIds.length) parts.push(tCount('log.detail.curves', p.curveIds.length, '{n} curves'));
+        if (Array.isArray(p.ids) && p.ids.length) parts.push(tCount('log.detail.items', p.ids.length, '{n} items'));
+        if (Array.isArray(p.refIds) && p.refIds.length) parts.push(tCount('log.detail.refs', p.refIds.length, '+{n} refs'));
         return parts.join(', ');
     }
 
     // Delete operations
     if (/DELETE/.test(commandName)) {
-        if (Array.isArray(p.ids)) return `${p.ids.length} items`;
-        if (p.count) return `${p.count} items`;
+        if (Array.isArray(p.ids)) return tCount('log.detail.items', p.ids.length, '{n} items');
+        if (p.count) return tCount('log.detail.items', p.count, '{n} items');
     }
 
     // Paste / Duplicate
     if (/PASTE|DUPLICATE/.test(commandName)) {
-        if (Array.isArray(p.ids)) return `${p.ids.length} items`;
+        if (Array.isArray(p.ids)) return tCount('log.detail.items', p.ids.length, '{n} items');
     }
 
     // Rename
@@ -102,8 +116,8 @@ function formatCommandDetail(commandName, payload = {}) {
 
     // Toggle lock / visibility
     if (/TOGGLE/.test(commandName)) {
-        if (p.locked !== undefined) return p.locked ? 'lock' : 'unlock';
-        if (p.visible !== undefined) return p.visible ? 'show' : 'hide';
+        if (p.locked !== undefined) return p.locked ? t('tree.lock', 'lock') : t('tree.unlock', 'unlock');
+        if (p.visible !== undefined) return p.visible ? t('tree.show', 'show') : t('tree.hide', 'hide');
     }
 
     // Resize / bounds
@@ -122,7 +136,7 @@ function formatCommandDetail(commandName, payload = {}) {
     // Pen settings
     if (/SET_PEN_PROPERTIES/.test(commandName)) {
         const keys = Object.keys(p.updates || p);
-        return keys.length ? `${keys.length} settings` : '';
+        return keys.length ? tCount('log.detail.settings', keys.length, '{n} settings') : '';
     }
 
     // Generic: show key-value pairs for first few payload keys
@@ -176,9 +190,9 @@ export class LoggerPanel extends HTMLElement {
             const action = e.detail?.action;
             if (!action || action?.meta?.source !== 'history') return;
             if (action.type === 'UNDO') {
-                this.logHistory('Undo', action.meta.commandName);
+                this.logHistory(t('log.undo', 'Undo'), action.meta.commandName);
             } else if (action.type === 'REDO') {
-                this.logHistory('Redo', action.meta.commandName);
+                this.logHistory(t('log.redo', 'Redo'), action.meta.commandName);
             }
         }));
     }

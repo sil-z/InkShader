@@ -437,11 +437,15 @@ export function refreshCurveBooleanCache(curve) {
         diag.melt = { attempted: false, why: allSimplePaths ? "single piece" : "non-simple paths" };
     }
     if (!resultPath) {
-        // Candidate 2: crossing split + all-positive reorientation. When the
-        // melt's booleans fail on near-tangential geometry this still yields
-        // the clean minimal ring structure expand materialization and union
-        // want (verified: raster must equal the OR truth; a genuine hole
-        // region would fail here and fall through to raw).
+        // Candidate 2: crossing split with each ring's winding PRESERVED.
+        // resolveCrossings splits every crossing into non-self-intersecting
+        // sub-rings while keeping each ring's own winding, so the painted region
+        // is unchanged by construction AND the result is clean — which is what
+        // expand materialization and union both need. Reorienting every sub-ring
+        // positive (the old behaviour) was the bug: it FILLED the offset loops a
+        // thick stroke's band crosses itself into, inflating an open stroke's
+        // region ~4.5x (the loop interior is not within halfWidth of the
+        // skeleton). Verified against the OR truth below.
         try {
             const cp = new pScope.CompoundPath({ children: leafPieces.map(p => p.clone({ insert: false })) });
             if (typeof cp.resolveCrossings === "function") {
@@ -449,7 +453,6 @@ export function refreshCurveBooleanCache(curve) {
                 if (split) {
                     const kids = (split instanceof pScope.CompoundPath ? [...split.children] : [split])
                         .filter(k => k instanceof pScope.Path && k.segments.length >= 2);
-                    for (const k of kids) { if ((k.area || 0) < 0) { try { k.reverse(); } catch (_) { } } }
                     const candA = kids.length === 1 ? kids[0] : new pScope.CompoundPath({ children: kids });
                     diag.split = { attempted: true, rings: kids.length, accepted: matches(candA, "split") };
                     if (diag.split.accepted) {
@@ -507,13 +510,15 @@ export function refreshCurveBooleanCache(curve) {
                 const truth2 = fresh.length ? rasterizeOR(pScope, fresh) : -1;
                 diag.lastResort = { reEmitted: fresh.length, truth2Area: Math.round(truth2), accepted: false };
                 if (truth2 < 0 || fresh.length <= 1) {
-                    for (const p of fresh) { if ((p.area || 0) < 0) { try { p.reverse(); } catch (_) { } } }
                     resultPath = buildAll(fresh);
                     // A single self-intersecting ring (e.g. a thin band around
                     // an open figure-8 skeleton) cancels its own lobes under
-                    // the nonzero rule. Split it at the crossings and reorient
-                    // every leaf positive; keep the split only when it
-                    // verifiably reproduces the raster truth.
+                    // the nonzero rule; that cancellation IS the correct stroke
+                    // region (an offset loop's interior is not within halfWidth
+                    // of the skeleton). Split it at the crossings with each
+                    // leaf's winding PRESERVED — the region is then unchanged
+                    // while the contour becomes clean — and keep the split only
+                    // when it verifiably reproduces the raster truth.
                     if (truth2 >= 0 && resultPath instanceof pScope.Path && typeof resultPath.resolveCrossings === "function") {
                         try {
                             const split = resultPath.resolveCrossings();
@@ -524,7 +529,6 @@ export function refreshCurveBooleanCache(curve) {
                                     else if (it instanceof pScope.Path && it.segments.length >= 2) leaves.push(it);
                                 };
                                 collect(split);
-                                for (const k of leaves) { if ((k.area || 0) < 0) { try { k.reverse(); } catch (_) { } } }
                                 const cand = leaves.length === 1 ? leaves[0] : new pScope.CompoundPath({ children: leaves });
                                 const gotC = rasterizeItems(pScope, [cand]);
                                 if (gotC >= 0 && Math.abs(gotC - truth2) <= Math.max(60, truth2 * 0.02)) {
@@ -537,9 +541,9 @@ export function refreshCurveBooleanCache(curve) {
                         } catch (_) { }
                     }
                 } else {
-                    // Candidate A: split all self/inter-piece crossings, then
-                    // reorient every sub-ring positive — simple positive rings
-                    // compose under nonzero into exactly the OR region.
+                    // Candidate A: split all self/inter-piece crossings, keeping
+                    // every sub-ring's own winding — the region is unchanged by
+                    // construction and the contour is clean.
                     let candA = null;
                     try {
                         const cp = new pScope.CompoundPath({ children: fresh.map(p => p.clone({ insert: false })) });
@@ -548,7 +552,6 @@ export function refreshCurveBooleanCache(curve) {
                             if (split) {
                                 const kids = (split instanceof pScope.CompoundPath ? [...split.children] : [split])
                                     .filter(k => k instanceof pScope.Path && k.segments.length >= 2);
-                                for (const k of kids) { if ((k.area || 0) < 0) { try { k.reverse(); } catch (_) { } } }
                                 candA = buildAll(kids);
                                 if (split !== candA) { try { split.remove(); } catch (_) { } }
                             }
@@ -631,7 +634,18 @@ export function refreshCurveBooleanCache(curve) {
     // aware). Direction flips of simple rings preserve the region; verified
     // against the raster anyway, and the pre-reorient shape is restored when
     // a self-intersecting candidate would change area under reorientation.
-    if (curve.smart_stroke && curve.stroke_width > 0 && resultPath && typeof resultPath.reorient === "function") {
+    //
+    // The gate deliberately does NOT require stroke_width > 0. A path keeps its
+    // stroke direction after its stroke has been materialized away: a union /
+    // expand result is exactly that state (smart_stroke stays true, stroke_width
+    // becomes 0), and its cached geometry is what the union engine reads as an
+    // operand. Excluding stroke_width === 0 left those outlines with whatever
+    // winding Paper's booleans happened to emit, so whether two objects merged
+    // or carved each other depended on the previous operation rather than on the
+    // declared Stroke Direction. Region preservation is unchanged: the guard
+    // below still restores the pre-reorient shape whenever the flip would alter
+    // the painted region.
+    if (curve.smart_stroke && resultPath && typeof resultPath.reorient === "function") {
         let restored = null;
         try {
             const before = truth >= 0 ? rasterizeItems(pScope, [resultPath]) : -1;

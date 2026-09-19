@@ -13,6 +13,19 @@ import * as EditorModel from "../app/editor_read_facade.js";
 import { getCanvasTheme } from "../canvas/rendering/canvas_theme.js";
 import { installEnterBlurHandler, isValidTreeName } from "./input_validation.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
+/**
+ * Set a label's text AND mark it for DOM translation. The menu this panel builds is
+ * constructed once and then lives on, so a plain t() call would freeze it in the
+ * language that happened to be active at build time.
+ */
+function setI18nText(el, key, fallback) {
+    el.setAttribute('data-i18n', key);
+    el.textContent = t(key, fallback);
+}
+
 function _toAfdkoName(str) {
     const parts = [];
     for (const ch of str) {
@@ -74,7 +87,7 @@ export class GlyphPopup extends HTMLElement {
         const titleSpan = document.createElement("span");
         titleSpan.className = "panel_title";
         titleSpan.setAttribute("data-i18n", "panel.glyphs");
-        titleSpan.textContent = "Glyphs";
+        titleSpan.textContent = t("panel.glyphs", "Glyphs");
         title.appendChild(titleSpan);
         this.appendChild(title);
 
@@ -137,7 +150,7 @@ export class GlyphPopup extends HTMLElement {
                     eg.className = "seq-menu-section seq-menu-existing-groups";
                     const secTitle = document.createElement("div");
                     secTitle.className = "seq-menu-section-title";
-                    secTitle.textContent = "Other Groups";
+                    setI18nText(secTitle, "seq.menu.other_groups", "Other Groups");
                     eg.appendChild(secTitle);
                     menu.appendChild(eg);
                 }
@@ -196,21 +209,26 @@ export class GlyphPopup extends HTMLElement {
         const nameInput = document.createElement("input");
         nameInput.type = "text";
         nameInput.className = "seq-menu-input";
-        nameInput.placeholder = "Name";
-        nameInput.title = "Glyph name";
+        nameInput.setAttribute("data-i18n-placeholder", "seq.menu.name");
+        nameInput.setAttribute("data-i18n-tip", "seq.menu.name_tip");
+        nameInput.placeholder = t("seq.menu.name", "Name");
+        nameInput.title = t("seq.menu.name_tip", "Glyph name");
         const codeInput = document.createElement("input");
         codeInput.type = "text";
         codeInput.className = "seq-menu-input seq-menu-input-short";
-        codeInput.placeholder = "Code";
-        codeInput.title = "Type a character or Unicode code point (U+XXXX)";
+        codeInput.setAttribute("data-i18n-placeholder", "seq.menu.code");
+        codeInput.setAttribute("data-i18n-tip", "seq.menu.code_tip");
+        codeInput.placeholder = t("seq.menu.code", "Code");
+        codeInput.title = t("seq.menu.code_tip", "Type a character or Unicode code point (U+XXXX)");
         const advInput = document.createElement("input");
         advInput.type = "number";
         advInput.className = "seq-menu-input seq-menu-input-short";
-        advInput.placeholder = "Adv";
+        advInput.setAttribute("data-i18n-placeholder", "seq.menu.adv");
+        advInput.placeholder = t("seq.menu.adv", "Adv");
         advInput.value = "1000";
         const addBtn = document.createElement("button");
         addBtn.className = "seq-menu-add-btn";
-        addBtn.textContent = "Add";
+        setI18nText(addBtn, "seq.menu.add", "Add");
         addBtn.addEventListener("click", () => {
             const nameVal = nameInput.value.trim();
             let codeVal = codeInput.value.trim();
@@ -316,7 +334,7 @@ export class GlyphPopup extends HTMLElement {
         charSection.className = "seq-menu-section";
         const charTitle = document.createElement("div");
         charTitle.className = "seq-menu-section-title";
-        charTitle.textContent = "Default Characters";
+        setI18nText(charTitle, "seq.menu.default_chars", "Default Characters");
         charSection.appendChild(charTitle);
         const charGrid = document.createElement("div");
         charGrid.className = "seq-menu-grid seq-menu-char-grid";
@@ -330,7 +348,7 @@ export class GlyphPopup extends HTMLElement {
             sec.className = "seq-menu-section seq-menu-existing-groups";
             const secTitle = document.createElement("div");
             secTitle.className = "seq-menu-section-title";
-            secTitle.textContent = "Other Groups";
+            setI18nText(secTitle, "seq.menu.other_groups", "Other Groups");
             sec.appendChild(secTitle);
             this._renderNoCodeGroups(sec, nonAsciiGroups, this._cols);
             menu.appendChild(sec);

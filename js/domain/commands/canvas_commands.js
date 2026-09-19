@@ -20,6 +20,9 @@ import { resolveMarkersFromCanvas } from "../selection/marker_resolution.js";
  * 类字段不可用，必须用模块级常量。 */
 const _CONTROL_MODE_NAMES = ["corner", "smooth", "symmetric"];
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 /**
  * Solve quadratic equation at^2 + bt + c = 0, adding valid (0,1) roots to result set.
  */
@@ -2133,12 +2136,18 @@ export class CanvasCommands {
                 n = n.nextOnCurve;
             }
 
-            // Find consecutive selected pairs — uses chain order, not selection order
+            // Find consecutive selected pairs — uses chain order, not selection order.
+            // A closed chain's wrap segment (endNode → startNode) is stored
+            // implicitly: endNode.nextOnCurve is null and `closed` is what asserts
+            // the link exists. That wrap segment is still a segment the user can
+            // select and delete, so it counts as adjacency too.
+            const hasLink = (a, b) => a.nextOnCurve === b
+                || (curve.closed && a === curve.endNode && b === curve.startNode && a.nextOnCurve === null);
+
             for (let i = 0; i < chainNodes.length; i++) {
                 const curr = chainNodes[i];
                 const next = chainNodes[(i + 1) % chainNodes.length];
-                // Only check if curr has a forward link to next
-                if (curr.nextOnCurve !== next) continue;
+                if (!hasLink(curr, next)) continue;
                 if (!selectedMarkers.has(curr.main_node) || !selectedMarkers.has(next.main_node)) continue;
                 pairs.push({ leadNode: curr, trailNode: next });
                 if (!curve.closed && curr === curve.endNode) break;
@@ -2150,28 +2159,45 @@ export class CanvasCommands {
         for (const { leadNode, trailNode } of pairs) {
             const curve = leadNode.curve;
             if (!curve || leadNode.curve !== trailNode.curve) continue;
-            // Verify the forward adjacency still holds (curve may have been
-            // modified by a prior pair's head/tail truncation or split).
-            if (leadNode.nextOnCurve !== trailNode) continue;
+            // Verify the adjacency still holds (a prior pair's truncation or split
+            // may have changed the curve) — including the implicit wrap link of a
+            // chain that is still closed.
+            const linkAlive = leadNode.nextOnCurve === trailNode
+                || (curve.closed && leadNode === curve.endNode && trailNode === curve.startNode && leadNode.nextOnCurve === null);
+            if (!linkAlive) continue;
 
-            // Case 1: Closed path — open it by disconnecting the segment.
-            // leadNode is orphaned — extracted as its own curve.
+            // Case 1: Closed path — opening it, where the gap IS the deleted
+            // segment. A closed chain has no gap: every link is a segment,
+            // including the wrap from endNode back to startNode. Setting
+            // closed = false therefore has to place the gap somewhere, and the
+            // only correct place is the segment being deleted. So the two nodes
+            // of that segment become the ends of the now-open path:
+            // startNode = trailNode (nothing before it), endNode = leadNode
+            // (nothing after it). Every other link stays a real segment and
+            // neither node leaves the chain.
+            //
+            // The wrap link is stored implicitly (endNode.nextOnCurve === null,
+            // with `closed` asserting it). Opening the path anywhere else turns
+            // it into an explicit link of the open chain — unless the segment
+            // being deleted IS the wrap, in which case there is nothing to
+            // materialize and start/end simply stay where they are.
+            //
+            // The old implementation instead cut the link from leadNode's
+            // PREDECESSOR (a segment nobody asked to delete), made that
+            // predecessor the endNode, and extracted leadNode into a separate
+            // single-node curve. That moved the gap one segment to the side and
+            // silently dropped a selected node out of the path.
             if (curve.closed) {
-                // Walk from trailNode forward to find where it wraps around to leadNode
-                let walk = trailNode;
-                while (walk.nextOnCurve && walk.nextOnCurve !== leadNode) {
-                    walk = walk.nextOnCurve;
+                const wrapIsDeleted = (leadNode === curve.endNode && trailNode === curve.startNode);
+                if (!wrapIsDeleted && curve.endNode.nextOnCurve !== curve.startNode) {
+                    curve.endNode.nextOnCurve = curve.startNode;
+                    curve.startNode.lastOnCurve = curve.endNode;
                 }
-                if (walk.nextOnCurve === leadNode) {
-                    walk.nextOnCurve = null;
-                }
-                leadNode.lastOnCurve = null;
                 leadNode.nextOnCurve = null;
                 trailNode.lastOnCurve = null;
-                curve.startNode = trailNode;
-                curve.endNode = walk;
                 curve.closed = false;
-                adoptOrphan(leadNode, curve.groupId);
+                curve.startNode = trailNode;
+                curve.endNode = leadNode;
                 modifiedCurves.add(curve);
                 changed = true;
                 continue;
@@ -2883,7 +2909,7 @@ export class CanvasCommands {
             data = await canvas.io.callPathOp('correct_direction', items.map((x) => x.path));
         } catch (e) {
             console.error('[Commands] correctDirectionSelected failed:', e);
-            alert("Operation failed: " + (e?.message || e));
+            alert(t("err.operation_failed", "Operation failed: ") + (e?.message || e));
             return false;
         }
         const resultPaths = data?.paths || [];
@@ -2945,7 +2971,7 @@ export class CanvasCommands {
             );
         } catch (e) {
             console.error('[Commands] removeOverlapSelected failed:', e);
-            alert("Operation failed: " + (e?.message || e));
+            alert(t("err.operation_failed", "Operation failed: ") + (e?.message || e));
             return false;
         }
         const resultPaths = data?.paths || [];

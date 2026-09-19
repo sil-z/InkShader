@@ -179,7 +179,9 @@ export function createCustomSelect(selectEl, opts = {}) {
         close();
     });
 
-    // Expose helper to update options programmatically
+    // Expose helper to update options programmatically. The native <select> is
+    // hidden but kept in sync as well, so its option text never drifts from the
+    // panel the user actually reads (e.g. after a language switch).
     wrapper._csUpdateOptions = function (newOptions, newValue) {
         panel.innerHTML = '';
         newOptions.forEach(opt => {
@@ -191,6 +193,10 @@ export function createCustomSelect(selectEl, opts = {}) {
         });
         wrapper.dataset.value = newValue;
         labelSpan.textContent = newOptions.find(o => o.value === newValue)?.label || '';
+        [...selectEl.options].forEach(o => {
+            const match = newOptions.find(n => n.value === o.value);
+            if (match && o.textContent !== match.label) o.textContent = match.label;
+        });
         selectEl.value = newValue;
     };
 

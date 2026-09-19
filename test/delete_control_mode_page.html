@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>delete control point → node mode</title></head>
+<body>
+<script type="module">
+// Deleting a handle must degrade the node's control_mode.
+//
+// Spec (SPECIFICATION.md S004b / the toolbar's mode buttons):
+//   0 = corner (independent handles), 1 = smooth (collinear handles),
+//   2 = symmetric (mirrored handles).
+// A node that loses a handle has at most one left, so it can be neither smooth
+// nor symmetric and must fall back to corner. The old implementation set
+// control_mode = 1 whenever one handle remained, which additionally PROMOTED a
+// corner node to smooth just for losing a handle.
+window.__res = null; window.__err = null;
+try {
+    const { CurveStore } = await import('/js/core/bezier/curve_store.js');
+    const { Curve } = await import('/js/core/bezier/curve.js');
+    const { CurveNode } = await import('/js/core/bezier/node.js');
+    const { generateMarker } = await import('/js/core/bezier/utils.js');
+
+    /** Build a store holding one closed 3-node curve; `middleMode` is the mode of
+     *  the middle node. Returns handles so cases can delete either side. */
+    function build(middleMode, { dropControl } = {}) {
+        const store = new CurveStore();
+        const curve = new Curve({ id: 'C_' + middleMode + '_' + (dropControl || 'both') });
+        curve.closed = true;
+        store.curveById.set(curve.id, curve);
+        store.curves.push(curve);
+
+        const mkMain = (x, y) => {
+            const m = generateMarker('circle');
+            const n = new CurveNode(m, 'main', x, y, null, null, String(m.id));
+            n.curve = curve;
+            store._registerNodeDomMarkers(curve, n);
+            return n;
+        };
+        const nodes = [mkMain(0, 0), mkMain(100, 0), mkMain(100, 100)];
+        curve.startNode = nodes[0];
+        curve.endNode = nodes[2];
+        for (let i = 0; i < 3; i++) {
+            nodes[i].nextOnCurve = nodes[(i + 1) % 3];
+            nodes[(i + 1) % 3].lastOnCurve = nodes[i];
+        }
+        // Give every node two collinear handles (midway to its neighbours) so the
+        // single-handle case has to be produced by deleting one of them.
+        const mkHandle = (owner, x, y) => {
+            const m = generateMarker('circle');
+            const h = new CurveNode(m, null, x, y, owner, null, String(m.id));
+            h.curve = curve;
+            store._registerNodeDomMarkers(curve, h);
+            return h;
+        };
+        for (const n of nodes) {
+            n.control1 = mkHandle(n, n.x + 20, n.y);
+            n.control2 = mkHandle(n, n.x - 20, n.y);
+        }
+        const mid = nodes[1];
+        mid.control_mode = middleMode;
+        if (dropControl === 'in') {
+            store.deleteControlNode(mid.control2.main_node);
+        } else if (dropControl === 'out') {
+            store.deleteControlNode(mid.control1.main_node);
+        }
+        return { store, curve, mid, nodes };
+    }
+
+    const out = {};
+
+    // A smooth node (2 collinear handles) that loses one handle can no longer be
+    // smooth: it must become corner.
+    {
+        const { mid } = build(1, { dropControl: 'out' });
+        out.smooth_losesHandle_becomesCorner = { got: mid.control_mode, want: 0 };
+    }
+    // Symmetric (2) with one handle left is not symmetric either.
+    {
+        const { mid } = build(2, { dropControl: 'out' });
+        out.symmetric_losesHandle_becomesCorner = { got: mid.control_mode, want: 0 };
+    }
+    // A corner node must NOT be promoted to smooth just for losing a handle.
+    {
+        const { mid } = build(0, { dropControl: 'out' });
+        out.corner_keepsCorner = { got: mid.control_mode, want: 0 };
+    }
+    // Deleting the last handle leaves no handles at all → corner.
+    {
+        const { store, mid } = build(1, { dropControl: 'out' });
+        store.deleteControlNode(mid.control2.main_node);
+        out.lastHandleGone_becomesCorner = {
+            got: mid.control_mode, want: 0,
+            handlesLeft: (mid.control1 ? 1 : 0) + (mid.control2 ? 1 : 0),
+        };
+    }
+    // Deleting an unrelated handle must leave the node's mode alone.
+    {
+        const { store, mid, nodes } = build(1);
+        store.deleteControlNode(nodes[0].control1.main_node);
+        out.otherNodeDeleted_middleUntouched = { got: mid.control_mode, want: 1 };
+    }
+
+    for (const [name, v] of Object.entries(out)) v.ok = v.got === v.want;
+    window.__res = out;
+} catch (e) { window.__err = String(e && e.stack || e); }
+</script>
+</body>
+</html>

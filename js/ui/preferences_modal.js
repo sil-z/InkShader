@@ -6,9 +6,41 @@ import {
 } from "./input_validation.js";
 import { createCustomSelect } from "./custom_select.js";
 import { THEME_PRESETS, applyAccentPalette, clearAccentPalette } from "../services/theme_generator.js";
+import { appEventBus } from "../app/event_bus.js";
+import { CANVAS_EVENTS } from "../app/canvas_events.js";
+
+/** Theme choices: `i18n` names each one in the translation table. */
+const THEME_OPTIONS = [
+    { value: 'light', i18n: 'pref.theme.light' },
+    { value: 'dark', i18n: 'pref.theme.dark' }
+];
+
+/**
+ * Language choices carry their own native names on purpose: a language picker has
+ * to read the same whatever the current interface language is, so these labels are
+ * the one place that stays out of the translation tables.
+ */
+const LANG_OPTIONS = [
+    { value: 'en', label: 'English' },
+    { value: 'zh', label: '简体中文' }
+];
+
+function t(key, fallback) {
+    return window.I18n ? window.I18n.t(key, fallback) : (fallback !== undefined ? fallback : key);
+}
+
+/** Options for the theme select, in the current language. */
+function themeOptionList() {
+    return THEME_OPTIONS.map(o => ({ value: o.value, label: t(o.i18n) }));
+}
+
+/** Options for the accent select, in the current language. */
+function accentOptionList() {
+    return THEME_PRESETS.map(p => ({ value: p.id, label: t(p.i18n, p.name) }));
+}
 
 function buildAccentOptions() {
-    return THEME_PRESETS.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    return accentOptionList().map(o => `<option value="${o.value}">${o.label}</option>`).join('');
 }
 
 const TEMPLATE_HTML = `
@@ -16,8 +48,15 @@ const TEMPLATE_HTML = `
     <div class="pen-tool-row">
         <label data-i18n="pref.theme">Theme</label>
         <select id="pref_theme" class="font-popup-input">
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="light" data-i18n="pref.theme.light">Light</option>
+            <option value="dark" data-i18n="pref.theme.dark">Dark</option>
+        </select>
+    </div>
+    <div class="pen-tool-separator"></div>
+    <div class="pen-tool-row">
+        <label data-i18n="pref.language">Language</label>
+        <select id="pref_lang" class="font-popup-input">
+            ${LANG_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
         </select>
     </div>
     <div class="pen-tool-separator"></div>
@@ -61,6 +100,15 @@ export class PreferencesPopup extends HTMLElement {
         this.loadSettings();
         this.bindEvents();
         this.buildColorPickers();
+        this.syncLabelOptions();
+
+        // Menus and popups rebuild their own text on a language switch; the selects
+        // and the colour rows here are built in JS, so they are rebuilt explicitly.
+        appEventBus.on(CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+            this.syncLabelOptions();
+            this.querySelector('#pref_colors')?.replaceChildren();
+            this.buildColorPickers();
+        });
 
         document.addEventListener('mousedown', (e) => {
             if (!this._visible) return;
@@ -77,6 +125,7 @@ export class PreferencesPopup extends HTMLElement {
 
     show(anchorEl) {
         this.loadSettings();
+        this.syncLabelOptions();
         this.refreshColorInputs();
         this.classList.add('visible');
         this._visible = true;
@@ -104,10 +153,35 @@ export class PreferencesPopup extends HTMLElement {
         this._visible = false;
     }
 
+    /**
+     * Rebuild the option text of the selects whose labels are translated. The custom
+     * select copies option text into its trigger when it is created, so changing the
+     * language has to push a fresh option list through the wrapper.
+     */
+    syncLabelOptions() {
+        const lists = [
+            ['#pref_theme', themeOptionList()],
+            ['#pref_accent_hue', accentOptionList()],
+            ['#pref_lang', LANG_OPTIONS]
+        ];
+        for (const [selector, list] of lists) {
+            const native = this.querySelector(selector);
+            const wrapper = native?.previousElementSibling;
+            if (native && typeof wrapper?._csUpdateOptions === 'function') {
+                wrapper._csUpdateOptions(list, native.value);
+            }
+        }
+    }
+
     bindEvents() {
         this.querySelector('#pref_theme').addEventListener('change', (e) => {
             this.applyTheme(e.target.value);
             this.saveSettings();
+        });
+
+        // The language itself is persisted by I18nManager.setLang, not by saveSettings.
+        this.querySelector('#pref_lang').addEventListener('change', (e) => {
+            if (window.I18n) window.I18n.setLang(e.target.value);
         });
 
         this.querySelector('#pref_accent_hue').addEventListener('change', (e) => {
@@ -213,6 +287,7 @@ export class PreferencesPopup extends HTMLElement {
         const settings = {
             theme: document.documentElement.getAttribute('data-theme') || 'light',
             accentHue: document.documentElement.dataset.accentPreset || 'blue',
+            lang: window.I18n?.lang || 'en',
             customColors: this.customColors
         };
         localStorage.setItem('InkShader_preferences', JSON.stringify(settings));
@@ -229,6 +304,7 @@ export class PreferencesPopup extends HTMLElement {
     }
 
     loadSettings() {
+        this._setSelectValue('#pref_lang', window.I18n?.lang || 'en');
         try {
             const data = localStorage.getItem('InkShader_preferences');
             if (data) {

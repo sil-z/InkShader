@@ -141,11 +141,13 @@ export class CurveStore {
         curve.domMap.delete(marker);
         this.domMap.delete(marker);
 
-        if (!mainNode.control1 && !mainNode.control2) {
-            mainNode.control_mode = 0;
-        } else {
-            mainNode.control_mode = 1;
-        }
+        // A smooth node is defined by two collinear handles and a symmetric node by
+        // two mirrored ones, so once a handle is deleted the node can satisfy
+        // neither and must fall back to corner. The old rule set control_mode = 1
+        // whenever one handle was left, which both promoted a corner node to
+        // smooth just for losing a handle and left a smooth node claiming
+        // smoothness after its partner handle was gone.
+        mainNode.control_mode = 0;
 
         if (curve) {
             curve._invalidateBounds();

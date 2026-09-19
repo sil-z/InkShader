@@ -1,13 +1,25 @@
+import { appEventBus } from "../app/event_bus.js";
+import { CANVAS_EVENTS } from "../app/canvas_events.js";
+
+// `i18n` names the panel in the translation table; `label` is the English fallback
+// for the (bootstrap-only) case where the table is not available yet.
 const PANEL_DEFS = {
-    canvas: { label: "Canvas", compSelector: ".canvas-wrap" },
-    objects: { label: "Objects", compSelector: "object-tree" },
-    properties: { label: "Properties", compSelector: ".property_panel" },
-    console: { label: "Console", compSelector: "logger-panel" },
-    sample: { label: "Sample", compSelector: "sample-text-panel" },
-    font: { label: "Font", compSelector: "font-popup" },
-    kerning: { label: "Kerning", compSelector: "kern-popup" },
-    glyphs: { label: "Glyphs", compSelector: "glyph-popup" }
+    canvas: { label: "Canvas", i18n: "panel.canvas", compSelector: ".canvas-wrap" },
+    objects: { label: "Objects", i18n: "panel.objects", compSelector: "object-tree" },
+    properties: { label: "Properties", i18n: "panel.properties", compSelector: ".property_panel" },
+    console: { label: "Console", i18n: "panel.console", compSelector: "logger-panel" },
+    sample: { label: "Sample", i18n: "panel.sample", compSelector: "sample-text-panel" },
+    font: { label: "Font", i18n: "panel.font", compSelector: "font-popup" },
+    kerning: { label: "Kerning", i18n: "panel.kerning", compSelector: "kern-popup" },
+    glyphs: { label: "Glyphs", i18n: "panel.glyphs", compSelector: "glyph-popup" }
 };
+
+/** Panel title in the current language; tab bars are built in JS, not from markup. */
+function panelLabel(panelId) {
+    const def = PANEL_DEFS[panelId];
+    if (!def) return panelId;
+    return window.I18n ? window.I18n.t(def.i18n, def.label) : def.label;
+}
 
 // ── Minimum panel sizes (px) ────────────────────────────────────────────────
 // Shared by the docked split model, the float windows and the resize clamp.
@@ -67,6 +79,7 @@ export class DockLayout {
 
     initialize(panelIds) {
         this._componentRefs = {};
+        appEventBus.on(CANVAS_EVENTS.LANGUAGE_CHANGED, () => this._relabelTabs());
         for (const [id, def] of Object.entries(PANEL_DEFS)) {
             this._componentRefs[id] = document.querySelector(def.compSelector);
         }
@@ -545,7 +558,7 @@ export class DockLayout {
                 if (typeof c === "string") c = { id: c, type: "leaf" };
                 const tb = document.createElement("span");
                 tb.className = "dock-tab" + (i === (n.activeIndex || 0) ? " active" : "");
-                tb.textContent = PANEL_DEFS[c.id].label;
+                tb.textContent = panelLabel(c.id);
                 tb.dataset.panelId = c.id;
                 tb.addEventListener("click", () => this._activateTab(el, i));
                 tabBar.appendChild(tb);
@@ -651,7 +664,7 @@ export class DockLayout {
 
         const initialTab = document.createElement("span");
         initialTab.className = "dock-tab active";
-        initialTab.textContent = def.label;
+        initialTab.textContent = panelLabel(panelId);
         initialTab.dataset.panelId = panelId;
         initialTab.addEventListener("click", () => this._activateFloatTab(groupId, 0));
         tabBar.appendChild(initialTab);
@@ -1018,7 +1031,7 @@ export class DockLayout {
         group.panelIds.forEach((pid, i) => {
             const tab = document.createElement("span");
             tab.className = "dock-tab";
-            tab.textContent = PANEL_DEFS[pid]?.label || pid;
+            tab.textContent = panelLabel(pid);
             tab.dataset.panelId = pid;
             tab.addEventListener("click", () => this._activateFloatTab(groupId, i));
             tabBar.appendChild(tab);
@@ -1983,6 +1996,17 @@ export class DockLayout {
     _rebuild() {
         this._buildDOM();
         this._saveStateToStorage();
+    }
+
+    /**
+     * Tab labels are written by JS (dock tabs, float tabs), so a language switch has
+     * to update them in place — translateDOM only covers markup-driven text.
+     */
+    _relabelTabs() {
+        document.querySelectorAll('.dock-tab').forEach(tab => {
+            const id = tab.dataset.panelId;
+            if (id) tab.textContent = panelLabel(id);
+        });
     }
 
     // ── Optional panel visibility (Edit menu show/hide) ──

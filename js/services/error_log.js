@@ -26,6 +26,9 @@
 // 对话框是纯 DOM，不依赖任何 UI 框架，也不受 body{pointer-events:none}
 // 影响（overlay 自己声明 pointer-events:auto）。
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 const LS_KEY = "__ink_error_log";
 const MAX_ENTRIES = 80;
 const MAX_DIALOG_TEXT = 40000;
@@ -127,7 +130,7 @@ export function showErrorDialog(title, body, detail = null, options = {}) {
     const detailText = detail == null ? "" : `\n\n${_safeStringify(detail)}`;
     const fullText = `${title}\n${body}${detailText}`;
     const clipped = fullText.length > MAX_DIALOG_TEXT
-        ? `${fullText.slice(0, MAX_DIALOG_TEXT)}\n… (diagnostic text truncated; full content in error.log)`
+        ? `${fullText.slice(0, MAX_DIALOG_TEXT)}\n${t("dialog.truncated", "… (diagnostic text truncated; full content in error.log)")}`
         : fullText;
     const key = opts.key || null;
 
@@ -136,7 +139,9 @@ export function showErrorDialog(title, body, detail = null, options = {}) {
         const existing = _openDialogs.get(key);
         if (existing.root.isConnected) {
             existing.count += 1;
-            existing.textarea.value = `${clipped}\n\n(this failure has occurred ${existing.count} times; merged into this window for this session)`;
+            existing.textarea.value = `${clipped}\n\n`
+                + t("dialog.repeat", "(this failure has occurred {n} times; merged into this window for this session)")
+                    .replace("{n}", String(existing.count));
             return existing.root;
         }
         _openDialogs.delete(key);
@@ -175,17 +180,17 @@ export function showErrorDialog(title, body, detail = null, options = {}) {
 
     const hint = document.createElement("span");
     hint.className = "ink-error-hint";
-    hint.textContent = "Select all to copy (Ctrl+A / Ctrl+C), or use the button on the right";
+    hint.textContent = t("dialog.copy_hint", "Select all to copy (Ctrl+A / Ctrl+C), or use the button on the right");
     actions.appendChild(hint);
 
     const copyBtn = document.createElement("button");
     copyBtn.className = "ink-error-btn ink-error-btn-primary";
-    copyBtn.textContent = "Copy";
+    copyBtn.textContent = t("dialog.copy", "Copy");
     actions.appendChild(copyBtn);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "ink-error-btn";
-    closeBtn.textContent = "Close";
+    closeBtn.textContent = t("dialog.close", "Close");
     actions.appendChild(closeBtn);
 
     // Esc 关闭：注册在 window 的捕获阶段。放到 document 上会被应用自己的
@@ -217,8 +222,8 @@ export function showErrorDialog(title, body, detail = null, options = {}) {
                 ok = document.execCommand("copy");
             } catch (_) { ok = false; }
         }
-        copyBtn.textContent = ok ? "Copied" : "Press Ctrl+C to copy";
-        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1400);
+        copyBtn.textContent = ok ? t("dialog.copied", "Copied") : t("dialog.copy_key", "Press Ctrl+C to copy");
+        setTimeout(() => { copyBtn.textContent = t("dialog.copy", "Copy"); }, 1400);
     });
     closeBtn.addEventListener("click", close);
     // 点面板外部关闭（面板内交互不关闭，方便选中文本）

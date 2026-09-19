@@ -48,9 +48,9 @@ const POPUP_HTML = `
     <div class="npp-row">
         <label data-i18n="prop.angle">Angle</label>
         <div class="npp-input-group">
-            <span class="npp-axis">In</span>
+            <span class="npp-axis" data-i18n="prop.in">In</span>
             <input type="number" step="1" id="npp_in_a">
-            <span class="npp-axis">Out</span>
+            <span class="npp-axis" data-i18n="prop.out">Out</span>
             <input type="number" step="1" id="npp_out_a">
         </div>
     </div>

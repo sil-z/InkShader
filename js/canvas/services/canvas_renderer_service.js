@@ -515,12 +515,33 @@ export class CanvasRendererService {
         this._nodeLayerCache = null;
     }
 
+    /**
+     * Monotonic geometry change key: the tuple of BOTH epoch counters.
+     *
+     * A cached frame is valid only if NEITHER counter moved. The previous key
+     * combined them with XOR, which is not a change detector: bumpGeometryEpoch()
+     * increments both counters by one, so `cm ^ captures` stayed constant
+     * (`n ^ n`) and a stale stable-scene blit was served for every edit that only
+     * bumped both counters. Whether the XOR happened to change depended on the
+     * bit pattern of the two counters — i.e. it invalidated "sometimes", which is
+     * exactly the "edit a node and the fill stays wrong until you pan" symptom
+     * (panning invalidates on the offset check instead).
+     */
+    _geometryEpochKey(c) {
+        return [c.curve_manager?._geometryEpoch || 0, c._geometryEpoch || 0];
+    }
+
+    _epochKeyMatches(stored, c) {
+        const cur = this._geometryEpochKey(c);
+        return !!stored && stored[0] === cur[0] && stored[1] === cur[1];
+    }
+
     _refreshStableSceneCache() {
         const c = this.canvas;
         const cache = this._captureViewportSnapshot();
         if (!cache) return;
         cache.format = CanvasRendererService.STABLE_SCENE_FORMAT;
-        cache.geometryEpoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
+        cache.geometryEpochs = this._geometryEpochKey(c);
         this._stableSceneCache = cache;
     }
 
@@ -571,7 +592,7 @@ export class CanvasRendererService {
         cache.scale = c.scale;
         cache.viewportWidth = width;
         cache.viewportHeight = height;
-        cache.geometryEpoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
+        cache.geometryEpochs = this._geometryEpochKey(c);
         const ix2 = c.getInteractionSnapshot();
         cache.selCount = ix2?.selectedNodeMarkerIds?.size || 0;
         cache.activeTool = c.getActiveTool?.() || null;
@@ -773,8 +794,7 @@ export class CanvasRendererService {
     _isNodeLayerCacheValid() {
         if (!this._nodeLayerCache) return false;
         const c = this.canvas;
-        const epoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
-        if (this._nodeLayerCache.geometryEpoch !== epoch) return false;
+        if (!this._epochKeyMatches(this._nodeLayerCache.geometryEpochs, c)) return false;
         if (this._nodeLayerCache.scale !== c.scale) return false;
         if (this._nodeLayerCache.baseOffset.x !== c.offset.x || this._nodeLayerCache.baseOffset.y !== c.offset.y) return false;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();
@@ -816,8 +836,7 @@ export class CanvasRendererService {
             return false;
         }
         if (cache.format !== CanvasRendererService.STABLE_SCENE_FORMAT) return false;
-        const epoch = (c.curve_manager?._geometryEpoch || 0) ^ (c._geometryEpoch || 0);
-        if (cache.geometryEpoch !== epoch) return false;
+        if (!this._epochKeyMatches(cache.geometryEpochs, c)) return false;
         if (cache.scale !== c.scale) return false;
         if (cache.baseOffset.x !== c.offset.x || cache.baseOffset.y !== c.offset.y) return false;
         const { width, height } = c.viewportService.getCanvasUserSpaceSize();

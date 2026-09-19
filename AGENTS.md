@@ -33,7 +33,7 @@ All three documents referenced above are injected as system instructions (via `o
 | `dev.ps1` / `dev.sh` | Thin wrappers (`run` / `install` / `install-dev` / `install-lock` / `build` / `test` / `lint`) that forward to `backend/run.py`, `backend/build.py`, pytest and ruff |
 | `test/` | CDP-driven regression probes (`probe_*.mjs`, entry point `run_probes.mjs`, shared paths in `probe_env.mjs`), inputs in `test/fixtures/`, retired scripts in `test/_archive/` |
 | `package.json` | Dev-only toolchain (probe runner, ESLint, Prettier); the frontend itself is not built by npm |
-| `README.md` | Human-facing entry: run modes, requirements, install, build, test, layout |
+| `README.md` / `README.zh-CN.md` | User-facing interface manual (English; Chinese translation) |
 
 ---
 
@@ -237,7 +237,7 @@ Every AI modification **MUST** follow this process:
 4. **Implement** changes (follow CODEGUIDE.md rules)
 5. **Verify** — run the [Functional Deviation Checklist](SPECIFICATION.md#appendix-functional-deviation-checklist) in SPECIFICATION.md Appendix and check CODEGUIDE.md compliance
 
-Test entry points (see [README.md](README.md#测试) for details): `npm test` runs the
+Test entry points: `npm test` runs the
 CDP regression probes, `./dev.ps1 test` runs the backend unit tests, and
 `npm run lint` / `./dev.ps1 lint` run the static checks. Adding or renaming
 user-visible text means editing the `en` table in `js/services/i18n.js`:

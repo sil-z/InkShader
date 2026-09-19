@@ -31,7 +31,6 @@ const PROBE = `
     check('preferences popup mounted', !!pp);
     check('preferences popup visible', !!(pp && pp._visible), pp && pp._visible);
 
-    check('language selector removed', !document.querySelector('#pref_lang'));
     check('theme select present', !!document.querySelector('#pref_theme'));
     check('accent select present', !!document.querySelector('#pref_accent_hue'));
     const colorRows = document.querySelectorAll('#pref_colors .pen-tool-row').length;
@@ -40,7 +39,31 @@ const PROBE = `
     const I18n = window.I18n;
     check('i18n table resolves English', !!I18n && I18n.t('menu.file') === 'File',
         I18n && I18n.t('menu.file'));
-    check('i18n language fixed to en', !!I18n && I18n.lang === 'en', I18n && I18n.lang);
+    check('i18n defaults to en', !!I18n && I18n.lang === 'en', I18n && I18n.lang);
+
+    // Language selector: two shipped locales, each labelled in its own language.
+    const langSel = document.querySelector('#pref_lang');
+    check('language selector present', !!langSel);
+    const langLabels = langSel ? [...langSel.options].map(o => o.textContent.trim()) : [];
+    check('language options are native names',
+        langLabels.length === 2 && langLabels[0] === 'English' && langLabels[1] === '简体中文', langLabels);
+
+    // Choosing a language goes through I18nManager, which relabels the selects here.
+    langSel.value = 'zh';
+    langSel.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(60);
+    check('selecting a language switches the table', I18n.t('menu.file') === '文件'
+        && document.getElementById('menu_edit')?.textContent === '编辑',
+        [I18n.t('menu.file'), document.getElementById('menu_edit')?.textContent]);
+    const themeLabel = pp.querySelector('#pref_theme')?.previousElementSibling?.querySelector('.cs-label')?.textContent;
+    check('selects relabel after the switch', themeLabel === '浅色', themeLabel);
+
+    langSel.value = 'en';
+    langSel.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(60);
+    check('switching back restores English', I18n.t('menu.file') === 'File'
+        && pp.querySelector('#pref_theme')?.previousElementSibling?.querySelector('.cs-label')?.textContent === 'Light',
+        I18n.t('menu.file'));
 
     pp.hide();
     await sleep(200);

@@ -1,7 +1,16 @@
-// 端到端验证 glyph 面板点击语义（必须禁用 HTTP 缓存，否则页面跑旧 JS）：
-//  1) 在 glyph 面板中点击一个字形 = 「浏览到该字形」：序列被替换成这一个字形，
-//     绝不能在序列末尾追加（追加出来的就是用户没要的幽灵字形，且会写进项目文件）。
-//  2) 用面板 Add 表单刚建的空字形，在随后切换字形后必须仍然存在（不能被剪枝删除）。
+// Glyph-panel click semantics and tree/sequence agreement, end to end (HTTP cache
+// disabled, otherwise the page runs stale JS):
+//
+//   1) Clicking a glyph in the glyph panel means "browse to this glyph": the
+//      sequence is replaced by that one glyph, never appended to. An appended
+//      token is a glyph the user did not ask for, and it gets written to the file.
+//   2) An empty glyph created through the panel's Add form must still exist after
+//      switching to another glyph (it must not be pruned).
+//
+// Both are checked together with the stronger invariant from probe_tree_sequence_sync:
+// after each step the object tree's visible root rows must be exactly the sequence.
+// Tree visibility is derived from the sequence in SequenceService.syncTreeWithSequence,
+// so a mismatch here means some path mutated the tree without re-deriving it.
 const WebSocket = (await import('ws')).default;
 import { probePorts } from './probe_env.mjs';
 const { port: PORT, srv: SRV } = probePorts();
@@ -36,6 +45,7 @@ await new Promise(r => setTimeout(r, 7000));
 
 const R = await evalp(`(async () => {
     const cv = window.__canvas;
+    const cm = cv.curve_manager;
     const out = {};
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const panel = document.querySelector('glyph-popup');
@@ -43,11 +53,37 @@ const R = await evalp(`(async () => {
     if (panel.dataset.panelHidden) panel.dataset.panelHidden = '';
     out.hasAddForm = !!panel.querySelector('.seq-menu-add-btn');
 
-    const seq = () => cv.editorStore.getState().sequenceText;
-    const hasGroup = (id) => {
-        const t = cv.curve_manager.treeItems;
-        return t ? (t.has ? t.has(id) : !!t[id]) : null;
+    /** Group ids the sequence currently lists, in order. */
+    const seqIds = () => (cm.sequenceTokens || [])
+        .map(t => (t.isChar ? cm.getDefaultGroupForChar(t.value) : t.value))
+        .filter(Boolean);
+    const seqText = () => cv.editorStore.getState().sequenceText;
+    /** Root rows the object tree actually renders. */
+    const treeRows = () => {
+        const el = document.querySelector('object-tree');
+        return (el && el._collectVisibleTreeRows)
+            ? el._collectVisibleTreeRows().filter(r => r.depth === 0).map(r => r.id)
+            : null;
     };
+    /** Every way the tree and the sequence can disagree: rows, and the flag itself. */
+    const disagreements = () => {
+        const want = new Set(seqIds());
+        const rows = treeRows() || [];
+        const rowSet = new Set(rows);
+        const bad = [];
+        for (const id of want) if (!rowSet.has(id)) bad.push(id + ': in sequence but not a tree row');
+        for (const id of rows) if (!want.has(id)) bad.push(id + ': tree row but not in sequence');
+        for (const id of cm.rootChildren) {
+            const it = cm.treeItems.get(id);
+            if (!it || it.type !== 'group') continue;
+            if (it.hidden_by_sequence && want.has(id)) bad.push(id + ': flagged hidden but in sequence');
+            if (!it.hidden_by_sequence && !want.has(id)) bad.push(id + ': visible flag but out of sequence');
+        }
+        return bad;
+    };
+    const snap = () => ({ text: seqText(), ids: seqIds(), rows: treeRows(), bad: disagreements() });
+
+    const hasGroup = (id) => cm.treeItems.has(id);
     const addGlyph = async (name, code) => {
         const inputs = panel.querySelectorAll('.seq-menu-input');
         inputs[0].value = name || '';
@@ -66,31 +102,27 @@ const R = await evalp(`(async () => {
         return 'clicked';
     };
 
-    // 先造一段多字形序列：A、B 两个字形
+    // Two glyphs in the sequence to start from.
     await addGlyph('', 'A');
     await addGlyph('', 'B');
-    out.seqAfterTwoAdds = seq();
+    out.afterTwoAdds = snap();
 
-    // 1) 点击不在序列中的字形 X —— 必须是「替换」，不能追加
+    // 1) Clicking a glyph that is not in the sequence browses to it — replace, never append.
     out.clickX = await clickChar('X');
-    out.seqAfterClickX = seq();
-    out.noGhostTokenAppended = !out.seqAfterClickX.includes('A') && !out.seqAfterClickX.includes('B');
-    out.seqIsSingleX = out.seqAfterClickX.replace(/\\s+/g, '') === 'X';
+    out.afterClickX = snap();
 
-    // 2) 面板 Add 建一个空字形，再切换到别的字形：新建的字形必须还在（不被剪枝）
+    // 2) An empty glyph from the Add form must survive leaving the sequence.
     await addGlyph('probe_ghost_glyph', '');
-    out.seqAfterNamedAdd = seq();
+    out.afterNamedAdd = snap();
     out.namedGroupExistsAfterAdd = hasGroup('probe_ghost_glyph');
     out.clickY = await clickChar('Y');
-    out.seqAfterClickY = seq();
-    out.noNamedTokenLeft = !out.seqAfterClickY.includes('probe_ghost_glyph');
+    out.afterClickY = snap();
     out.namedGroupStillExists = hasGroup('probe_ghost_glyph');
 
-    // 清理（不写历史）
+    // Clean up without recording history.
     try {
-        const ids = ['probe_ghost_glyph', 'A', 'B', 'X', 'Y'];
-        for (const id of ids) {
-            const it = cv.curve_manager.treeItems.get(id);
+        for (const id of ['probe_ghost_glyph', 'A', 'B', 'X', 'Y']) {
+            const it = cm.treeItems.get(id);
             if (it && it.children.length === 0 && !it.is_modified) {
                 cv.commands.deleteTreeItems ? cv.commands.deleteTreeItems([id]) : null;
             }
@@ -99,5 +131,46 @@ const R = await evalp(`(async () => {
     return out;
 })()`);
 
-console.log(JSON.stringify({ tag: 'ghost-glyph', R, errors: logs.slice(0, 12) }, null, 2));
-ws.close(); process.exit(0);
+const checks = [];
+const chk = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
+const show = (s) => JSON.stringify(s && (s.__exc || { text: s.text, rows: s.rows, bad: s.bad }));
+const rowsAre = (s, ids) => !!s && !s.__exc && s.rows && s.rows.length === ids.length && ids.every(id => s.rows.includes(id));
+
+chk('page booted with the glyph panel', !!R && !R.__exc && R.hasAddForm === true, JSON.stringify(R && (R.__exc || R.error || { hasAddForm: R.hasAddForm })));
+
+// The probe shares its origin with the other probes, so the startup sequence is not
+// empty; only the two glyphs this case adds are asserted.
+chk('two glyphs added through the panel reach the sequence',
+    !!R.afterTwoAdds && R.afterTwoAdds.ids.includes('A') && R.afterTwoAdds.ids.includes('B'),
+    show(R.afterTwoAdds));
+chk('after adding: tree rows are exactly the sequence',
+    R.afterTwoAdds && R.afterTwoAdds.bad.length === 0, show(R.afterTwoAdds));
+
+chk('clicking a glyph browses to it (sequence replaced, not appended)',
+    R.clickX === 'clicked' && rowsAre(R.afterClickX, ['X']), show(R.afterClickX));
+chk('after browsing: no token left behind from the previous sequence',
+    R.afterClickX && !R.afterClickX.ids.includes('A') && !R.afterClickX.ids.includes('B'), show(R.afterClickX));
+chk('after browsing: tree rows are exactly the sequence',
+    R.afterClickX && R.afterClickX.bad.length === 0, show(R.afterClickX));
+
+chk('a glyph created by the Add form exists right after creation',
+    R.namedGroupExistsAfterAdd === true, JSON.stringify({ exists: R.namedGroupExistsAfterAdd, seq: R.afterNamedAdd && R.afterNamedAdd.text }));
+chk('after creating: tree rows are exactly the sequence',
+    R.afterNamedAdd && R.afterNamedAdd.bad.length === 0, show(R.afterNamedAdd));
+
+chk('a created glyph survives leaving the sequence',
+    R.namedGroupStillExists === true, JSON.stringify({ exists: R.namedGroupStillExists, seq: R.afterClickY && R.afterClickY.text }));
+chk('after leaving: the created glyph is not a tree row (it is out of the sequence)',
+    R.afterClickY && R.afterClickY.rows && !R.afterClickY.rows.includes('probe_ghost_glyph'), show(R.afterClickY));
+chk('after leaving: tree rows are exactly the sequence',
+    R.afterClickY && R.afterClickY.bad.length === 0, show(R.afterClickY));
+
+const exceptions = logs.filter(l => l.startsWith('EXC'));
+chk('no uncaught exception during the run', exceptions.length === 0, exceptions.join(' | '));
+
+const failed = checks.filter(c => !c.ok);
+console.log(JSON.stringify({ tag: 'ghost-glyph', checks: checks.length, failed: failed.length }, null, 2));
+for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail && !c.ok ? '   [' + c.detail + ']' : ''}`);
+console.log('\n--- raw ---');
+console.log(JSON.stringify({ R, warnings: logs.slice(0, 8) }, null, 2));
+ws.close(); process.exit(failed.length ? 1 : 0);

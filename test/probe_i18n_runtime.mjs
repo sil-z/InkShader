@@ -96,6 +96,55 @@ const PROBE = `
         rows.some(r => r.startsWith('Ctrl+Alt+U')) && rows.some(r => r.startsWith('Ctrl+Alt+Shift+U')),
         rows.filter(r => /^Ctrl\+.*U/.test(r)));
 
+    // --- locale switch: table, markup, JS-built labels, document metadata ---
+    const prefs = document.querySelector('#app_preferences_popup');
+    const storedBefore = localStorage.getItem('InkShader_lang');
+    const switched = I18n.setLang('zh');
+    check('setLang accepts a shipped locale and persists it',
+        switched === true && I18n.lang === 'zh' && localStorage.getItem('InkShader_lang') === 'zh',
+        I18n.lang + ' / ' + localStorage.getItem('InkShader_lang'));
+    check('zh table lookup', I18n.t('menu.file') === '文件' && I18n.t('panel.canvas') === '画布',
+        [I18n.t('menu.file'), I18n.t('panel.canvas')]);
+    check('markup follows the switch', document.getElementById('menu_edit')?.textContent === '编辑',
+        document.getElementById('menu_edit')?.textContent);
+    check('tooltips follow the switch',
+        (document.getElementById('btn_tool_node')?.getAttribute('data-tip') || '').includes('按节点编辑路径'),
+        document.getElementById('btn_tool_node')?.getAttribute('data-tip'));
+
+    // Dock tabs are written by JS, not markup: they need the LANGUAGE_CHANGED hook.
+    const tabZh = document.querySelector('.dock-tab[data-panel-id="objects"]')?.textContent;
+    check('dock tab is relabelled in zh', tabZh === '对象', tabZh);
+
+    // Preference selects copy their option text into a custom trigger, so a switch
+    // has to push a fresh option list through that wrapper.
+    if (prefs) prefs.syncLabelOptions();
+    const themeLabel = prefs?.querySelector('#pref_theme')?.previousElementSibling?.querySelector('.cs-label')?.textContent;
+    check('preferences selects are relabelled', themeLabel === '浅色', themeLabel);
+
+    check('document metadata follows the switch',
+        document.documentElement.getAttribute('lang') === 'zh-CN'
+        && document.title === I18n.t('app.title', ''),
+        [document.documentElement.getAttribute('lang'), document.title]);
+
+    const zhLeaks = [];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const v = el.textContent.trim();
+        if (keyish.test(v)) zhLeaks.push('text=' + v + ' on #' + (el.id || el.tagName.toLowerCase()));
+    });
+    check('no bare key appears after switching to zh', zhLeaks.length === 0, zhLeaks);
+
+    // Unknown ids are ignored, and switching back restores English everywhere.
+    check('unknown locale id is rejected', I18n.setLang('de') === false && I18n.lang === 'zh', I18n.lang);
+    I18n.setLang('en');
+    check('switching back restores English',
+        I18n.t('menu.file') === 'File'
+        && document.getElementById('menu_edit')?.textContent === 'Edit'
+        && document.querySelector('.dock-tab[data-panel-id="objects"]')?.textContent === 'Objects'
+        && document.documentElement.getAttribute('lang') === 'en',
+        [I18n.t('menu.file'), document.querySelector('.dock-tab[data-panel-id="objects"]')?.textContent]);
+    if (storedBefore === null) localStorage.removeItem('InkShader_lang');
+    else localStorage.setItem('InkShader_lang', storedBefore);
+
     // --- keys deleted as dead text must not come back ---
     check('deleted key is no longer defined', I18n.t('prop.group_spacing') === 'prop.group_spacing',
         I18n.t('prop.group_spacing'));

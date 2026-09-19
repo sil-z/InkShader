@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InkShader: Free Font Editor</title>
+    <title data-i18n="app.title">InkShader: Free Font Editor</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/rgba-picker.css">
     <link rel="modulepreload" href="./js/app/event_bus.js">
@@ -17,8 +17,9 @@
     <script type="module">
         import { I18nManager } from './js/services/i18n.js';
         import { installCopyableAlert } from './js/services/error_log.js';
-        // 原生 alert 的文本无法选中复制：在最早的入口处接管，全项目的 alert(...)
-        // 调用点（保存/导出/加载失败、历史栈损坏等）统一变成可复制对话框。
+        // Native alert() text cannot be selected: take it over at the earliest entry
+        // point so every alert(...) call site (save/export/load failures, corrupted
+        // history stacks) becomes a copyable dialog instead.
         installCopyableAlert();
         I18nManager.init();
     </script>
@@ -82,13 +83,13 @@
                     <div class="tool_button node_op_btn" id="btn_action_delete_node" data-i18n-tip="action.delete_node" data-tip="Delete selected nodes (D)">
                         <img src="./assets/icons/delete-node.svg" alt="Delete Node">
                     </div>
-                    <div class="tool_button node_op_btn" id="btn_action_join_node" data-i18n-tip="action.join_node" data-tip="Join selected nodes">
+                    <div class="tool_button node_op_btn" id="btn_action_join_node" data-i18n-tip="action.join_node" data-tip="Join selected end nodes">
                         <img src="./assets/icons/join-node.svg" alt="Join Node">
                     </div>
                     <div class="tool_button node_op_btn" id="btn_action_break_node" data-i18n-tip="action.break_node" data-tip="Break path at selected nodes">
                         <img src="./assets/icons/break-node.svg" alt="Break Node">
                     </div>
-                    <div class="tool_button node_op_btn" id="btn_action_add_segment" data-i18n-tip="action.add_segment" data-tip="Join selected end nodes">
+                    <div class="tool_button node_op_btn" id="btn_action_add_segment" data-i18n-tip="action.add_segment" data-tip="Add segment between selected end nodes">
                         <img src="./assets/icons/add-segment.svg" alt="Add Segment">
                     </div>
                     <div class="tool_button node_op_btn" id="btn_action_delete_segment" data-i18n-tip="action.delete_segment" data-tip="Delete segment between selected nodes">

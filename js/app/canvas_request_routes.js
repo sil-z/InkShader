@@ -1,5 +1,8 @@
 import { CANVAS_ACTIONS, CANVAS_EVENTS } from "./canvas_events.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 /**
  * REQUEST_* -> CANVAS_ACTIONS (CanvasController's sole registration source)
  *
@@ -126,7 +129,7 @@ export const REQUEST_IO_ROUTES = [
                     await c.projectManager.loadFromCache(detail.projectName);
                 } catch (e) {
                     console.error("[IO] Load from cache failed:", e);
-                    alert("Failed to load project: " + e.message);
+                    alert(t("err.load_failed", "Failed to load project: ") + e.message);
                 }
             }
         }

@@ -9,6 +9,9 @@ import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { createCustomSelect } from "./custom_select.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -19,10 +22,10 @@ const POPUP_HTML = `
 <div class="pen-tool-popup-body kern-popup-body">
   <div class="kern-popup-add-row">
     <select class="kern-left-select" data-i18n-placeholder="kern.left_glyph" data-i18n-tip="kern.left_glyph" title="Left glyph">
-      <option value="">-- Left --</option>
+      <option value="">${t('kern.pick_left', '-- Left --')}</option>
     </select>
     <select class="kern-right-select" data-i18n-placeholder="kern.right_glyph" data-i18n-tip="kern.right_glyph" title="Right glyph">
-      <option value="">-- Right --</option>
+      <option value="">${t('kern.pick_right', '-- Right --')}</option>
     </select>
     <input type="number" class="kern-value-input" value="0" step="5" placeholder="0" data-i18n-tip="kern.value_tip" title="Kerning value (UPM)">
     <button class="kern-add-btn" data-i18n="kern.add">Add</button>
@@ -126,8 +129,8 @@ export class KernPopup extends HTMLElement {
         const leftVal = leftSel.value;
         const rightVal = rightSel.value;
 
-        leftSel.innerHTML = '<option value="">-- Left --</option>';
-        rightSel.innerHTML = '<option value="">-- Right --</option>';
+        leftSel.innerHTML = '<option value="">' + esc(t('kern.pick_left', '-- Left --')) + '</option>';
+        rightSel.innerHTML = '<option value="">' + esc(t('kern.pick_right', '-- Right --')) + '</option>';
 
         for (const name of names) {
             leftSel.appendChild(this._optionEl(name));
@@ -143,11 +146,11 @@ export class KernPopup extends HTMLElement {
         const leftWrapper = leftSel.previousElementSibling;
         const rightWrapper = rightSel.previousElementSibling;
         if (leftWrapper?._csUpdateOptions) {
-            const leftOpts = [{ value: '', label: '-- Left --' }, ...names.map(n => ({ value: n, label: n }))];
+            const leftOpts = [{ value: '', label: t('kern.pick_left', '-- Left --') }, ...names.map(n => ({ value: n, label: n }))];
             leftWrapper._csUpdateOptions(leftOpts, newLeftVal);
         }
         if (rightWrapper?._csUpdateOptions) {
-            const rightOpts = [{ value: '', label: '-- Right --' }, ...names.map(n => ({ value: n, label: n }))];
+            const rightOpts = [{ value: '', label: t('kern.pick_right', '-- Right --') }, ...names.map(n => ({ value: n, label: n }))];
             rightWrapper._csUpdateOptions(rightOpts, newRightVal);
         }
     }

@@ -6,6 +6,9 @@ import * as EditorModel from "../app/editor_read_facade.js";
 import { initResizeHandles, bringToFront } from "./popup_utils.js";
 import { createCustomSelect } from "./custom_select.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 /** @returns {import('../core/bezier/kerning_manager.js').KerningManager|null} */
 function getKerningManager() {
     const c = document.querySelector('main-canvas');
@@ -39,8 +42,8 @@ const POPUP_HTML = `
     <div class="npp-row"><label data-i18n="prop.advance">Advance Width</label><input type="number" id="grp_advance"></div>
     <div class="npp-row"><label data-i18n="prop.lsb">LSB</label><input type="number" id="grp_lsb"></div>
     <div class="npp-row"><label data-i18n="prop.rsb">RSB</label><input type="number" id="grp_rsb"></div>
-    <div class="npp-row"><label data-i18n="prop.kern_left">Left Kern</label><select id="grp_kern_left"><option value="">(none)</option></select></div>
-    <div class="npp-row"><label data-i18n="prop.kern_right">Right Kern</label><select id="grp_kern_right"><option value="">(none)</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.kern_left">Left Kern</label><select id="grp_kern_left"><option value="">${t('common.none', '(none)')}</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.kern_right">Right Kern</label><select id="grp_kern_right"><option value="">${t('common.none', '(none)')}</option></select></div>
 </div>
 <div class="npp-fields" id="grp_ref_fields" style="display:none">
     <div class="npp-row"><label data-i18n="prop.name">Name</label><input type="text" id="grp_ref_name" readonly></div>
@@ -193,7 +196,7 @@ export class GroupSettingsPopup extends HTMLElement {
             const titleEl = this.container.querySelector('#grp_drag_handle');
             if (stdFields) stdFields.style.display = 'none';
             if (refFields) refFields.style.display = '';
-            if (titleEl) titleEl.textContent = 'Reference Properties';
+            if (titleEl) titleEl.textContent = t('prop.ref_properties', 'Reference Properties');
             // Ensure all ref rows visible
             const rows = refFields?.querySelectorAll('.npp-row');
             if (rows) for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
@@ -232,14 +235,14 @@ export class GroupSettingsPopup extends HTMLElement {
             if (item.isRef) {
                 stdFields.style.display = 'none';
                 refFields.style.display = '';
-                if (titleEl) titleEl.textContent = 'Reference Properties';
+                if (titleEl) titleEl.textContent = t('prop.ref_properties', 'Reference Properties');
                 // Ensure all ref rows visible
                 const rows = refFields.querySelectorAll('.npp-row');
                 for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
             } else {
                 stdFields.style.display = '';
                 refFields.style.display = 'none';
-                if (titleEl) titleEl.textContent = 'Glyph Settings';
+                if (titleEl) titleEl.textContent = t('prop.glyph_settings', 'Glyph Settings');
             }
         }
 
@@ -447,8 +450,9 @@ export class GroupSettingsPopup extends HTMLElement {
         const leftVal = leftSel.value;
         const rightVal = rightSel.value;
 
-        leftSel.innerHTML = '<option value="">(none)</option>';
-        rightSel.innerHTML = '<option value="">(none)</option>';
+        const noneLabel = t('common.none', '(none)').replace(/</g, '&lt;');
+        leftSel.innerHTML = '<option value="">' + noneLabel + '</option>';
+        rightSel.innerHTML = '<option value="">' + noneLabel + '</option>';
 
         const leftClasses = [];
         const rightClasses = [];
@@ -485,10 +489,10 @@ export class GroupSettingsPopup extends HTMLElement {
         const leftWrapper = leftSel.previousElementSibling;
         const rightWrapper = rightSel.previousElementSibling;
         if (leftWrapper?._csUpdateOptions) {
-            leftWrapper._csUpdateOptions([{ value: '', label: '(none)' }, ...leftClasses], finalLeftVal);
+            leftWrapper._csUpdateOptions([{ value: '', label: t('common.none', '(none)') }, ...leftClasses], finalLeftVal);
         }
         if (rightWrapper?._csUpdateOptions) {
-            rightWrapper._csUpdateOptions([{ value: '', label: '(none)' }, ...rightClasses], finalRightVal);
+            rightWrapper._csUpdateOptions([{ value: '', label: t('common.none', '(none)') }, ...rightClasses], finalRightVal);
         }
     }
 

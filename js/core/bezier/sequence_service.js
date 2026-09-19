@@ -19,10 +19,6 @@ export class SequenceService {
     /** @type {import('./kerning_manager.js').KerningManager|null} */
     _kerningManager = null;
 
-    /** @private Cache for incremental syncTreeWithSequence */
-    _prevInTextIds = null;   // Set of group IDs that were in sequence text at last sync (null = first call, do full sweep)
-    _prevRootIds = null;     // Set of rootChildren IDs at last sync
-
     constructor(treeStore) {
         this._treeStore = treeStore;
     }
@@ -299,65 +295,34 @@ export class SequenceService {
             }
         }
 
-        // --- Incremental sync: diff against previous sync state ---
-        // First call (_prevInTextIds === null): full sweep over all root groups.
-        // Subsequent calls: only process entered/left groups + newly created groups.
-        let toDelete = [];
-        if (this._prevInTextIds === null) {
-            // First sync — full sweep (happens once, typically on file load)
-            for (let [id, item] of this._treeStore.treeItems.entries()) {
-                if (item.type === 'group' && item.parentId === null) {
-                    if (allInTextIds.has(item.id)) {
-                        item.hidden_by_sequence = false;
-                    } else {
-                        item.hidden_by_sequence = true;
-                        if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
-                    }
-                }
+        // --- Root-group visibility, derived from the sequence ---
+        //
+        // `hidden_by_sequence` is recomputed for EVERY root group on every sync, so
+        // "the object tree lists exactly the glyphs the sequence shows" is a fact
+        // about the current sequence rather than a value some other code has to keep
+        // up to date. The previous version diffed against cached id sets and only
+        // looked for new root groups when the root count changed, which is how the
+        // tree could still list a glyph that was not in the sequence: creating one
+        // glyph while removing another leaves the count identical, and any bulk tree
+        // mutation that forgot to invalidate the caches (load, import, undo restore)
+        // left the diff comparing against a tree that no longer existed.
+        //
+        // Cost is one lookup per root group, not per tree item, so it is bounded by
+        // the glyph count rather than by the document size.
+        const toDelete = [];
+        for (const id of this._treeStore.rootChildren) {
+            const item = this._treeStore.treeItems.get(id);
+            if (!item || item.type !== 'group' || item.parentId !== null) continue;
+            if (allInTextIds.has(id)) {
+                item.hidden_by_sequence = false;
+                continue;
             }
-        } else {
-            // Incremental: process only groups that changed
-            const prevInText = this._prevInTextIds;
-
-            // Groups that entered the text → unhide
-            for (const id of allInTextIds) {
-                if (!prevInText.has(id)) {
-                    const item = this._treeStore.treeItems.get(id);
-                    if (item) item.hidden_by_sequence = false;
-                }
-            }
-
-            // Groups that left the text → hide, maybe delete
-            for (const id of prevInText) {
-                if (!allInTextIds.has(id)) {
-                    const item = this._treeStore.treeItems.get(id);
-                    if (item && item.type === 'group' && item.parentId === null) {
-                        item.hidden_by_sequence = true;
-                        if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
-                    }
-                }
-            }
-
-            // Handle newly created root groups (none in prev nor current text)
-            const rootLen = this._treeStore.rootChildren.length;
-            if (this._prevRootIds === null || this._prevRootIds.size !== rootLen) {
-                const prevRoot = this._prevRootIds ?? new Set();
-                for (const id of this._treeStore.rootChildren) {
-                    if (!prevRoot.has(id) && !allInTextIds.has(id)) {
-                        const item = this._treeStore.treeItems.get(id);
-                        if (item && item.type === 'group' && !item.isRef) {
-                            item.hidden_by_sequence = true;
-                            if (item.children.length === 0 && !item.is_modified) toDelete.push(id);
-                        }
-                    }
-                }
-            }
+            item.hidden_by_sequence = true;
+            // An out-of-sequence glyph survives only if it carries content or was
+            // deliberately created/imported (is_modified); an empty stub is dropped.
+            if (item.children.length === 0 && !item.isRef && !item.is_modified) toDelete.push(id);
         }
         toDelete.forEach(id => { this._removeDefaultGlyphById(id); this._treeStore.deleteTreeItem(id); });
-
-        // Update caches for next incremental call (after toDelete so _prevRootIds reflects current rootChildren)
-        this._prevInTextIds = new Set(allInTextIds);
-        this._prevRootIds = new Set(this._treeStore.rootChildren);
 
         const newActiveIndices = new Set();
         for (let i of this.activeSequenceIndices) {

@@ -4,6 +4,9 @@ import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
 import { desktopApi, isDesktop } from "../app/app_mode.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 export class ProjectManager {
     constructor(canvas) {
         this.canvas = canvas;
@@ -415,7 +418,8 @@ export class ProjectManager {
         // Use the project name from the file, or generate a unique fallback
         let targetName = data?.project_name || await this._nextNewProjectName();
         if (!desktop && await StorageUtils.projectExists(targetName)) {
-            const msg = `Project "${targetName}" already exists in cache. Overwrite?`;
+            const msg = t("dialog.cache_overwrite", 'Project "{name}" already exists in cache. Overwrite?')
+                .replace('{name}', targetName);
             if (!confirm(msg)) {
                 return null; // User cancelled
             }
@@ -448,7 +452,7 @@ export class ProjectManager {
             c.bumpEditorStoreTreeRevision?.();
         } catch (err) {
             if (err) {
-                alert("Critical error during file loading: " + err.message);
+                alert(t("err.critical_load", "Critical error during file loading: ") + err.message);
             }
             return null;
         }

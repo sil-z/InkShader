@@ -18,6 +18,9 @@ import {
     trimmedInputValue
 } from "./input_validation.js";
 
+/** Translation shorthand: table first, English literal as the fallback. */
+const t = (key, fallback) => (window.I18n ? window.I18n.t(key, fallback) : fallback);
+
 /** Compute LSB/RSB for a group from its curves + advance (read-only, no stored fields) */
 function getGroupLsbRsb(groupId) {
     const extents = EditorModel.getGroupCurveExtents(groupId);
@@ -884,7 +887,7 @@ export class PropertyPanel extends HTMLElement {
             const refFields = popup.querySelector('#grp_ref_fields');
             if (stdFields) stdFields.style.display = 'none';
             if (refFields) refFields.style.display = '';
-            if (titleEl) titleEl.textContent = 'Reference Properties';
+            if (titleEl) titleEl.textContent = t('prop.ref_properties', 'Reference Properties');
             // Ensure all ref rows visible
             const rows = refFields?.querySelectorAll('.npp-row');
             if (rows) for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
@@ -1050,7 +1053,7 @@ export class PropertyPanel extends HTMLElement {
                         <div class="npp-row"><label>${t('prop.pos', 'Pos')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_y"></div></div>
                         <div class="npp-row"><label>${t('prop.in', 'In')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_in_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_in_y"></div></div>
                         <div class="npp-row"><label>${t('prop.out', 'Out')}</label><div class="npp-input-group"><span class="npp-axis">X</span><input type="number" step="0.1" id="prop_out_x"><span class="npp-axis">Y</span><input type="number" step="0.1" id="prop_out_y"></div></div>
-                        <div class="npp-row"><label>${t('prop.angle', 'Angle')}</label><div class="npp-input-group"><span class="npp-axis">In</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">Out</span><input type="number" step="1" id="prop_out_a"></div></div>
+                        <div class="npp-row"><label>${t('prop.angle', 'Angle')}</label><div class="npp-input-group"><span class="npp-axis">${t('prop.in', 'In')}</span><input type="number" step="1" id="prop_in_a"><span class="npp-axis">${t('prop.out', 'Out')}</span><input type="number" step="1" id="prop_out_a"></div></div>
                     </div>
                 </div>`;
         }

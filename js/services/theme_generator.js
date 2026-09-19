@@ -47,14 +47,16 @@ export function hslToRgba(h, s, l, a = 1) {
 
 // ── Presets ────────────────────────────────────────────────────
 
+// `i18n` names the preset in the translation table and `name` is the English
+// fallback used if the table is unavailable.
 export const THEME_PRESETS = [
-    { id: 'blue',   name: 'Blue',   hue: 199, swatch: '#0284c7' },
-    { id: 'red',    name: 'Red',    hue: 0,   swatch: '#dc2626' },
-    { id: 'orange', name: 'Orange', hue: 25,  swatch: '#ea580c' },
-    { id: 'green',  name: 'Green',  hue: 152, swatch: '#16a34a' },
-    { id: 'teal',   name: 'Teal',   hue: 175, swatch: '#0d9488' },
-    { id: 'purple', name: 'Purple', hue: 270, swatch: '#9333ea' },
-    { id: 'pink',   name: 'Pink',   hue: 330, swatch: '#db2777' },
+    { id: 'blue',   name: 'Blue',   i18n: 'accent.blue',   hue: 199, swatch: '#0284c7' },
+    { id: 'red',    name: 'Red',    i18n: 'accent.red',    hue: 0,   swatch: '#dc2626' },
+    { id: 'orange', name: 'Orange', i18n: 'accent.orange', hue: 25,  swatch: '#ea580c' },
+    { id: 'green',  name: 'Green',  i18n: 'accent.green',  hue: 152, swatch: '#16a34a' },
+    { id: 'teal',   name: 'Teal',   i18n: 'accent.teal',   hue: 175, swatch: '#0d9488' },
+    { id: 'purple', name: 'Purple', i18n: 'accent.purple', hue: 270, swatch: '#9333ea' },
+    { id: 'pink',   name: 'Pink',   i18n: 'accent.pink',   hue: 330, swatch: '#db2777' },
 ];
 
 // ── Fixed Constants ────────────────────────────────────────────
