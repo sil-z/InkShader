@@ -105,6 +105,11 @@ export class PreferencesPopup extends HTMLElement {
         // Menus and popups rebuild their own text on a language switch; the selects
         // and the colour rows here are built in JS, so they are rebuilt explicitly.
         appEventBus.on(CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+            // The language row is the one select whose value must follow the switch:
+            // setLang does not touch it, so without this the trigger kept showing the
+            // language the user just left.
+            const langSelect = this.querySelector('#pref_lang');
+            if (langSelect && window.I18n) langSelect.value = window.I18n.lang;
             this.syncLabelOptions();
             this.querySelector('#pref_colors')?.replaceChildren();
             this.buildColorPickers();

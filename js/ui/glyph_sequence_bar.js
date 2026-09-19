@@ -144,6 +144,9 @@ export class GlyphSequenceBar extends HTMLElement {
             this._render();
         };
         this._cleanups.push(appEventBus.on(CANVAS_EVENTS.STATE_CHANGED, onState));
+        // Action-button tooltips (lock / hide) are built from t() while the track is
+        // rebuilt only on a signature change, so a language switch asks for one.
+        this._cleanups.push(appEventBus.on(CANVAS_EVENTS.LANGUAGE_CHANGED, () => this._render()));
         const onRender = () => {
             const c = this._canvas;
             if (!c) return;

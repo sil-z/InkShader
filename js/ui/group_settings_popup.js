@@ -42,8 +42,8 @@ const POPUP_HTML = `
     <div class="npp-row"><label data-i18n="prop.advance">Advance Width</label><input type="number" id="grp_advance"></div>
     <div class="npp-row"><label data-i18n="prop.lsb">LSB</label><input type="number" id="grp_lsb"></div>
     <div class="npp-row"><label data-i18n="prop.rsb">RSB</label><input type="number" id="grp_rsb"></div>
-    <div class="npp-row"><label data-i18n="prop.kern_left">Left Kern</label><select id="grp_kern_left"><option value="">${t('common.none', '(none)')}</option></select></div>
-    <div class="npp-row"><label data-i18n="prop.kern_right">Right Kern</label><select id="grp_kern_right"><option value="">${t('common.none', '(none)')}</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.kern_left">Left Kern</label><select id="grp_kern_left"><option value="" data-i18n="common.none">${t('common.none', '(none)')}</option></select></div>
+    <div class="npp-row"><label data-i18n="prop.kern_right">Right Kern</label><select id="grp_kern_right"><option value="" data-i18n="common.none">${t('common.none', '(none)')}</option></select></div>
 </div>
 <div class="npp-fields" id="grp_ref_fields" style="display:none">
     <div class="npp-row"><label data-i18n="prop.name">Name</label><input type="text" id="grp_ref_name" readonly></div>
@@ -450,9 +450,12 @@ export class GroupSettingsPopup extends HTMLElement {
         const leftVal = leftSel.value;
         const rightVal = rightSel.value;
 
+        // data-i18n on the rebuilt option keeps it re-translatable: the custom
+        // dropdown mirrors this element's text, and translateDOM can only rewrite
+        // elements that declare a key.
         const noneLabel = t('common.none', '(none)').replace(/</g, '&lt;');
-        leftSel.innerHTML = '<option value="">' + noneLabel + '</option>';
-        rightSel.innerHTML = '<option value="">' + noneLabel + '</option>';
+        leftSel.innerHTML = '<option value="" data-i18n="common.none">' + noneLabel + '</option>';
+        rightSel.innerHTML = '<option value="" data-i18n="common.none">' + noneLabel + '</option>';
 
         const leftClasses = [];
         const rightClasses = [];

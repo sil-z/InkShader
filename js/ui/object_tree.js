@@ -88,6 +88,14 @@ export class ObjectTree extends HTMLElement {
             });
             this.initDragAndDrop();
         }
+        // Row tooltips (lock/hide) come from t() and the tree patches rows
+        // incrementally, so a language switch has to invalidate that cache.
+        // Re-registered on every connect (disconnectedCallback drops the trackers
+        // whenever the dock moves this element), matching the STATE_CHANGED wire-up.
+        this.addGlobalListener(window, CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+            this._lastTreeRowKey = "";
+            this.renderTree();
+        });
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => {
             this.interaction.applyEventDetail(e?.detail);
             const actionType = e?.detail?.action?.type;
@@ -420,6 +428,10 @@ export class ObjectTree extends HTMLElement {
         const isActive = this.interaction.activeGroupId === id;
         const isSelected = this.interaction.hasTreeSelection(id);
         return [
+            // The row renders translated tooltips (lock / hide), so a language switch
+            // has to invalidate the signature — otherwise the early-out below keeps
+            // the previous language's titles forever.
+            (window.I18n && window.I18n.lang) || 'en',
             depth,
             this._getTreeItemDisplayName(item),
             item.type,

@@ -5,6 +5,49 @@
 // The options panel is appended to document.body with position:fixed
 // so it visually extends beyond any overflow container without
 // modifying ancestor overflow properties.
+//
+// Language: the native <select> is the single source of truth for option text, so
+// every instance registers itself here and re-reads that text on
+// CANVAS_EVENTS.LANGUAGE_CHANGED. Without it the visible label and the panel keep
+// whatever language the dropdown was built in: `translateDOM` re-translates the
+// hidden <option> elements, but the .cs-label / .cs-option nodes it never sees (the
+// panel lives in document.body, outside the component) would stay behind.
+import { CANVAS_EVENTS } from "../app/canvas_events.js";
+import { appEventBus } from "../app/event_bus.js";
+
+/** Instances to re-sync on a language switch: { selectEl, labelSpan, panel }. */
+const instances = [];
+let listening = false;
+
+/** Pull the current label text out of an instance's native <select>. */
+function syncInstance(inst) {
+    const optionText = (value) => {
+        const opt = [...inst.selectEl.options].find(o => o.value === value);
+        return opt ? opt.textContent.trim() : null;
+    };
+
+    inst.panel.querySelectorAll('.cs-option').forEach(item => {
+        const label = optionText(item.dataset.value);
+        if (label !== null && item.textContent !== label) item.textContent = label;
+    });
+
+    const current = optionText(inst.selectEl.value);
+    if (current !== null && inst.labelSpan.textContent !== current) {
+        inst.labelSpan.textContent = current;
+    }
+}
+
+function ensureListener() {
+    if (listening) return;
+    listening = true;
+    appEventBus.on(CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
+        // translateDOM has already rewritten the native options by the time this
+        // fires, so re-reading them yields the new language.
+        for (const inst of instances) {
+            try { syncInstance(inst); } catch (_) { /* detached select */ }
+        }
+    });
+}
 
 /**
  * Replace a native <select> with a custom styled dropdown.
@@ -54,9 +97,12 @@ export function createCustomSelect(selectEl, opts = {}) {
     trigger.appendChild(labelSpan);
     trigger.appendChild(chevron);
 
-    // Options panel — created once, moved between body and wrapper
+    // Options panel — created once, moved between body and wrapper.
+    // The panel lives outside the component's DOM, so it carries the id of the
+    // <select> it mirrors; that is what lets a test attribute it back to its field.
     const panel = document.createElement('div');
     panel.className = 'cs-panel';
+    if (selectEl.id) panel.dataset.csFor = selectEl.id;
 
     options.forEach(opt => {
         const item = document.createElement('div');
@@ -179,9 +225,9 @@ export function createCustomSelect(selectEl, opts = {}) {
         close();
     });
 
-    // Expose helper to update options programmatically. The native <select> is
-    // hidden but kept in sync as well, so its option text never drifts from the
-    // panel the user actually reads (e.g. after a language switch).
+    // Register for language re-sync, and expose the helper below to update
+    // options programmatically. The native <select> is hidden but kept in sync as
+    // well, so its option text never drifts from the panel the user actually reads.
     wrapper._csUpdateOptions = function (newOptions, newValue) {
         panel.innerHTML = '';
         newOptions.forEach(opt => {
@@ -199,6 +245,9 @@ export function createCustomSelect(selectEl, opts = {}) {
         });
         selectEl.value = newValue;
     };
+
+    instances.push({ selectEl, labelSpan, panel });
+    ensureListener();
 
     // Expose helper to set value programmatically
     wrapper._csSetValue = function (value) {

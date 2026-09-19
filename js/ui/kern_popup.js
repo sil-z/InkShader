@@ -22,10 +22,10 @@ const POPUP_HTML = `
 <div class="pen-tool-popup-body kern-popup-body">
   <div class="kern-popup-add-row">
     <select class="kern-left-select" data-i18n-placeholder="kern.left_glyph" data-i18n-tip="kern.left_glyph" title="Left glyph">
-      <option value="">${t('kern.pick_left', '-- Left --')}</option>
+      <option value="" data-i18n="kern.pick_left">${t('kern.pick_left', '-- Left --')}</option>
     </select>
     <select class="kern-right-select" data-i18n-placeholder="kern.right_glyph" data-i18n-tip="kern.right_glyph" title="Right glyph">
-      <option value="">${t('kern.pick_right', '-- Right --')}</option>
+      <option value="" data-i18n="kern.pick_right">${t('kern.pick_right', '-- Right --')}</option>
     </select>
     <input type="number" class="kern-value-input" value="0" step="5" placeholder="0" data-i18n-tip="kern.value_tip" title="Kerning value (UPM)">
     <button class="kern-add-btn" data-i18n="kern.add">Add</button>
@@ -129,8 +129,11 @@ export class KernPopup extends HTMLElement {
         const leftVal = leftSel.value;
         const rightVal = rightSel.value;
 
-        leftSel.innerHTML = '<option value="">' + esc(t('kern.pick_left', '-- Left --')) + '</option>';
-        rightSel.innerHTML = '<option value="">' + esc(t('kern.pick_right', '-- Right --')) + '</option>';
+        // data-i18n on the rebuilt option keeps it re-translatable: the custom
+        // dropdown mirrors this element's text, and translateDOM can only rewrite
+        // elements that declare a key.
+        leftSel.innerHTML = '<option value="" data-i18n="kern.pick_left">' + esc(t('kern.pick_left', '-- Left --')) + '</option>';
+        rightSel.innerHTML = '<option value="" data-i18n="kern.pick_right">' + esc(t('kern.pick_right', '-- Right --')) + '</option>';
 
         for (const name of names) {
             leftSel.appendChild(this._optionEl(name));

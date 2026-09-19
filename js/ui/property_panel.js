@@ -226,6 +226,12 @@ export class PropertyPanel extends HTMLElement {
         this.addGlobalListener(window, CANVAS_EVENTS.STATE_CHANGED, (e) => this.handleStoreStateChanged(e));
         this.addGlobalListener(window, CANVAS_EVENTS.LANGUAGE_CHANGED, () => {
             this.lastSignature = "";
+            // The path section is deliberately preserved across renders (rebuilding it
+            // would recreate the direction toggle). Its markup is built from t(), so a
+            // language switch is one of the few cases that must rebuild it: without
+            // this, its labels kept the old language while the rest of the panel
+            // followed the new one.
+            this._lastPathSig = null;
             this.render();
         });
         this.addGlobalListener(appEventBus, NODE_PROPS_DOCKED, (e) => {
