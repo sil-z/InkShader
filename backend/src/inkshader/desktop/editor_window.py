@@ -4,8 +4,9 @@
 - 窗口加载的是完整编辑器 URL（http://127.0.0.1:PORT/），而不是状态页
 - 窗口可缩放/最大化，关闭（X）即退出程序（有未保存更改时弹原生警告）
 - js_api 桥暴露：set_dirty / set_title / file_open / file_save / file_save_as /
-  open_new_project / request_quit —— 供前端实现「直接保存到磁盘」「原生文件对话框」
-  「新建项目开新窗口」「未保存关闭警告」等桌面能力
+  file_save_binary / open_new_project / toggle_fullscreen / open_external /
+  request_quit —— 供前端实现「直接保存到磁盘」「原生文件对话框」「新建项目开新窗口」
+  「未保存关闭警告」「菜单里的外部链接」等桌面能力
 
 多窗口说明（pywebview 6.x 实测确认）：
 - webview.start() 之后，从非主线程调用 webview.create_window() 会立即初始化并
@@ -18,6 +19,7 @@ import logging
 import sys
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 import webview
@@ -330,6 +332,10 @@ class _EditorApi:
     def toggle_fullscreen(self) -> None:
         self._owner.toggle_fullscreen()
 
+    # ---- 外部链接（Help 菜单）：交给系统默认浏览器，不替换编辑器窗口 ----
+    def open_external(self, url: str) -> bool:
+        return self._owner.open_external(url)
+
     # ---- 退出 ----
     def request_quit(self) -> None:
         self._owner.request_quit()
@@ -455,6 +461,18 @@ class EditorWindow:
             self.window.toggle_fullscreen()
         except Exception as e:  # noqa: BLE001
             log.warning("toggle_fullscreen failed: %s", e)
+
+    def open_external(self, url: str) -> bool:
+        """在系统默认浏览器中打开链接。只接受 http(s)，其余一律拒绝。"""
+        target = str(url or "").strip()
+        if not target.lower().startswith(("http://", "https://")):
+            log.warning("open_external rejected: %r", target)
+            return False
+        try:
+            return bool(webbrowser.open(target))
+        except Exception as e:  # noqa: BLE001
+            log.warning("open_external failed: %s", e)
+            return False
 
     def file_open(self):
         path = None

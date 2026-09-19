@@ -17,7 +17,8 @@
     "test:all": "node test/run_probes.mjs --all",
     "test:list": "node test/run_probes.mjs --list",
     "check:i18n": "node test/check_i18n.mjs",
-    "lint": "eslint . && node test/check_i18n.mjs",
+    "check:fonts": "node test/check_fonts.mjs",
+    "lint": "eslint . && node test/check_i18n.mjs && node test/check_fonts.mjs",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

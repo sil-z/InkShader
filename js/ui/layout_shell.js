@@ -1,6 +1,6 @@
 import { appEventBus } from "../app/event_bus.js";
 import { CANVAS_EVENTS } from "../app/canvas_events.js";
-import { isDesktop } from "../app/app_mode.js";
+import { isDesktop, openExternalUrl } from "../app/app_mode.js";
 import { CanvasDispatcher } from "../app/canvas_dispatcher.js";
 import { DockLayout } from "./dock_layout.js";
 import "./node_property_popup.js";
@@ -14,6 +14,9 @@ import "./font_popup.js";
 import "./expand_stroke_popup.js";
 import "./kern_popup.js";
 import "./glyph_popup.js";
+
+/** The project page the Help menu points at. */
+const PROJECT_URL = "https://github.com/sil-z/InkShader";
 
 export function initializeLayoutShell() {
     const dockContainer = document.querySelector(".dock-container");
@@ -451,7 +454,9 @@ export function initializeLayoutShell() {
                 makePanelToggle('panel.canvas', 'canvas'),
                 makePanelToggle('panel.objects', 'objects'),
                 makePanelToggle('panel.properties', 'properties'),
-                makePanelToggle('panel.console', 'console'),
+                // Console is temporarily withdrawn from the layout menu. The panel and
+                // its dock tab still work and `panel.console` is still its label; only
+                // this toggle that reveals it is gone.
                 makePanelToggle('panel.sample', 'sample'),
                 makePanelToggle('panel.font', 'font'),
                 makePanelToggle('panel.kerning', 'kerning'),
@@ -506,22 +511,13 @@ export function initializeLayoutShell() {
 
         const I18nManager = window.I18n || { t: (k) => k };
 
+        // Help is a single link out to the project page; the in-app shortcut list
+        // (help-modal) is kept in the tree but has no menu entry for now.
         const items = [
-            {
-                label: I18nManager.t('help.shortcuts'),
-                i18n: 'help.shortcuts',
-                action: () => document.querySelector('help-modal')?.open()
-            },
-            { separator: true },
-            {
-                label: I18nManager.t('help.about'),
-                i18n: 'help.about',
-                action: null  // No action yet
-            },
             {
                 label: I18nManager.t('help.documentation'),
                 i18n: 'help.documentation',
-                action: null  // No action yet
+                action: () => openExternalUrl(PROJECT_URL)
             }
         ];
 

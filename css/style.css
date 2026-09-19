@@ -3882,7 +3882,8 @@ sample-text-panel {
     border: 1px solid var(--ui-border, #e2e8f0);
     border-radius: 8px;
     box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* Generic families only: the UI must pick the platform's own text stack. */
+    font-family: system-ui, sans-serif;
     font-size: 13px;
     pointer-events: auto;
 }
@@ -3908,7 +3909,7 @@ sample-text-panel {
     color: var(--ui-text-main, #334155);
     border: 1px solid var(--ui-border, #e2e8f0);
     border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: ui-monospace, monospace;
     font-size: 12px;
     line-height: 1.45;
     white-space: pre;

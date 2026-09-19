@@ -92,7 +92,7 @@ export const translations = {
         
         "pref.theme": "Color Theme", "pref.theme.light": "Light", "pref.theme.dark": "Dark",
         "pref.accentHue": "Accent", "pref.language": "Language",
-        "pref.override": "Canvas Colors Override", "pref.reset": "Reset to Theme Default",
+        "pref.reset": "Reset to Theme Default",
         "accent.blue": "Blue", "accent.red": "Red", "accent.orange": "Orange", "accent.green": "Green",
         "accent.teal": "Teal", "accent.purple": "Purple", "accent.pink": "Pink",
         
@@ -127,7 +127,7 @@ export const translations = {
         "help.s.esc": "Esc : Cancel / Deselect",
         // Not a shortcut: a caveat about the rotated view, shown as a note under the table.
         "help.notes.rotation": "With the canvas rotated, only the sheet turns: the rulers, the sequence bar and the tool strip stay upright, so ruler ticks no longer sit under the document position they name.",
-        "help.about": "About", "help.documentation": "Documentation",
+        "help.documentation": "Documentation",
         
         "tree.title": "Objects",
         "tree.lock": "Lock", "tree.unlock": "Unlock", "tree.show": "Show", "tree.hide": "Hide",
@@ -287,7 +287,7 @@ export const translations = {
         
         "pref.theme": "颜色主题", "pref.theme.light": "浅色", "pref.theme.dark": "深色",
         "pref.accentHue": "强调色", "pref.language": "语言",
-        "pref.override": "画布颜色覆盖", "pref.reset": "恢复主题默认",
+        "pref.reset": "恢复主题默认",
         "accent.blue": "蓝色", "accent.red": "红色", "accent.orange": "橙色", "accent.green": "绿色",
         "accent.teal": "青色", "accent.purple": "紫色", "accent.pink": "粉色",
         
@@ -321,7 +321,7 @@ export const translations = {
         "help.s.fullscreen": "F11：切换全屏",
         "help.s.esc": "Esc：取消 / 取消选择",
         "help.notes.rotation": "画布旋转时只有画布随之转动：标尺、序列栏和工具栏保持正立，因此标尺刻度不再对应其标注的文档位置。",
-        "help.about": "关于", "help.documentation": "文档",
+        "help.documentation": "文档",
         
         "tree.title": "对象",
         "tree.lock": "锁定", "tree.unlock": "解锁", "tree.show": "显示", "tree.hide": "隐藏",

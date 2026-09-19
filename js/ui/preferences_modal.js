@@ -195,7 +195,9 @@ export class PreferencesPopup extends HTMLElement {
         const t = window.I18n ? window.I18n.t.bind(window.I18n) : (k) => k;
         const self = this;
 
-        container.innerHTML = `<div class="pref_section_title" data-i18n="pref.override">Canvas Colors Override</div>`;
+        // No section title: the two colour rows are labelled individually, and a
+        // heading above them only repeated that they are overrides.
+        container.replaceChildren();
 
         CONFIGURABLE_COLORS.forEach(item => {
             const row = document.createElement('div');

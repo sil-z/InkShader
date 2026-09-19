@@ -25,6 +25,19 @@ export function desktopApi() {
     return _hasBridge() ? _g.pywebview.api : null;
 }
 
+/**
+ * Open a URL outside the app. Inside the desktop shell the bridge hands it to the OS
+ * (the link must not replace the editor), while a browser opens a new tab.
+ */
+export function openExternalUrl(url) {
+    const api = desktopApi();
+    if (api && typeof api.open_external === "function") {
+        api.open_external(url);
+        return;
+    }
+    if (_g) _g.open(url, "_blank", "noopener");
+}
+
 let _resolved = null;
 let _desktopPromise = null;
 

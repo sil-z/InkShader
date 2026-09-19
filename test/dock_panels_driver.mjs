@@ -332,7 +332,8 @@ try {
 
     // ── Phase D: Session 24 — 8-panel Layout menu, core hide/show, resize
     // ── no-drift, min-size auto-tab, restore normalization ──
-    // D1: Layout menu now toggles ALL eight panels.
+    // D1: Layout menu toggles the seven available panels. Console is withdrawn from
+    // the menu for now (the panel and its dock tab still work), so its toggle is gone.
     const D1 = await evalJs(ws, `(() => {
         document.getElementById('menu_layout').click();
         const dd = document.querySelector('dropdown-menu');
@@ -343,8 +344,10 @@ try {
                  console: has('Console'), sample: has('Sample'), font: has('Font'),
                  kern: has('Kerning'), glyphs: has('Glyphs') };
     })()`);
-    assert(D1.canvas && D1.objects && D1.properties && D1.console && D1.sample && D1.font && D1.kern && D1.glyphs,
-        "D1 Layout menu has 8 panel toggles", D1);
+    assert(D1.canvas && D1.objects && D1.properties && D1.sample && D1.font && D1.kern && D1.glyphs,
+        "D1 Layout menu lists the seven available panels", D1);
+    assert(D1.console === false,
+        "D1 Console has no layout toggle while it is withdrawn", D1);
 
     // Two locales ship: switching retranslates the UI, persists the choice, and an
     // unknown locale id is rejected instead of being stored.
