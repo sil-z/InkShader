@@ -1,8 +1,12 @@
 # InkShader
 
+[English](README.md)
+
 InkShader 是一个轻量字体编辑器，目标是帮助书法家创建手写风格的字体。
 
-[English](README.md)
+*InkShader 仍处于早期开发阶段，可能存在一些问题。*
+
+![alt text](image-1.png)
 
 ## 使用方式
 

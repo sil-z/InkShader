@@ -1,8 +1,12 @@
 # InkShader
 
+[中文](README.zh-CN.md)
+
 InkShader is a lightweight font editor intended to help calligraphers create handwriting-style fonts.
 
-[中文](README.zh-CN.md)
+*InkShader is in early development and may have some issues.*
+
+![alt text](image.png)
 
 ## Availability
 
